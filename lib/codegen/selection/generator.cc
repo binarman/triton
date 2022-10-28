@@ -20,6 +20,7 @@
 #include "llvm/IR/Type.h"
 #ifdef USE_ROCM
 #include "llvm/IR/IntrinsicsAMDGPU.h"
+#include "print_helper.h"
 #else
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #endif
@@ -27,6 +28,9 @@
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+
+
+#define USE_ROCM_VECTOR_LOAD 0
 
 namespace triton{
 namespace codegen{
@@ -1129,14 +1133,41 @@ void generator::visit_load_inst(ir::load_inst* x){
   auto idxs = idxs_.at(x);
   for(size_t i = 0; i <idxs.size(); i += 1){
     indices_t idx = idxs[i];
+
     // pointer value
     Value *ptr = vals_[op][idx];
 
+#if USE_ROCM_VECTOR_LOAD
+    auto shape = op->get_type()->get_block_shapes();
+    size_t vec_size = shape[0];
+    // print_vector(shape, "shape");
+
+    // create hacky masked load
+    Value *_ret = UndefValue::get(vec_ty(ty, vec_size));
+    for (size_t j = 0; j < vec_size; j++)
+    {
+
+      // if (j >= vec_size / 2)
+      // {
+      Value *element_ptr = gep(ptr, builder_->getInt32(j));
+      Value *element = builder_->CreateLoad(ty, element_ptr);
+      _ret = insert_elt(_ret, element, (uint64_t)j);
+      // }
+      // else
+      // {
+      //   _ret = insert_elt(_ret, ConstantFP::get(ty, 0), (uint64_t)j);
+      // }
+    }
+
+    // upload to global vals map
+    vals_[x][idx] = _ret;
+#else
     // create load
     Value *_ret =  builder_->CreateLoad(ty, ptr);
 
     // upload to global vals map
     vals_[x][idx] = _ret;
+#endif
   }
 #else
   // compute vector width
@@ -1332,13 +1363,15 @@ void generator::visit_masked_load_inst(ir::masked_load_inst* x) {
  */
 
 void generator::visit_store_inst(ir::store_inst * x){
+  std::cout << "visit_store_inst" << std::endl;
   ir::masked_store_inst *mx = dynamic_cast<ir::masked_store_inst*>(x);
   // operands
   ir::value *ptr_op = x->get_pointer_operand();
   ir::value *val_op = x->get_value_operand();
 #ifdef USE_ROCM
+  std::cout << "\t" << "USE_ROCM" << std::endl;
   auto idxs = idxs_.at(val_op);
-  Type *ty = cvt(val_op->get_type()->get_scalar_ty());
+  Type *ty = cvt(ptr_op->get_type()->get_scalar_ty());
 
   for (size_t i = 0; i < idxs.size(); i += 1)
   {
@@ -1347,10 +1380,29 @@ void generator::visit_store_inst(ir::store_inst * x){
     Value *ptr = vals_[ptr_op][idx];
 
     // value
-    Value *val = vals_.at(val_op)[idxs[i]];
+    Value *val = vals_.at(val_op)[idx];
 
     // store value at pointer
+    print_llvm_value(ptr, "ptr") ;
+    print_llvm_value(val, "val") ;
+    print_llvm_module(builder_->GetInsertBlock()->getModule());
+#if USE_ROCM_VECTOR_LOAD
+    auto shape = ptr_op->get_type()->get_block_shapes();
+    size_t vec_size = shape[0];
+
+    
+    for (size_t j = 0; j < vec_size; j++)
+    {
+      Value *element = extract_elt(val, builder_->getInt32(j));
+      print_llvm_value(element, "element") ;
+      Value *output_ptr = gep(ptr, builder_->getInt32(j));
+      print_llvm_value(output_ptr, "output_ptr") ;
+      builder_->CreateStore(element, output_ptr);
+      std::cout << "\t" << "CreateStore" << std::endl;
+    }
+else
     store(val, ptr);
+#endif
   }
 #else
   ir::value *msk_op = nullptr;
@@ -3862,7 +3914,10 @@ void generator::visit_function(ir::function* fn) {
   // generate LLVM-IR code
   std::cout << "\t// generate LLVM-IR code" << std::endl;
   for(ir::basic_block *block: blocks)
+  {
+    std::cout << "\t\t" << block->get_name() << std::endl;
     visit_basic_block(block);
+  }
   // finalize
   std::cout << "\t// finalize" << std::endl;
   finalize_function(fn);
@@ -4091,6 +4146,7 @@ void generator::visit_basic_block(ir::basic_block * block) {
   BasicBlock *parent = bbs_[block];
   builder_->SetInsertPoint(parent);
   for(ir::instruction *i: block->get_inst_list()){
+    std::cout << "\t\t\t" << i->repr() << std::endl;
     visit_value(i);
     // std::cout << "done" << std::endl;
   }

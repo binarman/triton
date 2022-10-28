@@ -26,7 +26,7 @@ rm -rf /tmp/triton
 # python python/test/test_empty.py
 # -ex 'ignore 1 472' \
 
-pytest --verbose python/test/unit/language/test_core.py 2>&1 | tee /dockerx/triton/test_core.log
+# pytest --verbose python/test/unit/language/test_core.py 2>&1 | tee /dockerx/triton/test_core.log
 # pytest --verbose python/test/unit/language/test_core.py::test_empty_kernel[float32] 2>&1 | tee /dockerx/triton/test_empty_kernel.log
 # pytest --verbose python/test/unit/language/test_core.py::test_bin_op[int32-uint32-+] 2>&1 | tee /dockerx/triton/test_bin_op.log
 # pytest --verbose python/test/unit/language/test_core.py::test_atomic_rmw 2>&1 | tee /dockerx/triton/test_atomic_rmw.log
@@ -34,7 +34,7 @@ pytest --verbose python/test/unit/language/test_core.py 2>&1 | tee /dockerx/trit
 #  pytest --verbose "python/test/unit/language/test_core.py::test_reduce1d" 2>&1 | tee /dockerx/triton/test_reduce1d.log
 
 # mismatch
-# pytest --verbose "python/test/unit/language/test_core.py::test_bin_op[int8-float16-%]"" 2>&1 | tee /dockerx/triton/test_bin_op.log
+pytest --verbose "python/test/unit/language/test_core.py::test_bin_op[int8-float16-%]" 2>&1 | tee /dockerx/triton/test_bin_op.log
 # pytest --verbose "python/test/unit/language/test_core.py::test_bitwise_op[int32-int32-&1]" 2>&1 | tee /dockerx/triton/test_bitwise_op.log
 # pytest --verbose "python/test/unit/language/test_core.py::test_shift_op[int32-int32->>]" 2>&1 | tee /dockerx/triton/test_shift_op.log
 # pytest --verbose "python/test/unit/language/test_core.py::test_compare_op[float32-float32->-nan-real]" 2>&1 | tee /dockerx/triton/test_compare_op.log
