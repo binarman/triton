@@ -5,3 +5,4 @@ pip uninstall -y triton
 
 export TRITON_ROCM_DEBUG=ON
 pip install --verbose -e .
+pip install -U matplotlib pandas

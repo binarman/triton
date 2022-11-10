@@ -27,10 +27,10 @@ rm -rf /tmp/triton
 # -ex 'ignore 1 472' \
 
 # pytest -rfs --verbose python/test/unit/language/test_core.py 2>&1 | tee /dockerx/triton/test_core.log
-pytest -rfs --verbose \
-	python/test/unit/language/test_core.py::test_masked_load \
-	python/test/unit/language/test_core.py::test_masked_load_shared_memory \
-	2>&1 | tee /dockerx/triton/test_core.log
+pytest -rfs --verbose python/test/unit/language/test_core.py::test_masked_load[float32-128-2] \
+	2>&1 | tee /dockerx/triton/test_masked_load.log
+
+# python3 python/tutorials/01-vector-add.py
 
 # pytest --verbose python/test/unit/language/test_core.py::test_empty_kernel[float32] 2>&1 | tee /dockerx/triton/test_empty_kernel.log
 # pytest --verbose python/test/unit/language/test_core.py::test_bin_op[int32-uint32-+] 2>&1 | tee /dockerx/triton/test_bin_op.log
