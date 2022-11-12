@@ -298,7 +298,8 @@ struct FuncOpConversion : public FuncOpConversionBase {
     // Set an attribute to indicate this function is a kernel entry.
     newFuncOp->setAttr(NVVMMetadataField::Kernel,
                        rewriter.getIntegerAttr(type::u1Ty(ctx), 1));
-#ifdef USE_ROCM
+
+#ifndef USE_ROCM
     // Set an attribute for maxntidx, it could be used in latter LLVM codegen
     // for `nvvm.annotation` metadata.
     newFuncOp->setAttr(NVVMMetadataField::MaxNTid,

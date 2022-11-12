@@ -79,11 +79,8 @@ std::tuple<std::string, std::string> llir_to_hsaco(llvm::Module *module, std::st
   else
     module->setDataLayout(layout);
   // emit machine code
-  for (llvm::Function &f : module->functions()) {
-    f.setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-    f.addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+  for (llvm::Function &f : module->functions())
     f.addFnAttr(llvm::Attribute::AlwaysInline);
-  }
 
   llvm::legacy::PassManager pass;
   llvm::raw_svector_ostream stream(buffer);

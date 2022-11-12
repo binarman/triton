@@ -1015,6 +1015,51 @@ def path_to_ptxas():
 instance_descriptor = namedtuple("instance_descriptor", ["divisible_by_16", "equal_to_1"], defaults=[set(), set()])
 
 
+def _compile(fn, signature: str, device: int = -1, constants=dict(), specialization=instance_descriptor(), num_warps: int = 4, num_stages: int = 3, extern_libs=None, output: str = "ttgir") -> Tuple[str, int, str]:
+    if isinstance(signature, str):
+        signature = {k: v.strip() for k, v in enumerate(signature.split(","))}
+    valid_outputs = ("ttir", "ttgir", "ptx", "cubin", "hsaco")
+    assert output in valid_outputs, "output should be one of [%s], but get \"%s\"" % (','.join(valid_outputs), output)
+
+    # triton-ir
+    module, _ = make_triton_ir(fn, signature, specialization, constants)
+    module = optimize_triton_ir(module)
+    if output == "ttir":
+        return module.str()
+
+    # tritongpu-ir
+    module = make_tritongpu_ir(module, num_warps)
+    module = optimize_tritongpu_ir(module, num_stages)
+    if output == "ttgir":
+        return module.str()
+
+    # llvm-ir
+    llvm_ir = make_llvm_ir(module)
+
+    assert device >= 0, "device should be provided."
+    shem_size = _triton.get_shared_memory_size(module)
+    if torch.version.hip is None:
+        ptxas, cuda_version = path_to_ptxas()
+        compute_capability = torch.cuda.get_device_capability(device)
+        compute_capability = compute_capability[0] * 10 + compute_capability[1]
+        ptx_version = ptx_get_version(cuda_version)
+        ptx = make_ptx(llvm_ir, compute_capability, ptx_version)
+        kernel_name = ptx_get_kernel_name(ptx)
+        if output == "ptx":
+            return ptx, shem_size, kernel_name
+
+        cubin = make_cubin(ptx, ptxas, compute_capability)
+        if output == "cubin":
+            return cubin, ptx, shem_size, kernel_name
+    else:
+        if output == "hsaco":
+            gcn_arch = os.environ.get('MI_GPU_ARCH', "gfx90a")
+            amdgcn, hsaco_path = make_hsaco(llvm_ir, gcn_arch)
+            kernel_name = amdgcn_get_kernel_name(amdgcn)
+            return hsaco_path, amdgcn, shem_size, kernel_name
+    assert False
+
+
 # ------------------------------------------------------------------------------
 # compiler
 # ------------------------------------------------------------------------------
@@ -1449,47 +1494,29 @@ def compile(fn, signature: str, device: int = -1, constants=dict(), num_warps: i
     # create cache manager
     fn_cache_key = make_fn_cache_key(fn.cache_key, signature, configs, constants, num_warps, num_stages)
     fn_cache_manager = CacheManager(fn_cache_key)
-    # load metadata if any
-    metadata = None
-    if fn_cache_manager.has_file(f'{name}.json'):
-      with open(fn_cache_manager._make_path(f"{name}.json")) as f:
-            metadata = json.load(f)
-    context = _triton.ir.context()
-    force_compile = False
-    # ast -> triton-ir (or read from cache)
-    ttir, ttir_md5, force_compile, _ = read_or_execute(fn_cache_manager, force_compile, f"{name}.ttir", metadata,
-                           run_if_found = lambda path: _triton.ir.parse_mlir_module(path, context),
-                           run_if_not_found = lambda: ast_to_ttir(fn, signature, configs[0], constants))
-    # triton-ir -> triton-gpu-ir (or read from cache)
-    ttgir, ttgir_md5, force_compile, _ = read_or_execute(fn_cache_manager, force_compile, f"{name}.ttgir", metadata,
-                            run_if_found = lambda path: _triton.ir.parse_mlir_module(path, context),
-                            run_if_not_found = lambda: ttir_to_ttgir(ttir, num_warps, num_stages))
-    # triton-gpu-ir -> llvm-ir (or read from cache)
-    llir, llir_md5, force_compile, llvm_cached = read_or_execute(fn_cache_manager, force_compile, f"{name}.llir", metadata,
-                           run_if_found = lambda path: Path(path).read_bytes(),
-                           run_if_not_found = lambda: ttgir_to_llir(ttgir, extern_libs))
-    if llvm_cached:
-        shmem_size = metadata["shared"]
+    if torch.version.hip is not None:
+       amd_gcn_name = f"{name}.gcn"
+       hsaco_path_name = f"{name}.hsaco"
+       if not fn_cache_manager.has_file(amd_gcn_name) or \
+              fn_cache_manager.has_file(hsaco_path_name):
+              hsaco_path, amd_gcn, shared, kernel_name = _compile(fn, signature, device, constants, configs[0], num_warps, num_stages, extern_libs, "hsaco")
+              fn_cache_manager.put(amd_gcn, amd_gcn_name, binary=False)
+              fn_cache_manager.put(hsaco_path, hsaco_path_name, binary=False)
     else:
-        shmem_size = _triton.get_shared_memory_size(ttgir)
-    # llvm-ir -> ptx (or read from cache)
-    ptx, ptx_md5, force_compile, _ = read_or_execute(fn_cache_manager, force_compile, f"{name}.ptx", metadata,
-                          run_if_found = lambda path: Path(path).read_text(),
-                          run_if_not_found = lambda: llir_to_ptx(llir))
-    # ptx -> cubin (or read from cache)
-    cubin, cubin_md5, force_compile, _ = read_or_execute(fn_cache_manager, force_compile, f"{name}.cubin", metadata,
-                            run_if_found = lambda path: Path(path).read_bytes(),      
-                            run_if_not_found= lambda: ptx_to_cubin(ptx, device))
-    # dump new metadata
-    kernel_name = ptx_get_kernel_name(ptx)
-    metadata = {"name": kernel_name, "shared": shmem_size, "num_warps": num_warps, "num_stages": num_stages,
-                "md5": {  "cubin": cubin_md5,  "ptx": ptx_md5,  
-                          "llir": llir_md5,
-                          "ttir": ttir_md5, "ttgir": ttgir_md5 }}
-    fn_cache_manager.put(json.dumps(metadata), f"{name}.json", binary=False)
+        ptx_name = f"{name}.ptx"
+        cubin_name = f"{name}.cubin"
+        if not fn_cache_manager.has_file(cubin_name) or \
+            not fn_cache_manager.has_file(ptx_name):
+                cubin, ptx, shared, kernel_name = _compile(fn, signature, device, constants, configs[0], num_warps, num_stages, extern_libs, "cubin")
+                fn_cache_manager.put(cubin, cubin_name)
+                fn_cache_manager.put(ptx, ptx_name, binary=False)
 
-    asm = {"ttir": ttir, "ttgir": ttgir, "llir": llir, "ptx": ptx, "cubin": cubin}
-    return CompiledKernel(so_path, metadata, asm)
+    data_name = f"{name}.json"
+    if not fn_cache_manager.has_file(data_name):
+        metadata = {"name": kernel_name, "shared": shared, "num_warps": num_warps, "num_stages": num_stages}
+        fn_cache_manager.put(json.dumps(metadata), data_name, binary=False)
+
+    return CompiledKernel(name, so_cache_manager._make_path(so_name), fn_cache_manager.cache_dir)
 
 
 class CompiledKernel:
@@ -1506,7 +1533,18 @@ class CompiledKernel:
         self.num_warps = metadata["num_warps"]
         self.num_stages = metadata["num_stages"]
         # initialize asm dict
-        self.asm = asm
+        self.asm = dict()
+        if torch.version.hip is not None:
+            with open(os.path.join(cache_dir, f"{fn_name}.hsaco"), "rb") as f:
+                self.asm["hsaco_path"] = f.read()
+            with open(os.path.join(cache_dir, f"{fn_name}.gcn"), "r") as f:
+                self.asm["amdgcn"] = f.read()
+        else:
+            with open(os.path.join(cache_dir, f"{fn_name}.cubin"), "rb") as f:
+                self.asm["cubin"] = f.read()
+            with open(os.path.join(cache_dir, f"{fn_name}.ptx"), "r") as f:
+                self.asm["ptx"] = f.read()
+
         device = torch.cuda.current_device()
         global cuda_utils
         global hip_utils
