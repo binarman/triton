@@ -6,7 +6,7 @@ import triton._C.libtriton.triton as libtriton
 if __name__ == '__main__':
 
     # valid source and target formats
-    VALID_FORMATS = ['triton-ir', 'triton-gpu-ir', 'llvm-ir', 'ptx']
+    VALID_FORMATS = ['triton-ir', 'triton-gpu-ir', 'llvm-ir', 'ptx', 'amdgcn']
 
     # set up the argument parser
     # TODO: conditional requirements
@@ -16,7 +16,7 @@ if __name__ == '__main__':
                         help="Target format, one of: " + ', '.join(VALID_FORMATS))
     parser.add_argument('--sm', type=int, help="Compute capability to compile for")
     parser.add_argument('--ptx-version', type=int, help="PTX version to compile for")
-
+    parser.add_argument('--gfx', type=int, help="AMDGPU target to compile for")
     # parse the args
     args = parser.parse_args()
 
@@ -50,6 +50,13 @@ if __name__ == '__main__':
         print(module)
         exit(0)
 
+    # llvm-ir -> amdgcn
+    if args.target == 'amdgcn':
+        if not args.gfx:
+            raise argparse.ArgumentError(None, "Must specify --gfx for AMDGCN compilation")
+        module = triton.compiler.make_amdgcn(module, args.gfx)
+        print(module)
+        exit(0)
     if not args.sm:
         raise argparse.ArgumentError(None, "Must specify --sm for PTX compilation")
     if not args.ptx_version:
