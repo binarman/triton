@@ -12,7 +12,7 @@ namespace triton {
 
 // Translate LLVM IR to AMDGCN code.
 std::string translateLLVMIRToAMDGCN(llvm::Module &module,
-                                 const std::string &_proc);
+                                    const std::string &_proc);
 
 } // namespace triton
 

@@ -39,7 +39,8 @@ static void init_llvm() {
   LLVMInitializeAMDGPUAsmPrinter();
 }
 
-static std::string llir_to_amdgcn(llvm::Module *module, const std::string &_proc) {
+static std::string llir_to_amdgcn(llvm::Module *module,
+                                  const std::string &_proc) {
   init_llvm();
 
   llvm::SmallVector<char, 0> buffer;
@@ -92,7 +93,7 @@ static std::string llir_to_amdgcn(llvm::Module *module, const std::string &_proc
 }
 
 std::string translateLLVMIRToAMDGCN(llvm::Module &module,
-                                 const std::string &_proc) {
+                                    const std::string &_proc) {
   auto gcnCode = llir_to_amdgcn(&module, _proc);
   return gcnCode;
 }
