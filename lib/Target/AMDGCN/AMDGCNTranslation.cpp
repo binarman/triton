@@ -73,14 +73,13 @@ static std::string llir_to_amdgcn(llvm::Module *module,
   else
     module->setDataLayout(layout);
   // emit machine code
-  for (llvm::Function &f : module->functions())
+  for (llvm::Function &f : module->functions()) {
+    f.setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
     f.addFnAttr(llvm::Attribute::AlwaysInline);
+  }
 
   llvm::legacy::PassManager pass;
   llvm::raw_svector_ostream stream(buffer);
-
-  // create dump files
-  std::error_code ec;
 
   // emit
   machine->addPassesToEmitFile(pass, stream, nullptr,

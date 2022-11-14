@@ -50,19 +50,17 @@ if __name__ == '__main__':
         print(module)
         exit(0)
 
-    # llvm-ir -> amdgcn
+    if args.target == 'ptx':
+        if not args.sm:
+            raise argparse.ArgumentError(None, "Must specify --sm for PTX compilation")
+        if not args.ptx_version:
+            raise argparse.ArgumentError(None, "Must specify --ptx-version for PTX compilation")
+        # llvm-ir -> ptx
+        module = triton.compiler.make_ptx(module, compute_capability=args.sm, ptx_version=args.ptx_version)
+    
     if args.target == 'amdgcn':
         if not args.gfx:
             raise argparse.ArgumentError(None, "Must specify --gfx for AMDGCN compilation")
+        # llvm-ir -> amdgcn
         module = triton.compiler.make_amdgcn(module, args.gfx)
-        print(module)
-        exit(0)
-    if not args.sm:
-        raise argparse.ArgumentError(None, "Must specify --sm for PTX compilation")
-    if not args.ptx_version:
-        raise argparse.ArgumentError(None, "Must specify --ptx-version for PTX compilation")
-
-    # llvm-ir -> ptx
-    module = triton.compiler.make_ptx(module, compute_capability=args.sm, ptx_version=args.ptx_version)
-    assert args.target == 'ptx'
     print(module)
