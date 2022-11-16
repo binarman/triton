@@ -5053,8 +5053,7 @@ public:
     mlir::populateStdToLLVMConversionPatterns(typeConverter, patterns);
 
 #ifdef USE_ROCM
-    mlir::populateGpuToROCDLConversionPatterns(typeConverter, patterns,
-                                               mlir::gpu::amd::HIP);
+    mlir::populateGpuToROCDLConversionPatterns(typeConverter, patterns, mlir::gpu::amd::HIP);
 #else
     mlir::populateGpuToNVVMConversionPatterns(typeConverter, patterns);
 #endif

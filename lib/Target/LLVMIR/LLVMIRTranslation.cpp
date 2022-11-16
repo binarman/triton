@@ -104,10 +104,8 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
 
   context->appendDialectRegistry(registry);
 
-#ifndef USE_ROCM
   llvm::DenseMap<llvm::StringRef, NVVMMetadata> nvvmMetadata;
   extractNVVMMetadata(module, &nvvmMetadata);
-#endif
 
   auto llvmModule = mlir::translateModuleToLLVMIR(module, *llvmContext);
   if (!llvmModule) {
@@ -128,11 +126,9 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
   }
 
   for (auto &func : llvmModule->functions()) {
-#ifndef USE_ROCM
     auto it = nvvmMetadata.find(func.getName());
     if (it != nvvmMetadata.end())
       amendLLVMFunc(&func, it->second);
-#endif
   }
 
   return llvmModule;

@@ -901,8 +901,6 @@ def ttgir_to_llir(mod, extern_libs):
         add_external_libs(mod, extern_libs)
     return _triton.translate_triton_gpu_to_llvmir(mod)
 
-def llir_to_amdgcn(mod: Any, gfx_number: int):
-    return _triton.translate_llvmir_to_amdgcn(mod, gfx_number)
 
 def llir_to_ptx(mod: Any, compute_capability: int = None, ptx_version: int = None) -> Tuple[str, int]:
     '''
@@ -1472,14 +1470,27 @@ def compile(fn, signature: str, device: int = -1, constants=dict(), num_warps: i
     # create cache manager
     fn_cache_key = make_fn_cache_key(fn.cache_key, signature, configs, constants, num_warps, num_stages)
     fn_cache_manager = CacheManager(fn_cache_key)
-    if torch.version.hip is not None:
-       amd_gcn_name = f"{name}.gcn"
-       hsaco_path_name = f"{name}.hsaco"
-       if not fn_cache_manager.has_file(amd_gcn_name) or \
-              fn_cache_manager.has_file(hsaco_path_name):
-              hsaco_path, amd_gcn, shared, kernel_name = _compile(fn, signature, device, constants, configs[0], num_warps, num_stages, extern_libs, "hsaco")
-              fn_cache_manager.put(amd_gcn, amd_gcn_name, binary=False)
-              fn_cache_manager.put(hsaco_path, hsaco_path_name, binary=False)
+    # load metadata if any
+    metadata = None
+    if fn_cache_manager.has_file(f'{name}.json'):
+      with open(fn_cache_manager._make_path(f"{name}.json")) as f:
+            metadata = json.load(f)
+    context = _triton.ir.context()
+    force_compile = False
+    # ast -> triton-ir (or read from cache)
+    ttir, ttir_md5, force_compile, _ = read_or_execute(fn_cache_manager, force_compile, f"{name}.ttir", metadata,
+                           run_if_found = lambda path: _triton.ir.parse_mlir_module(path, context),
+                           run_if_not_found = lambda: ast_to_ttir(fn, signature, configs[0], constants))
+    # triton-ir -> triton-gpu-ir (or read from cache)
+    ttgir, ttgir_md5, force_compile, _ = read_or_execute(fn_cache_manager, force_compile, f"{name}.ttgir", metadata,
+                            run_if_found = lambda path: _triton.ir.parse_mlir_module(path, context),
+                            run_if_not_found = lambda: ttir_to_ttgir(ttir, num_warps, num_stages))
+    # triton-gpu-ir -> llvm-ir (or read from cache)
+    llir, llir_md5, force_compile, llvm_cached = read_or_execute(fn_cache_manager, force_compile, f"{name}.llir", metadata,
+                           run_if_found = lambda path: Path(path).read_bytes(),
+                           run_if_not_found = lambda: ttgir_to_llir(ttgir, extern_libs))
+    if llvm_cached:
+        shmem_size = metadata["shared"]
     else:
         shmem_size = _triton.get_shared_memory_size(ttgir)
 
@@ -1534,18 +1545,7 @@ class CompiledKernel:
         self.num_warps = metadata["num_warps"]
         self.num_stages = metadata["num_stages"]
         # initialize asm dict
-        self.asm = dict()
-        if torch.version.hip is not None:
-            with open(os.path.join(cache_dir, f"{fn_name}.hsaco"), "rb") as f:
-                self.asm["hsaco_path"] = f.read()
-            with open(os.path.join(cache_dir, f"{fn_name}.gcn"), "r") as f:
-                self.asm["amdgcn"] = f.read()
-        else:
-            with open(os.path.join(cache_dir, f"{fn_name}.cubin"), "rb") as f:
-                self.asm["cubin"] = f.read()
-            with open(os.path.join(cache_dir, f"{fn_name}.ptx"), "r") as f:
-                self.asm["ptx"] = f.read()
-
+        self.asm = asm
         device = torch.cuda.current_device()
         global cuda_utils
         global hip_utils
