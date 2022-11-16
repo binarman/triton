@@ -24,8 +24,6 @@
 
 #include <iostream>
 
-#include <iostream>
-
 namespace mlir {
 namespace triton {
 
