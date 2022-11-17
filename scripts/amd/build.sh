@@ -8,4 +8,4 @@ export TRITON_USE_ROCM=ON
 export MI_GPU_ARCH=gfx90a
 
 pip install --verbose -e .
-pip install -U matplotlib pandas
+pip install -U matplotlib pandas filelock

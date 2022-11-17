@@ -1476,7 +1476,7 @@ def compile(fn, signature: str, device: int = -1, constants=dict(), num_warps: i
       with open(fn_cache_manager._make_path(f"{name}.json")) as f:
             metadata = json.load(f)
     context = _triton.ir.context()
-    force_compile = False
+    force_compile = True
     # ast -> triton-ir (or read from cache)
     ttir, ttir_md5, force_compile, _ = read_or_execute(fn_cache_manager, force_compile, f"{name}.ttir", metadata,
                            run_if_found = lambda path: _triton.ir.parse_mlir_module(path, context),
