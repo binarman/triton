@@ -1270,6 +1270,18 @@ def test_arange(start, device='cuda'):
 #     reference_out = torch.matmul(in1, in2)
 #     triton.testing.allclose(out, reference_out)
 
+def test_load(cache):
+    src = torch.empty(8, device='cuda')
+    dst = torch.empty(8, device='cuda')
+
+    @triton.jit
+    def _kernel(dst, src):
+        offsets = tl.arange(0, 8)
+        x = tl.load(src + offsets)
+        tl.store(dst + offsets, x)
+
+    pgm = _kernel[(1,)](dst, src)
+
 
 @pytest.mark.parametrize("cache", ["", ".ca", ".cg"])
 def test_load_cache_modifier(cache):

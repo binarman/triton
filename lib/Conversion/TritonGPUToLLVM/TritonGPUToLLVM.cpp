@@ -27,6 +27,10 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/IR/Type.h"
 #include <memory>
 #include <numeric>
 #include <string>
@@ -992,6 +996,23 @@ struct LoadOpConversion
         std::max(8u, valueElemTy.getIntOrFloatBitWidth());
     const int numVecs = numElems / vec;
 
+#ifdef USE_ROCM
+    // create load
+    // Value *_ret =  builder_->CreateLoad(op.getResult().getType(), ptr);
+    // auto ret = load(llPtr);
+    SmallVector<Value> loadedVals;
+    for (size_t vecStart = 0; vecStart < numElems; vecStart += vec) {
+      auto Val = load(ptrElems[vecStart]);
+      loadedVals.push_back(Val);
+    }
+
+    // return
+    Type llvmResultStructTy = getTypeConverter()->convertType(valueTy);
+    Value resultStruct =
+        getStructFromElements(loc, loadedVals, rewriter, llvmResultStructTy);
+    rewriter.replaceOp(op, {resultStruct});
+    return success();
+#else
     SmallVector<Value> loadedVals;
     for (size_t vecStart = 0; vecStart < numElems; vecStart += vec) {
       // TODO: optimization when ptr is GEP with constant offset
@@ -1121,6 +1142,7 @@ struct LoadOpConversion
         getStructFromElements(loc, loadedVals, rewriter, llvmResultStructTy);
     rewriter.replaceOp(op, {resultStruct});
     return success();
+#endif
   }
 };
 
@@ -1145,6 +1167,14 @@ struct StoreOpConversion
     Value llPtr = adaptor.ptr();
     Value llMask = adaptor.mask();
     Value llValue = adaptor.value();
+
+#ifdef USE_ROCM
+    // create store
+    // store(llValue, llPtr);
+    store(value, ptr);
+    rewriter.eraseOp(op);
+    return success();
+#else
 
     auto loc = op->getLoc();
     MLIRContext *ctx = rewriter.getContext();
@@ -1239,6 +1269,7 @@ struct StoreOpConversion
     }
     rewriter.eraseOp(op);
     return success();
+  #endif
   }
 };
 
