@@ -27,10 +27,15 @@ sh scripts/amd/clean.sh
 # python python/test/test_empty.py
 # -ex 'ignore 1 472' \
 
+# write simple hip kernel
+hipcc scripts/amd/hip_kernel.cpp -o scripts/amd/hip_kernel.out
+./scripts/amd/hip_kernel.out
+
+
 # pytest -rfs --verbose python/tests/test_core.py | tee /dockerx/triton/test_core.log
 # pytest -rfs --verbose python/tests/test_core.py::test_empty_kernel[float32] 2>&1 | tee /dockerx/triton/test_empty_kernel.log
-# pytest -rfs --verbose python/tests/test_core.py::test_bin_op[int8-int8-+] 2>&1 | tee /dockerx/triton/test_bin_op.log
-pytest -rfs --verbose python/tests/test_core.py::test_load 2>&1 | tee /dockerx/triton/test_load.log
+# pytest -rfs --verbose python/tests/test_core_amd.py::test_bin_op[int16-int16-/] 2>&1 | tee /dockerx/triton/test_bin_op.log
+# pytest -rfs --verbose python/tests/test_core.py::test_load 2>&1 | tee /dockerx/triton/test_load.log
 
 # python3 python/tutorials/01-vector-add.py
 # python3 -m triton.tools.aot test/Target/tritongpu_to_ptx.mlir --target=amdgcn --gfx=906
