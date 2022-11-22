@@ -996,7 +996,7 @@ struct LoadOpConversion
         std::max(8u, valueElemTy.getIntOrFloatBitWidth());
     const int numVecs = numElems / vec;
 
-#ifdef USE_ROCM
+#if 0
     // create load
     // Value *_ret =  builder_->CreateLoad(op.getResult().getType(), ptr);
     // auto ret = load(llPtr);
@@ -1168,7 +1168,7 @@ struct StoreOpConversion
     Value llMask = adaptor.mask();
     Value llValue = adaptor.value();
 
-#ifdef USE_ROCM
+#if 0
     // create store
     // store(llValue, llPtr);
     store(value, ptr);
