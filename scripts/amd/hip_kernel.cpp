@@ -9,14 +9,14 @@ __global__ void div_kernel(float *in_1, float *in_2, float *out) {
 int main() {
   // kernel info
 #define nBlocks 1
-#define nThreads 4
+#define nThreads 2
 
   // vector size
   size_t size = nThreads * sizeof(float);
 
   // Allocate input vectors h_A and h_B in host memory
-  float h_A[nThreads] = {4, 4, 4, 4};
-  float h_B[nThreads] = {2, 2, 2, 2};
+  float h_A[nThreads] = {4, 4};
+  float h_B[nThreads] = {2, 2};
   float h_C[nThreads] = {};
 
   // show data
@@ -38,9 +38,8 @@ int main() {
   hipMemcpyHtoD(d_B, h_B, size);
 
   // launch kernel
-  hipDeviceSynchronize();
   div_kernel<<<nBlocks, nThreads>>>(d_A, d_B, d_C);
-  hipDeviceSynchronize();
+  hipDeviceSynchronize(); // wait for kernel before printting
 
   // check kernel output
   bool pass = true;

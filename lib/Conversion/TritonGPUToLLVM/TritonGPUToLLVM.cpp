@@ -4968,6 +4968,24 @@ struct FDivOpConversion
                      ConversionPatternRewriter &rewriter, Type elemTy,
                      ValueRange operands, Location loc) const {
 
+#ifdef USE_ROCM
+    GCNBuilder gcnBuilder;
+    unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+    auto &div = *gcnBuilder.create<GCNInstr>("v_div_fixup_f32");
+
+
+    const std::string readConstraint = "v";
+    const std::string writeConstraint = "=v";
+
+    // fdiv.o("full").o("f32");
+    auto res = gcnBuilder.newOperand(writeConstraint);
+    auto lhs = gcnBuilder.newOperand(operands[0],readConstraint);
+    auto rhs = gcnBuilder.newOperand(operands[1],readConstraint);
+    div(res, lhs, rhs, res);
+
+    Value ret = gcnBuilder.launch(rewriter, loc, elemTy, false);
+    return ret;
+#else
     PTXBuilder ptxBuilder;
     auto &fdiv = *ptxBuilder.create<PTXInstr>("div");
     unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
@@ -4989,6 +5007,7 @@ struct FDivOpConversion
 
     Value ret = ptxBuilder.launch(rewriter, loc, elemTy, false);
     return ret;
+#endif
   }
 };
 

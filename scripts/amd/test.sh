@@ -12,6 +12,9 @@ rm -rf triton_rocm_kernels
 # rm -rf /tmp/triton
 sh scripts/amd/clean.sh
 
+# test simple hip kernel
+# sh scripts/amd/test_hip_kernel.sh
+
 # pytest python/test
 # pytest python/test/test_blocksparse.py
 
@@ -27,17 +30,9 @@ sh scripts/amd/clean.sh
 # python python/test/test_empty.py
 # -ex 'ignore 1 472' \
 
-# write simple hip kernel
-rm -rf ./scripts/amd/hip_kernel.out
-rm -rf ./scripts/amd/temps
-mkdir ./scripts/amd/temps
-hipcc -save-temps=./scripts/amd/temps scripts/amd/hip_kernel.cpp -o scripts/amd/hip_kernel.out
-./scripts/amd/hip_kernel.out
-
-
 # pytest -rfs --verbose python/tests/test_core.py | tee /dockerx/triton/test_core.log
 # pytest -rfs --verbose python/tests/test_core.py::test_empty_kernel[float32] 2>&1 | tee /dockerx/triton/test_empty_kernel.log
-# pytest -rfs --verbose python/tests/test_core_amd.py::test_bin_op[int16-int16-/] 2>&1 | tee /dockerx/triton/test_bin_op.log
+pytest -rfs --verbose python/tests/test_core_amd.py::test_bin_op[int16-int16-/] 2>&1 | tee /dockerx/triton/test_bin_op.log
 # pytest -rfs --verbose python/tests/test_core.py::test_load 2>&1 | tee /dockerx/triton/test_load.log
 
 # python3 python/tutorials/01-vector-add.py
