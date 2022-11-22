@@ -28,7 +28,10 @@ sh scripts/amd/clean.sh
 # -ex 'ignore 1 472' \
 
 # write simple hip kernel
-hipcc scripts/amd/hip_kernel.cpp -o scripts/amd/hip_kernel.out
+rm -rf ./scripts/amd/hip_kernel.out
+rm -rf ./scripts/amd/temps
+mkdir ./scripts/amd/temps
+hipcc -save-temps=./scripts/amd/temps scripts/amd/hip_kernel.cpp -o scripts/amd/hip_kernel.out
 ./scripts/amd/hip_kernel.out
 
 

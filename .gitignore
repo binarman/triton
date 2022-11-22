@@ -13,3 +13,4 @@ python/triton/_C/libtriton.so
 
 log_*
 *.out
+hip_kernel*

@@ -1,22 +1,54 @@
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
-template <typename T> __global__ void div_kernel(T *out) {
-  out[threadIdx.x] = 2.0/2.0;
+__global__ void div_kernel(float *in_1, float *in_2, float *out) {
+  int i = threadIdx.x;
+  out[i] = in_1[i] / in_2[i];
 }
 
 int main() {
-  float *p;
-  hipMalloc(&p, 4096);
-  hipMemset(p, 0, 4096);
+  // kernel info
+#define nBlocks 1
+#define nThreads 4
+
+  // vector size
+  size_t size = nThreads * sizeof(float);
+
+  // Allocate input vectors h_A and h_B in host memory
+  float h_A[nThreads] = {4, 4, 4, 4};
+  float h_B[nThreads] = {2, 2, 2, 2};
+  float h_C[nThreads] = {};
+
+  // show data
+  printf("Input Data\n");
+  for (int i = 0; i < nThreads; i++) {
+    printf("%f/%f = %f\n", h_A[i], h_B[i], h_C[i]);
+  }
+
+  // Allocate vectors in device memory
+  float *d_A;
+  hipMalloc(&d_A, size);
+  float *d_B;
+  hipMalloc(&d_B, size);
+  float *d_C;
+  hipMalloc(&d_C, size);
+
+  // Copy vectors from host memory to device memory
+  hipMemcpyHtoD(d_A, h_A, size);
+  hipMemcpyHtoD(d_B, h_B, size);
+
+  // launch kernel
   hipDeviceSynchronize();
-  div_kernel<float><<<1, 256>>>(p);
+  div_kernel<<<nBlocks, nThreads>>>(d_A, d_B, d_C);
   hipDeviceSynchronize();
+
+  // check kernel output
   bool pass = true;
-  for (int i = 0; i < 10; i++) {
-    if (p[i] != 1.0)
+  printf("Output Data\n");
+  for (int i = 0; i < nThreads; i++) {
+    if (d_A[i] / d_B[i] != d_C[i])
       pass = false;
-    printf("%f | %f\n", p[i], 1.0);
+    printf("%f/%f = %f\n", d_A[i], d_B[i], d_C[i]);
   }
   printf("Test %s\n", pass ? "PASS" : "FAIL");
 }
