@@ -4976,18 +4976,20 @@ struct FDivOpConversion
     unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
 
     auto res = gcnBuilder.newOperand(writeConstraint);
-    auto lhs = gcnBuilder.newOperand(operands[0],readConstraint);
+    auto lhs = gcnBuilder.newOperand(operands[0], readConstraint);
     auto rhs = gcnBuilder.newOperand(operands[1], readConstraint);
-    
 
     // reciprocal of denominator
-    auto &rcp = *gcnBuilder.create<GCNInstr>("v_rcp_f32");
-    rcp(res, rhs);
+    auto &rcp = *gcnBuilder.create<GCNInstr>("v_rcp");
+    rcp.float_op_type(bitwidth);
 
     // multiply
-    auto &mul_inst = *gcnBuilder.create<GCNInstr>("v_mul_f32");
-    mul_inst(res, lhs, res);
+    auto &mul_inst = *gcnBuilder.create<GCNInstr>("v_mul");
+    mul_inst.float_op_type(bitwidth);
 
+    // launch insts
+    rcp(res, rhs);
+    mul_inst(res, lhs, res);
     Value ret = gcnBuilder.launch(rewriter, loc, elemTy, false);
     return ret;
 #else
