@@ -4969,19 +4969,24 @@ struct FDivOpConversion
                      ValueRange operands, Location loc) const {
 
 #ifdef USE_ROCM
-    GCNBuilder gcnBuilder;
-    unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
-    auto &div = *gcnBuilder.create<GCNInstr>("v_div_fixup_f32");
-
-
     const std::string readConstraint = "v";
     const std::string writeConstraint = "=v";
 
-    // fdiv.o("full").o("f32");
+    GCNBuilder gcnBuilder;
+    unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+
     auto res = gcnBuilder.newOperand(writeConstraint);
     auto lhs = gcnBuilder.newOperand(operands[0],readConstraint);
-    auto rhs = gcnBuilder.newOperand(operands[1],readConstraint);
-    div(res, lhs, rhs, res);
+    auto rhs = gcnBuilder.newOperand(operands[1], readConstraint);
+    
+
+    // reciprocal of denominator
+    auto &rcp = *gcnBuilder.create<GCNInstr>("v_rcp_f32");
+    rcp(res, rhs);
+
+    // multiply
+    auto &mul_inst = *gcnBuilder.create<GCNInstr>("v_mul_f32");
+    mul_inst(res, lhs, res);
 
     Value ret = gcnBuilder.launch(rewriter, loc, elemTy, false);
     return ret;
