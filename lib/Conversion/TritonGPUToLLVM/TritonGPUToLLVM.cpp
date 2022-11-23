@@ -4979,17 +4979,18 @@ struct FDivOpConversion
     auto lhs = gcnBuilder.newOperand(operands[0], readConstraint);
     auto rhs = gcnBuilder.newOperand(operands[1], readConstraint);
 
-    // reciprocal of denominator
-    auto &rcp = *gcnBuilder.create<GCNInstr>("v_rcp");
-    rcp.float_op_type(bitwidth);
-
-    // multiply
-    auto &mul_inst = *gcnBuilder.create<GCNInstr>("v_mul");
-    mul_inst.float_op_type(bitwidth);
+    // create inst
+    auto &rcp = gcnBuilder.create<GCNInstr>("v_rcp")->float_op_type(bitwidth);
+    auto &mul_inst = gcnBuilder.create<GCNInstr>("v_mul")->float_op_type(bitwidth);
+    // auto &div_inst = gcnBuilder.create<GCNInstr>("v_div_fixup")->float_op_type(bitwidth); // TODO: fix mismatches
+    
 
     // launch insts
     rcp(res, rhs);
     mul_inst(res, lhs, res);
+    // div_inst(res, lhs, rhs, res); // TODO: fix mismatches
+
+    // return result
     Value ret = gcnBuilder.launch(rewriter, loc, elemTy, false);
     return ret;
 #else
