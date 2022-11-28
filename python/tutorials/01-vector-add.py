@@ -115,6 +115,7 @@ print(
     )
 )
 def benchmark(size, provider):
+    print(size, provider)
     x = torch.rand(size, device='cuda', dtype=torch.float32)
     y = torch.rand(size, device='cuda', dtype=torch.float32)
     if provider == 'torch':
@@ -128,4 +129,4 @@ def benchmark(size, provider):
 # %%
 # We can now run the decorated function above. Pass `print_data=True` to see the performance number, `show_plots=True` to plot them, and/or
 # `save_path='/path/to/results/' to save them to disk along with raw CSV data
-# benchmark.run(print_data=True, show_plots=True)
+benchmark.run(print_data=True, show_plots=True)
