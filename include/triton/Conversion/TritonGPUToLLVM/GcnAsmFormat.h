@@ -134,6 +134,8 @@ struct Modifier {
 
   Operand *newAddrOperand(mlir::Value addr, StringRef constraint);
 
+  Operand *newEmptyOperand(std::string arg);
+
   Modifier *newModifier(StringRef modifier, StringRef arg);
 
   llvm::SmallVector<Operand *, 4> getAllArgs() const;
@@ -257,7 +259,7 @@ struct GCNMemInstr : public GCNInstrBase<GCNMemInstr> {
   GCNMemInstr &load_type(int width) {
     switch (width) {
     case Byte:
-      o("byte");
+      o("ubyte");
       break;
     case Short:
       o("ushort");
