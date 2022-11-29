@@ -115,7 +115,7 @@ print(
     )
 )
 def benchmark(size, provider):
-    print(size, provider)
+    print(size, provider, end = ' ')
     x = torch.rand(size, device='cuda', dtype=torch.float32)
     y = torch.rand(size, device='cuda', dtype=torch.float32)
     if provider == 'torch':
@@ -123,6 +123,8 @@ def benchmark(size, provider):
     if provider == 'triton':
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: add(x, y))
     gbps = lambda ms: 12 * size / ms * 1e-6
+    # print(gbps(ms), gbps(max_ms), gbps(min_ms))
+    print(gbps(ms)) # just print average
     return gbps(ms), gbps(max_ms), gbps(min_ms)
 
 
