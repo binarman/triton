@@ -854,10 +854,13 @@ def build_triton_ir(fn, signature, specialization, constants):
     generator = CodeGenerator(context, prototype, gscope=gscope, constants=all_constants, function_name=function_name, attributes=new_attrs, is_kernel=True)
     try:
         print(f"fn: {fn}")
-        generator.visit(fn.parse())
+        parse = fn.parse()
+        print(f"parse: {parse}")
+        generator.visit(parse)
     except Exception as e:
+        print(f"e:{e}")
         node = generator.last_node
-        print(f"node: {type(node)}")
+        print(f"node: {node}")
         if node is None or isinstance(e, (NotImplementedError, CompilationError)):
             raise e
         raise CompilationError(fn.src, node) from e

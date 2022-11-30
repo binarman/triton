@@ -37,15 +37,14 @@ sh scripts/amd/clean.sh
 # pytest -rfs --verbose python/tests/test_core.py::test_load 2>&1 | tee /dockerx/triton/test_load.log
 
 export MLIR_ENABLE_DUMP=1
-
 export LLVM_IR_ENABLE_DUMP=1
-
 export AMDGCN_ENABLE_DUMP=1
 
 # python3 python/tutorials/01-vector-add.py
 # pytest -rfs --verbose "python/tests/test_vecadd.py"
-pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_scf_no_mask[4-256-1]"
+# pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_scf_no_mask[4-256-1]"
 # pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_scf_mask[shape0-2-128-1]"
+pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf[4-256-shape0]"
 
 # python3 -m triton.tools.aot test/Target/tritongpu_to_ptx.mlir --target=amdgcn --gfx=906
 # pytest -rfs --verbose python/test/unit/language/test_core.py::test_masked_load[float32-128-2] \
