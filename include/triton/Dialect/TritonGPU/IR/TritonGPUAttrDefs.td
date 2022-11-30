@@ -71,6 +71,68 @@ A_{3, 2}  A_{3, 3}  A_{3, 0}  A_{3, 1} ...   [phase 1] /
     ArrayRefParameter<"unsigned", "order of axes by the rate of changing">:$order
   );
 
+  let builders = [
+    AttrBuilder<(ins "DotOperandEncodingAttr":$dotOpEnc,
+                     "ArrayRef<int64_t>":$shape,
+                     "ArrayRef<unsigned>":$order,
+                     "Type":$eltTy), [{
+        auto mmaEnc = dotOpEnc.getParent().dyn_cast<MmaEncodingAttr>();
+
+        if(!mmaEnc)
+          return $_get(context, 1, 1, 1, order);
+
+        int version = mmaEnc.getVersion();
+        int opIdx = dotOpEnc.getOpIdx();
+
+        // number of rows per phase
+        int perPhase = 128 / (shape[order[0]] * (eltTy.getIntOrFloatBitWidth() / 8));
+        perPhase = std::max<int>(perPhase, 1);
+        
+        // index of the inner dimension in `order`
+        unsigned inner = (opIdx == 0) ? 0 : 1;
+
+        // ---- begin version 1 ----
+        // TODO: handle rep (see
+        // https://github.com/openai/triton/blob/master/lib/codegen/analysis/layout.cc#L209)
+        if (version == 1) {
+          int maxPhase = (order[inner] == 1 ? 8 : 4) / perPhase;
+          return $_get(context, 1, perPhase, maxPhase, order);
+        } 
+
+        // ---- begin version 2 ----
+        if (version == 2) {
+          std::vector<size_t> matShape = {8, 8,
+                                          2 * 64 / eltTy.getIntOrFloatBitWidth()};
+          // for now, disable swizzle when using transposed int8 tensor cores
+          if (eltTy.isInteger(8) && order[0] == inner)
+            return $_get(context, 1, 1, 1, order);
+            
+          // --- handle A operand ---
+          if (opIdx == 0) { // compute swizzling for A operand
+              int vec = (order[0] == 1) ? matShape[2] : matShape[0]; // k : m
+              int mmaStride = (order[0] == 1) ? matShape[0] : matShape[2];
+              int maxPhase = mmaStride / perPhase;
+              return $_get(context, vec, perPhase, maxPhase, order);
+          } 
+
+          // --- handle B operand ---
+          if (opIdx == 1) {
+              int vec = (order[0] == 1) ? matShape[1] : matShape[2]; // n : k
+              int mmaStride = (order[0] == 1) ? matShape[2] : matShape[1];
+              int maxPhase = mmaStride / perPhase;
+              return $_get(context, vec, perPhase, maxPhase, order);
+          } 
+            
+          llvm_unreachable("invalid operand index");
+        }
+
+        // ---- not implemented ----
+        llvm_unreachable("unsupported swizzling for provided MMA version");
+
+
+    }]>
+  ];
+
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
@@ -166,9 +228,11 @@ for
       unsigned remainingLanes = 32;
       unsigned remainingThreads = numWarps*32;
       unsigned remainingWarps = numWarps;
+      unsigned prevLanes = 1;
+      unsigned prevWarps = 1;
       SmallVector<unsigned, 4> threadsPerWarp(rank);
       SmallVector<unsigned, 4> warpsPerCTA(rank);
-      for (int _dim = 0; _dim < rank; ++_dim) {
+      for (int _dim = 0; _dim < rank - 1; ++_dim) {
         int i = order[_dim];
         unsigned threadsPerCTA = std::clamp<unsigned>(remainingThreads, 1, shape[i] / sizePerThread[i]);
         threadsPerWarp[i] = std::clamp<unsigned>(threadsPerCTA, 1, remainingLanes);
@@ -176,7 +240,12 @@ for
         remainingWarps /= warpsPerCTA[i];
         remainingLanes /= threadsPerWarp[i];
         remainingThreads /= threadsPerCTA;
+        prevLanes *= threadsPerWarp[i];
+        prevWarps *= warpsPerCTA[i];
       }
+      // Expand the last dimension to fill the remaining lanes and warps
+      threadsPerWarp[order[rank-1]] = 32 / prevLanes;
+      warpsPerCTA[order[rank-1]] = numWarps / prevWarps;
 
       return $_get(context, sizePerThread, threadsPerWarp, warpsPerCTA, order);
 
@@ -326,10 +395,10 @@ def SliceEncodingAttr : DistributedEncoding<"SliceEncoding"> {
   );
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
-    SmallVector<int64_t> paddedShape(ArrayRef<int64_t> shape) const;
+    template<class T>
+    SmallVector<T> paddedShape(ArrayRef<T> shape) const;
   }];
 }
-
 
 def DotOperandEncodingAttr : DistributedEncoding<"DotOperandEncoding"> {
   let mnemonic = "dot_op";

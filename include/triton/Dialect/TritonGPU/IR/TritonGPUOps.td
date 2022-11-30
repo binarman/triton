@@ -37,7 +37,7 @@ def TTG_AsyncWaitOp : TTG_Op<"async_wait"> {
 // Port Arith_CmpIOp & Arith_CmpFOp & Std_SelectOp to TritonGPU.
 // This is needed because these ops don't
 // handle encodings
-// e.g., https://github.com/llvm/llvm-project/blob/main/mlir/include/mlir/Dialect/Arithmetic/IR/ArithmeticOps.td#L111
+// e.g., https://github.com/llvm/llvm-project/blob/main/mlir/include/mlir/Dialect/Arith/IR/ArithOps.td#L111
 def TTG_CmpIOp : TTG_Op<"cmpi", [NoSideEffect]> {
   let summary = "integer comparison operation";
 
@@ -79,8 +79,7 @@ def TTG_SelectOp : TTG_Op<"select", [NoSideEffect]> {
 def TTG_InsertSliceAsyncOp : TTG_Op<"insert_slice_async",
                                     [AttrSizedOperandSegments,
                                      ResultsAreSharedEncoding,
-                                     // MemoryEffects<[MemRead]>, doesn't work with CSE but seems like it should?
-                                     NoSideEffect,
+                                     MemoryEffects<[MemRead]>,
                                      TypesMatchWith<"infer mask type from src type",
                                                     "src", "mask", "getI1SameShape($_self)",
                                                     "($_op.getOperands().size() <= 3) || std::equal_to<>()">,
@@ -158,7 +157,8 @@ def TTG_InsertSliceAsyncOp : TTG_Op<"insert_slice_async",
   let printer = [{ return printInsertSliceAsyncOp(p, *this); }];
 }
 
-def TTG_AllocTensorOp : TTG_Op<"alloc_tensor", [NoSideEffect, ResultsAreSharedEncoding]> {
+def TTG_AllocTensorOp : TTG_Op<"alloc_tensor", [MemoryEffects<[MemAlloc]>,  // Allocate shared memory
+                                                ResultsAreSharedEncoding]> {
   let summary = "allocate tensor";
 
   let description = [{

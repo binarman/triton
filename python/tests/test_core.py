@@ -595,82 +595,87 @@ def test_tuples():
         assert c_tri == c_ref
 
 
-# # ---------------
-# # test atomics
-# # ---------------
-# @pytest.mark.parametrize("op, dtype_x_str, mode", itertools.chain.from_iterable([
-#     [
-#         ('add', 'float16', mode),
-#         ('add', 'uint32', mode), ('add', 'int32', mode), ('add', 'float32', mode),
-#         ('max', 'uint32', mode), ('max', 'int32', mode), ('max', 'float32', mode),
-#         ('min', 'uint32', mode), ('min', 'int32', mode), ('min', 'float32', mode),
-#     ]
-#     for mode in ['all_neg', 'all_pos', 'min_neg', 'max_pos']]))
-# def test_atomic_rmw(op, dtype_x_str, mode, device='cuda'):
-#     n_programs = 5
+# ---------------
+# test atomics
+# ---------------
+@pytest.mark.parametrize("op, dtype_x_str, mode", itertools.chain.from_iterable([
+    [
+        ('add', 'float16', mode),
+        ('add', 'uint32', mode), ('add', 'int32', mode), ('add', 'float32', mode),
+        ('max', 'uint32', mode), ('max', 'int32', mode), ('max', 'float32', mode),
+        ('min', 'uint32', mode), ('min', 'int32', mode), ('min', 'float32', mode),
+    ]
+    for mode in ['all_neg', 'all_pos', 'min_neg', 'max_pos']]))
+def test_atomic_rmw(op, dtype_x_str, mode, device='cuda'):
+    n_programs = 5
 
-#     # triton kernel
-#     @triton.jit
-#     def kernel(X, Z):
-#         pid = tl.program_id(0)
-#         x = tl.load(X + pid)
-#         old = GENERATE_TEST_HERE
+    # triton kernel
+    @triton.jit
+    def kernel(X, Z):
+        pid = tl.program_id(0)
+        x = tl.load(X + pid)
+        old = GENERATE_TEST_HERE
 
-#     kernel = patch_kernel(kernel, {'GENERATE_TEST_HERE': f'tl.atomic_{op}(Z, x)'})
-#     numpy_op = {'add': np.sum, 'max': np.max, 'min': np.min}[op]
-#     max_neutral = float('-inf') if dtype_x_str in float_dtypes else np.iinfo(getattr(np, dtype_x_str)).min
-#     min_neutral = float('inf') if dtype_x_str in float_dtypes else np.iinfo(getattr(np, dtype_x_str)).max
-#     neutral = {'add': 0, 'max': max_neutral, 'min': min_neutral}[op]
+    kernel = patch_kernel(kernel, {'GENERATE_TEST_HERE': f'tl.atomic_{op}(Z, x)'})
+    numpy_op = {'add': np.sum, 'max': np.max, 'min': np.min}[op]
+    max_neutral = float('-inf') if dtype_x_str in float_dtypes else np.iinfo(getattr(np, dtype_x_str)).min
+    min_neutral = float('inf') if dtype_x_str in float_dtypes else np.iinfo(getattr(np, dtype_x_str)).max
+    neutral = {'add': 0, 'max': max_neutral, 'min': min_neutral}[op]
 
-#     # triton result
-#     rs = RandomState(17)
-#     x = numpy_random((n_programs, ), dtype_str=dtype_x_str, rs=rs)
-#     if mode == 'all_neg':
-#         x = -np.abs(x)
-#     if mode == 'all_pos':
-#         x = np.abs(x)
-#     if mode == 'min_neg':
-#         idx = rs.randint(n_programs, size=(1, )).item()
-#         x[idx] = -np.max(np.abs(x)) - 1
-#     if mode == 'max_pos':
-#         idx = rs.randint(n_programs, size=(1, )).item()
-#         x[idx] = np.max(np.abs(x)) + 1
-#     x_tri = to_triton(x, device=device)
+    # triton result
+    rs = RandomState(17)
+    x = numpy_random((n_programs, ), dtype_str=dtype_x_str, rs=rs)
+    if mode == 'all_neg':
+        x = -np.abs(x)
+    if mode == 'all_pos':
+        x = np.abs(x)
+    if mode == 'min_neg':
+        idx = rs.randint(n_programs, size=(1, )).item()
+        x[idx] = -np.max(np.abs(x)) - 1
+    if mode == 'max_pos':
+        idx = rs.randint(n_programs, size=(1, )).item()
+        x[idx] = np.max(np.abs(x)) + 1
+    x_tri = to_triton(x, device=device)
 
-#     z_tri = to_triton(np.array([neutral], dtype=getattr(np, dtype_x_str)), device=device)
-#     kernel[(n_programs, )](x_tri, z_tri)
-#     # torch result
-#     z_ref = numpy_op(x).astype(getattr(np, dtype_x_str))
-#     # compare
-#     exact = op not in ['add']
-#     if exact:
-#         assert z_ref.item() == to_numpy(z_tri).item()
-#     else:
-#         np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=0.01)
+    z_tri = to_triton(np.array([neutral], dtype=getattr(np, dtype_x_str)), device=device)
+    kernel[(n_programs, )](x_tri, z_tri)
+    # torch result
+    z_ref = numpy_op(x).astype(getattr(np, dtype_x_str))
+    # compare
+    exact = op not in ['add']
+    if exact:
+        assert z_ref.item() == to_numpy(z_tri).item()
+    else:
+        np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=0.01)
 
 
-# @pytest.mark.parametrize("axis", [0, 1])
-# def test_tensor_atomic_rmw(axis, device="cuda"):
-#     shape0, shape1 = 8, 8
-#     # triton kernel
+@pytest.mark.parametrize("shape, axis",
+                         [(shape, axis) for shape in [(2, 2), (2, 8), (8, 2), (8, 8), (32, 32)] for axis in [0, 1]])
+def test_tensor_atomic_rmw(shape, axis, device="cuda"):
+    shape0, shape1 = shape
+    # triton kernel
 
-#     @triton.jit
-#     def kernel(Z, X, AXIS: tl.constexpr, SHAPE0: tl.constexpr, SHAPE1: tl.constexpr):
-#         off0 = tl.arange(0, SHAPE0)
-#         off1 = tl.arange(0, SHAPE1)
-#         x = tl.load(X + off0[:, None] * SHAPE1 + off1[None, :])
-#         z = tl.sum(x, axis=AXIS)
-#         tl.atomic_add(Z + off0, z)
-#     rs = RandomState(17)
-#     x = numpy_random((shape0, shape1), dtype_str="float32", rs=rs)
-#     # reference result
-#     z_ref = np.sum(x, axis=axis)
-#     # triton result
-#     x_tri = to_triton(x, device=device)
-#     z_tri = to_triton(np.zeros((shape0,), dtype="float32"), device=device)
-#     kernel[(1,)](z_tri, x_tri, axis, shape0, shape1)
-#     np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=1e-4)
-
+    @triton.jit
+    def kernel(Z, X, AXIS: tl.constexpr, SHAPE0: tl.constexpr, SHAPE1: tl.constexpr):
+        off0 = tl.arange(0, SHAPE0)
+        off1 = tl.arange(0, SHAPE1)
+        x = tl.load(X + off0[:, None] * SHAPE1 + off1[None, :])
+        z = tl.sum(x, axis=AXIS)
+        if AXIS == 1:
+            tl.atomic_add(Z + off0, z)
+        else:
+            tl.atomic_add(Z + off1, z)
+    rs = RandomState(17)
+    x = numpy_random((shape0, shape1), dtype_str="float32", rs=rs)
+    print(x)
+    # reference result
+    z_ref = np.sum(x, axis=axis, keepdims=False)
+    # triton result
+    x_tri = to_triton(x, device=device)
+    z_shape = (shape0, ) if axis == 1 else (shape1, )
+    z_tri = to_triton(np.zeros(z_shape, dtype="float32"), device=device)
+    kernel[(1,)](z_tri, x_tri, axis, shape0, shape1)
+    np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=1e-4)
 
 # def test_atomic_cas():
 #     # 1. make sure that atomic_cas changes the original value (Lock)
@@ -701,6 +706,16 @@ def test_tuples():
 #     serialized_add[(64,)](data, Lock)
 #     triton.testing.assert_almost_equal(data, ref)
 
+def test_simple_atomic_cas():
+    # 1. make sure that atomic_cas changes the original value (Lock)
+    @triton.jit
+    def change_value(Lock):
+        tl.atomic_cas(Lock, 0, 1)
+
+    Lock = torch.zeros((1,), device='cuda', dtype=torch.int32)
+    change_value[(1,)](Lock)
+
+    assert (Lock[0] == 1)
 
 # # ---------------
 # # test cast
@@ -780,88 +795,88 @@ def test_store_bool():
     assert (to_numpy(src).view('uint8') == to_numpy(dst).view('uint8')).all()
 
 
-# @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-# def test_f8_xf16_roundtrip(dtype):
-#     """Tests that converting an f8 to f16 and back to f8 doesn't change its value"""
-#     check_type_supported(dtype)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_f8_xf16_roundtrip(dtype):
+    """Tests that converting an f8 to f16 and back to f8 doesn't change its value"""
+    check_type_supported(dtype)
 
-#     @triton.jit
-#     def copy_kernel(input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-#         offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-#         mask = offsets < n_elements
-#         input = tl.load(input_ptr + offsets, mask=mask)
-#         output = input
-#         tl.store(output_ptr + offsets, output, mask=mask)
+    @triton.jit
+    def copy_kernel(input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+        offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        input = tl.load(input_ptr + offsets, mask=mask)
+        output = input
+        tl.store(output_ptr + offsets, output, mask=mask)
 
-#     f8_tensor = torch.tensor(range(-128, 128), dtype=torch.int8, device='cuda')
-#     f8 = triton.reinterpret(f8_tensor, tl.float8)
-#     n_elements = f8_tensor.numel()
-#     xf16 = torch.empty_like(f8_tensor, dtype=dtype)
-#     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
-#     copy_kernel[grid](f8, xf16, n_elements, BLOCK_SIZE=1024)
+    f8_tensor = torch.tensor(range(-128, 128), dtype=torch.int8, device='cuda')
+    f8 = triton.reinterpret(f8_tensor, tl.float8)
+    n_elements = f8_tensor.numel()
+    xf16 = torch.empty_like(f8_tensor, dtype=dtype)
+    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    copy_kernel[grid](f8, xf16, n_elements, BLOCK_SIZE=1024)
 
-#     f8_output_tensor = torch.empty_like(xf16, dtype=torch.int8)
-#     f8_output = triton.reinterpret(f8_output_tensor, tl.float8)
-#     copy_kernel[grid](xf16, f8_output, n_elements, BLOCK_SIZE=1024)
+    f8_output_tensor = torch.empty_like(xf16, dtype=torch.int8)
+    f8_output = triton.reinterpret(f8_output_tensor, tl.float8)
+    copy_kernel[grid](xf16, f8_output, n_elements, BLOCK_SIZE=1024)
 
-#     assert torch.all(f8_tensor == f8_output_tensor)
+    assert torch.all(f8_tensor == f8_output_tensor)
 
 
-# def test_f16_to_f8_rounding():
-#     """Takes all float16s, converts them to float8 and back to float16. Checks that the absolute
-#     error is the minimum over all float8.
-#     Or the same explanation a bit mathier:
-#     for all f16 |f16 - fromf8(tof8(f16))| == min over all f8 |f16 - fromf8(f8)|"""
-#     @triton.jit
-#     def copy_kernel(input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-#         offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-#         mask = offsets < n_elements
-#         input = tl.load(input_ptr + offsets, mask=mask)
-#         output = input
-#         tl.store(output_ptr + offsets, output, mask=mask)
+def test_f16_to_f8_rounding():
+    """Takes all float16s, converts them to float8 and back to float16. Checks that the absolute
+    error is the minimum over all float8.
+    Or the same explanation a bit mathier:
+    for all f16 |f16 - fromf8(tof8(f16))| == min over all f8 |f16 - fromf8(f8)|"""
+    @triton.jit
+    def copy_kernel(input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+        offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        input = tl.load(input_ptr + offsets, mask=mask)
+        output = input
+        tl.store(output_ptr + offsets, output, mask=mask)
 
-#     # torch.view with a dtype isn't supported in triton's torch yet so use numpy's view
-#     f16_input_np = (
-#         np.array(
-#             range(-int(2 ** (16 - 1)), int(2 ** (16 - 1))), dtype=np.int16,
-#         )
-#         .view(np.float16)
-#     )
-#     f16_input = torch.tensor(f16_input_np, dtype=torch.float16, device='cuda')
-#     n_elements = f16_input.numel()
-#     f8_output_tensor = torch.empty_like(f16_input, dtype=torch.int8)
-#     f8_output = triton.reinterpret(f8_output_tensor, tl.float8)
-#     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
-#     copy_kernel[grid](f16_input, f8_output, n_elements, BLOCK_SIZE=1024)
+    # torch.view with a dtype isn't supported in triton's torch yet so use numpy's view
+    f16_input_np = (
+        np.array(
+            range(-int(2 ** (16 - 1)), int(2 ** (16 - 1))), dtype=np.int16,
+        )
+        .view(np.float16)
+    )
+    f16_input = torch.tensor(f16_input_np, dtype=torch.float16, device='cuda')
+    n_elements = f16_input.numel()
+    f8_output_tensor = torch.empty_like(f16_input, dtype=torch.int8)
+    f8_output = triton.reinterpret(f8_output_tensor, tl.float8)
+    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    copy_kernel[grid](f16_input, f8_output, n_elements, BLOCK_SIZE=1024)
 
-#     f16_output = torch.empty_like(f16_input, dtype=torch.float16)
-#     copy_kernel[grid](f8_output, f16_output, n_elements, BLOCK_SIZE=1024)
+    f16_output = torch.empty_like(f16_input, dtype=torch.float16)
+    copy_kernel[grid](f8_output, f16_output, n_elements, BLOCK_SIZE=1024)
 
-#     abs_error = torch.abs(f16_input - f16_output)
+    abs_error = torch.abs(f16_input - f16_output)
 
-#     all_f8_vals_tensor = torch.tensor(range(2 ** 8), dtype=torch.uint8, device='cuda')
-#     all_f8_vals = triton.reinterpret(all_f8_vals_tensor, tl.float8)
-#     all_f8_vals_in_f16 = torch.empty_like(all_f8_vals_tensor, dtype=torch.float16)
-#     copy_kernel[grid](all_f8_vals, all_f8_vals_in_f16, n_elements=256, BLOCK_SIZE=1024)
+    all_f8_vals_tensor = torch.tensor(range(2 ** 8), dtype=torch.uint8, device='cuda')
+    all_f8_vals = triton.reinterpret(all_f8_vals_tensor, tl.float8)
+    all_f8_vals_in_f16 = torch.empty_like(all_f8_vals_tensor, dtype=torch.float16)
+    copy_kernel[grid](all_f8_vals, all_f8_vals_in_f16, n_elements=256, BLOCK_SIZE=1024)
 
-#     all_finite_f8_vals_in_f16 = all_f8_vals_in_f16[
-#         torch.isfinite(all_f8_vals_in_f16)
-#     ]
+    all_finite_f8_vals_in_f16 = all_f8_vals_in_f16[
+        torch.isfinite(all_f8_vals_in_f16)
+    ]
 
-#     min_error = torch.min(
-#         torch.abs(
-#             f16_input.reshape((-1, 1))
-#             - all_finite_f8_vals_in_f16.reshape((1, -1))
-#         ),
-#         dim=1,
-#     )[0]
-#     # 1.9375 is float8 max
-#     mismatch = torch.logical_and(
-#         abs_error != min_error, torch.logical_and(torch.isfinite(f16_input), torch.abs(f16_input) < 1.9375)
-#     )
-#     assert torch.all(
-#         torch.logical_not(mismatch)
-#     ), f"f16_input[mismatch]={f16_input[mismatch]} f16_output[mismatch]={f16_output[mismatch]} abs_error[mismatch]={abs_error[mismatch]} min_error[mismatch]={min_error[mismatch]}"
+    min_error = torch.min(
+        torch.abs(
+            f16_input.reshape((-1, 1))
+            - all_finite_f8_vals_in_f16.reshape((1, -1))
+        ),
+        dim=1,
+    )[0]
+    # 1.9375 is float8 max
+    mismatch = torch.logical_and(
+        abs_error != min_error, torch.logical_and(torch.isfinite(f16_input), torch.abs(f16_input) < 1.9375)
+    )
+    assert torch.all(
+        torch.logical_not(mismatch)
+    ), f"f16_input[mismatch]={f16_input[mismatch]} f16_output[mismatch]={f16_output[mismatch]} abs_error[mismatch]={abs_error[mismatch]} min_error[mismatch]={min_error[mismatch]}"
 
 
 # # ---------------

@@ -48,6 +48,8 @@ class dtype:
     SINT_TYPES = ['int1', 'int8', 'int16', 'int32', 'int64']
     UINT_TYPES = ['uint8', 'uint16', 'uint32', 'uint64']
     FP_TYPES = ['fp8', 'fp16', 'bf16', 'fp32', 'fp64']
+    CUSTOMIZED_FP_TYPES = ['fp8']
+    STANDARD_FP_TYPES = ['fp16', 'bf16', 'fp32', 'fp64']
     OTHER_TYPES = ['void']
 
     class SIGNEDNESS(Enum):
@@ -128,6 +130,12 @@ class dtype:
 
     def is_floating(self):
         return self.name in dtype.FP_TYPES
+
+    def is_customized_floating(self):
+        return self.name in dtype.CUSTOMIZED_FP_TYPES
+
+    def is_standard_floating(self):
+        return self.name in dtype.STANDARD_FP_TYPES
 
     def is_int_signed(self):
         return self.name in dtype.SINT_TYPES
@@ -337,67 +345,76 @@ class constexpr:
         return f"constexpr[{self.value}]"
 
     def __add__(self, other):
-        return self.value + other.value
+        return constexpr(self.value + other.value)
 
     def __radd__(self, other):
-        return other.value + self.value
+        return constexpr(other.value + self.value)
 
     def __sub__(self, other):
-        return self.value - other.value
+        return constexpr(self.value - other.value)
 
     def __rsub__(self, other):
-        return other.value - self.value
+        return constexpr(other.value - self.value)
 
     def __mul__(self, other):
-        return self.value * other.value
+        return constexpr(self.value * other.value)
 
     def __rmul__(self, other):
-        return other.value * self.value
+        return constexpr(other.value * self.value)
 
     def __truediv__(self, other):
-        return self.value / other.value
+        return constexpr(self.value / other.value)
 
     def __rtruediv__(self, other):
-        return other.value / self.value
+        return constexpr(other.value / self.value)
 
     def __floordiv__(self, other):
-        return self.value // other.value
+        return constexpr(self.value // other.value)
 
     def __rfloordiv__(self, other):
-        return other.value // self.value
+        return constexpr(other.value // self.value)
 
     def __gt__(self, other):
-        return self.value > other.value
+        return constexpr(self.value > other.value)
 
     def __rgt__(self, other):
-        return other.value > self.value
+        return constexpr(other.value > self.value)
 
     def __ge__(self, other):
-        return self.value >= other.value
+        return constexpr(self.value >= other.value)
 
     def __rge__(self, other):
-        return other.value >= self.value
+        return constexpr(other.value >= self.value)
 
     def __lt__(self, other):
-        return self.value < other.value
+        return constexpr(self.value < other.value)
 
     def __rlt__(self, other):
-        return other.value < self.value
+        return constexpr(other.value < self.value)
 
     def __le__(self, other):
-        return self.value <= other.value
+        return constexpr(self.value <= other.value)
 
     def __rle__(self, other):
-        return other.value <= self.value
+        return constexpr(other.value <= self.value)
 
     def __eq__(self, other):
-        return self.value == other.value
+        return constexpr(self.value == other.value)
 
     def __ne__(self, other):
-        return self.value != other.value
+        return constexpr(self.value != other.value)
 
     def __bool__(self):
-        return bool(self.value)
+        return constexpr(bool(self.value))
+
+    def __neg__(self):
+        return constexpr(-self.value)
+    
+    def __pos__(self):
+        return constexpr(+self.value)
+    
+    def __invert__(self):
+        return constexpr(~self.value)
 
     def __call__(self, *args, **kwds):
         return self.value(*args, **kwds)
@@ -760,7 +777,7 @@ def dot(input, other, allow_tf32=True, trans_a=False, trans_b=False, _builder=No
     """
     Returns the matrix product of two blocks.
 
-    The two blocks must be two dimensionals and have compatible inner dimensions.
+    The two blocks must be two-dimensional and have compatible inner dimensions.
 
     :param input: The first tensor to be multiplied.
     :type input: 2D tensor of scalar-type in {:code:`float16`, :code:`bfloat16`, :code:`float32`}
@@ -1025,10 +1042,24 @@ def max(input, axis, _builder=None):
 
 
 @builtin
+@_add_reduction_docstr("maximum index")
+def argmax(input, axis, _builder=None):
+    axis = _constexpr_to_value(axis)
+    return semantic.argmax(input, axis, _builder)
+
+
+@builtin
 @_add_reduction_docstr("minimum")
 def min(input, axis, _builder=None):
     axis = _constexpr_to_value(axis)
     return semantic.min(input, axis, _builder)
+
+
+@builtin
+@_add_reduction_docstr("minimum index")
+def argmin(input, axis, _builder=None):
+    axis = _constexpr_to_value(axis)
+    return semantic.argmin(input, axis, _builder)
 
 
 @builtin
@@ -1164,7 +1195,7 @@ def ravel(x):
 @triton.jit
 def swizzle2d(i, j, size_i, size_j, size_g):
     """
-    transformes indices of a row-major size_i*size_j matrix into those
+    Transforms indices of a row-major size_i*size_j matrix into those
     of one where indices are row major for each group of size_j rows.
     For example, for size_i = size_j = 4 and size_g = 2, it will transform
     [[0 , 1 , 2 , 3 ],

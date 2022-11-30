@@ -245,12 +245,12 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
     %0 = tt.view %arg : (tensor<256xf32, #blocked0>) -> tensor<256x1xf32,#blocked2>
     // CHECK: llvm.mlir.undef
     // CHECK: llvm.insertvalue %[[T0]]
-    // CHECK: llvm.insertvalue %[[T0]]
-    // CHECK: llvm.insertvalue %[[T0]]
+    // CHECK: llvm.insertvalue %[[T1]]
     // CHECK: llvm.insertvalue %[[T0]]
     // CHECK: llvm.insertvalue %[[T1]]
+    // CHECK: llvm.insertvalue %[[T0]]
     // CHECK: llvm.insertvalue %[[T1]]
-    // CHECK: llvm.insertvalue %[[T1]]
+    // CHECK: llvm.insertvalue %[[T0]]
     // CHECK: llvm.insertvalue %[[T1]]
     %1 = tt.broadcast %0 : (tensor<256x1xf32,#blocked2>) -> tensor<256x4xf32, #blocked2>
     return
@@ -347,12 +347,18 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
   // CHECK-LABEL: basic_extract_slice
   func @basic_extract_slice() {
     // CHECK: llvm.mlir.addressof @global_smem
-    // CHECK: llvm.extractvalue 
+    // CHECK: llvm.extractvalue
     // CHECK-NEXT: llvm.extractvalue
     // CHECK-NEXT: llvm.extractvalue
     // CHECK-NEXT: llvm.extractvalue
+    // CHECK-NEXT: llvm.extractvalue
+    // CHECK-NEXT: llvm.extractvalue
+    // CHECK-NEXT: llvm.extractvalue
+    // CHECK-NEXT: llvm.add
     // CHECK-NEXT: llvm.mlir.constant(0 : i32) : i32
+    // CHECK-NEXT: llvm.add
     // CHECK-NEXT: llvm.mlir.constant(0 : i32) : i32
+    // CHECK-NEXT: llvm.add
     // CHECK-NEXT: llvm.mlir.constant(0 : i32) : i32
     // CHECK-NEXT: llvm.mul
     // CHECK-NEXT: llvm.add
@@ -669,22 +675,26 @@ module attributes {"triton_gpu.num-warps" = 1 : i32} {
 #blocked0 = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [8, 4], warpsPerCTA = [1, 1], order = [1, 0]}>
 #shared0 = #triton_gpu.shared<{vec = 1, perPhase=2, maxPhase=8 ,order = [1, 0]}>
 #mma0 = #triton_gpu.mma<{version=2, warpsPerCTA=[1,1]}>
+#dot_operand_a = #triton_gpu.dot_op<{opIdx=0, parent=#mma0}>
+#dot_operand_b = #triton_gpu.dot_op<{opIdx=1, parent=#mma0}>
 module attributes {"triton_gpu.num-warps" = 1 : i32} {
   // CHECK-LABEL: convert_dot
   func @convert_dot(%A: tensor<16x16xf16, #blocked0>, %B: tensor<16x16xf16, #blocked0>) {
     %AA = triton_gpu.convert_layout %A : (tensor<16x16xf16, #blocked0>) -> tensor<16x16xf16, #shared0>
     %BB = triton_gpu.convert_layout %B : (tensor<16x16xf16, #blocked0>) -> tensor<16x16xf16, #shared0>
+    // CHECK: llvm.inline_asm
+    // CHECK-SAME: ldmatrix.sync.aligned.m8n8.x4
+    // CHECK: llvm.inline_asm
+    // CHECK-SAME: ldmatrix.sync.aligned.m8n8.x4
+    %AA_DOT = triton_gpu.convert_layout %AA : (tensor<16x16xf16, #shared0>) -> tensor<16x16xf16, #dot_operand_a>
+    %BB_DOT = triton_gpu.convert_layout %BB : (tensor<16x16xf16, #shared0>) -> tensor<16x16xf16, #dot_operand_b>
     %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma0>
-    // CHECK: llvm.inline_asm
-    // CHECK-SAME: ldmatrix.sync.aligned.m8n8.x4
-    // CHECK: llvm.inline_asm
-    // CHECK-SAME: ldmatrix.sync.aligned.m8n8.x4
 
     // CHECK: llvm.inline_asm
     // CHECK-SAME: mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32
     // CHECK: llvm.inline_asm
     // CHECK-SAME: mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32
-    %D = tt.dot %AA, %BB, %cst0 {allowTF32 = true, transA = false, transB = false} : tensor<16x16xf16, #shared0> * tensor<16x16xf16, #shared0> -> tensor<16x16xf32, #mma0>
+    %D = tt.dot %AA_DOT, %BB_DOT, %cst0 {allowTF32 = true, transA = false, transB = false} : tensor<16x16xf16, #dot_operand_a> * tensor<16x16xf16, #dot_operand_b> -> tensor<16x16xf32, #mma0>
 
     return
   }
@@ -722,6 +732,26 @@ module attributes {"triton_gpu.num-warps" = 1 : i32} {
 
 // -----
 
+#blocked0 = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [32, 1], warpsPerCTA = [1, 4], order = [1, 0]}>
+#mma = #triton_gpu.mma<{version = 1, warpsPerCTA = [2, 1]}>
+module attributes {"triton_gpu.num-warps" = 1 : i32} {
+  // CHECK: llvm.mlir.global external @global_smem() {addr_space = 3 : i32} : !llvm.array<0 x i8>
+  // CHECK-LABEL: convert_layout_mmav1_block
+  func @convert_layout_mmav1_blocked(%arg0: tensor<32x16xf32, #mma>) {
+    // CHECK: llvm.store
+    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
+    // CHECK: llvm.store
+    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
+    // CHECK: nvvm.barrier0
+    // CHECK: llvm.load
+    // CHECK-SAME: !llvm.ptr<vector<4xf32>, 3>
+    %0 = triton_gpu.convert_layout %arg0 : (tensor<32x16xf32, #mma>) -> tensor<32x16xf32, #blocked0>
+    return
+  }
+}
+
+// -----
+
 #blocked0 = #triton_gpu.blocked<{sizePerThread = [1, 8], threadsPerWarp = [8, 4], warpsPerCTA = [8, 1], order = [1, 0]}>
 #shared0 = #triton_gpu.shared<{vec = 8, perPhase = 2, maxPhase = 4, order = [1, 0]}>
 module attributes {"triton_gpu.num-warps" = 1 : i32} {
@@ -738,6 +768,7 @@ module attributes {"triton_gpu.num-warps" = 1 : i32} {
 }
 
 // -----
+
 #blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [1], order = [0]}>
 #blocked1 = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [4, 8], warpsPerCTA = [1, 1], order = [1, 0]}>
 module attributes {"triton_gpu.num-warps" = 1 : i32} {
@@ -749,8 +780,8 @@ module attributes {"triton_gpu.num-warps" = 1 : i32} {
   }
 }
 
-
 // -----
+
 #blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [1], order = [0]}>
 #blocked1 = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [4, 8], warpsPerCTA = [1, 1], order = [1, 0]}>
 module attributes {"triton_gpu.num-warps" = 1 : i32} {
@@ -762,8 +793,25 @@ module attributes {"triton_gpu.num-warps" = 1 : i32} {
   }
 }
 
+// -----
+
+#blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [1], order = [0]}>
+#blocked1 = #triton_gpu.blocked<{sizePerThread = [4], threadsPerWarp = [32], warpsPerCTA = [1], order = [0]}>
+module attributes {"triton_gpu.num-warps" = 1 : i32} {
+  // CHECK-LABEL: convert_blocked_to_blocked_ptr
+  func @convert_blocked_to_blocked_ptr(%src:tensor<32x!tt.ptr<f32>, #blocked0>) {
+    // CHECK: llvm.ptrtoint
+    // CHECK: llvm.store
+    // CHECK: nvvm.barrier0
+    // CHECK: llvm.inttoptr
+    // CHECK-COUNT-4: llvm.insertvalue
+    %cvt = triton_gpu.convert_layout %src : (tensor<32x!tt.ptr<f32>, #blocked0>) -> tensor<32x!tt.ptr<f32>, #blocked1>
+    return
+  }
+}
 
 // -----
+
 #blocked = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [2, 16], warpsPerCTA = [1, 4], order = [1, 0]}>
 #shared = #triton_gpu.shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0]}>
 #mma = #triton_gpu.mma<{version = 2, warpsPerCTA = [2, 2]}>
@@ -810,4 +858,81 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
     // tt.store %36, %38 : tensor<128x256xf32, #blocked>
     return
   }
+}
+
+// -----
+
+#blocked = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [2, 16], warpsPerCTA = [1, 4], order = [1, 0]}>
+#shared = #triton_gpu.shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0]}>
+#dot_operand_a = #triton_gpu.dot_op<{opIdx=0, parent=#blocked}>
+#dot_operand_b = #triton_gpu.dot_op<{opIdx=1, parent=#blocked}>
+module attributes {"triton_gpu.num-warps" = 4 : i32} {
+  func @matmul_fmadot(%ptr:!tt.ptr<f32> {tt.divisibility = 16 : i32},
+  %a:tensor<32x16xf32, #shared>, %b:tensor<16x32xf32, #shared>) {
+    %cst = arith.constant dense<0.000000e+00> : tensor<32x32xf32, #blocked>
+    // CHECK: llvm.intr.fmuladd
+    %a_mat = triton_gpu.convert_layout %a : (tensor<32x16xf32, #shared>) -> tensor<32x16xf32, #dot_operand_a>
+    %b_mat = triton_gpu.convert_layout %b : (tensor<16x32xf32, #shared>) -> tensor<16x32xf32, #dot_operand_b>
+
+    %28 = tt.dot %a_mat, %b_mat, %cst {allowTF32 = false, transA = false, transB = false} : tensor<32x16xf32, #dot_operand_a> * tensor<16x32xf32, #dot_operand_b> -> tensor<32x32xf32, #blocked>
+    %30 = tt.splat %ptr : (!tt.ptr<f32>) -> tensor<32x1x!tt.ptr<f32>, #blocked>
+    %36 = tt.broadcast %30 : (tensor<32x1x!tt.ptr<f32>, #blocked>) -> tensor<32x32x!tt.ptr<f32>, #blocked>
+    tt.store %36, %28 : tensor<32x32xf32, #blocked>
+    return
+  }
+}
+
+// -----
+
+#blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [4], order = [0]}>
+module attributes {"triton_gpu.num-warps" = 4 : i32} {
+  // CHECK-LABEL: atomic_add_f32
+  func @atomic_add_f32(%arg0 : tensor<256x!tt.ptr<f32>, #blocked0>, %arg1 : tensor<256xi1, #blocked0>, %arg2 : tensor<256xf32, #blocked0>) {
+    // CHECK: llvm.inline_asm
+    // CHECK-SAME: atom.global.gpu.add.f32
+    %0 = "tt.atomic_rmw" (%arg0, %arg2, %arg1) {atomic_rmw_op = 5 : i32} : (tensor<256x!tt.ptr<f32>, #blocked0>, tensor<256xf32, #blocked0>, tensor<256xi1, #blocked0>) -> tensor<256xf32, #blocked0>
+    return
+  }
+}
+
+// -----
+#blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [4], order = [0]}>
+module attributes {"triton_gpu.num-warps" = 4 : i32} {
+
+func @test_get_program_id(%a: tensor<32x!tt.ptr<i32>, #blocked0>) {
+  %blockidx = tt.get_program_id {axis=0:i32} : i32
+  %blockidy = tt.get_program_id {axis=1:i32} : i32
+  %blockidz = tt.get_program_id {axis=2:i32} : i32
+  // CHECK: nvvm.read.ptx.sreg.ctaid.x
+  // CHECK: nvvm.read.ptx.sreg.ctaid.y
+  // CHECK: nvvm.read.ptx.sreg.ctaid.z
+  %v0 = arith.addi %blockidx, %blockidy : i32
+  %v1 = arith.addi %v0, %blockidz : i32
+  %0 = tt.splat %v1 : (i32) -> tensor<32xi32, #blocked0>
+  tt.store %a, %0 : tensor<32xi32, #blocked0>
+
+  return
+}
+
+}
+
+// -----
+#blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [4], order = [0]}>
+module attributes {"triton_gpu.num-warps" = 4 : i32} {
+
+func @test_get_num_program(%a: tensor<32x!tt.ptr<i32>, #blocked0>) {
+  // CHECK: nvvm.read.ptx.sreg.ntid.x
+  // CHECK: nvvm.read.ptx.sreg.ntid.y
+  // CHECK: nvvm.read.ptx.sreg.ntid.z
+  %blockdimx = tt.get_num_programs {axis=0:i32} : i32
+  %blockdimy = tt.get_num_programs {axis=1:i32} : i32
+  %blockdimz = tt.get_num_programs {axis=2:i32} : i32
+  %v0 = arith.addi %blockdimx, %blockdimy : i32
+  %v1 = arith.addi %v0, %blockdimz : i32
+  %0 = tt.splat %v1 : (i32) -> tensor<32xi32, #blocked0>
+  tt.store %a, %0 : tensor<32xi32, #blocked0>
+
+  return
+}
+
 }
