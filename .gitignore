@@ -12,4 +12,4 @@ python/triton/_C/libtriton.so
 .vs
 
 log_*
-triton_cache_*
+triton_cache*
