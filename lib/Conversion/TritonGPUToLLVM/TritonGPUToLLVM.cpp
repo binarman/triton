@@ -1006,9 +1006,9 @@ struct LoadOpConversion
       assert(wordNElems * nWords * numVecs == numElems);
 
 #ifdef USE_ROCM
-      SmallVector<Type> retTys(nWords, IntegerType::get(getContext(), width));
-      Type retTy = retTys[0];
       Value ret = load(ptrElems[vecStart]);
+      ret = bitcast(ret, valueElemTy);
+      loadedVals.push_back(ret);
 #else
       // TODO(Superjomn) Add cache policy fields to StoreOp.
       // TODO(Superjomn) Deal with cache policy here.
@@ -1096,7 +1096,6 @@ struct LoadOpConversion
       // auto asmDialectAttr = LLVM::AsmDialectAttr::get(rewriter.getContext(),
       //                                                 LLVM::AsmDialect::AD_ATT);
       Value ret = ptxBuilder.launch(rewriter, loc, retTy);
-#endif
       // ---
       // extract and store return values
       // ---
@@ -1120,6 +1119,7 @@ struct LoadOpConversion
         Value loaded = extract_element(valueElemTy, rets[ii / tmp], vecIdx);
         loadedVals.push_back(loaded);
       }
+#endif
     } // end vec
 
     Type llvmResultStructTy = getTypeConverter()->convertType(valueTy);
@@ -1216,18 +1216,23 @@ struct StoreOpConversion
                              rewriter.create<LLVM::ConstantOp>(
                                  loc, u32Ty, IntegerAttr::get(u32Ty, elemIdx)));
         }
-        llWord = bitcast(llWord,
-#ifdef USE_ROCM
-            valueElemTy);
-#else
-            valArgTy);
-#endif
+        llWord = bitcast(llWord, valArgTy);
         std::string constraint =
             (width == 64) ? "l" : ((width == 32) ? "r" : "c");
         asmArgs.emplace_back(llWord, constraint);
       }
 #ifdef USE_ROCM
-      store(asmArgs[0].first, ptrElems[vecStart]);
+      Value llWord = rewriter.create<LLVM::UndefOp>(loc, wordTy);
+      Value elem = valueElems[vecStart];
+      if (elem.getType().getIntOrFloatBitWidth() <= 8)
+        elem = rewriter.create<LLVM::SExtOp>(loc, type::i8Ty(ctx), elem);
+      Type u32Ty = typeConverter->convertType(type::u32Ty(ctx));
+      llWord =
+          insert_element(wordTy, llWord, elem,
+                         rewriter.create<LLVM::ConstantOp>(
+                             loc, u32Ty, IntegerAttr::get(u32Ty, 0)));
+      llWord = bitcast(llWord, valueElemTy);
+      store(llWord, ptrElems[vecStart]);
 #else
       // Prepare the PTX inline asm.
       PTXBuilder ptxBuilder;
