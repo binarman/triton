@@ -32,8 +32,6 @@
 #include <numeric>
 #include <string>
 
-#define USE_ROCM_GCN_LOAD_AND_STORE 0
-
 using namespace mlir;
 using namespace mlir::triton;
 using ::mlir::triton::gpu::BlockedEncodingAttr;
@@ -1020,46 +1018,11 @@ struct LoadOpConversion
       std::cout << "wordNElems: " << wordNElems << std::endl;
 
 #ifdef USE_ROCM
-#if USE_ROCM_GCN_LOAD_AND_STORE
-      GCNBuilder gcnBuilder;
-
-      const std::string readConstraint = "v";
-      const std::string writeConstraint = "=v";
-
-      auto *dstsOpr = gcnBuilder.newListOperand();
-      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-        auto *opr = gcnBuilder.newOperand(writeConstraint); // =v operations
-        dstsOpr->listAppend(opr);
-      }
-
-      auto *addrOpr = gcnBuilder.newAddrOperand(ptrElems[vecStart], "v");
-
-      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-        auto &gload =
-            gcnBuilder.create<GCNMemInstr>("global_load")->load_type(width);
-        unsigned offset = wordIdx * (width / 8);
-        auto *offsetMod =
-            gcnBuilder.newModifier("off offset", std::to_string(offset));
-        gload({dstsOpr->listGet(wordIdx), addrOpr}, {offsetMod});
-      }
-
-      auto &wait_cnt = *gcnBuilder.create<>("s_waitcnt vmcnt(0)");
-      wait_cnt();
-
-      SmallVector<Type> retTys(nWords, IntegerType::get(getContext(), width));
-      Type retTy = retTys.size() > 1
-                       ? LLVM::LLVMStructType::getLiteral(getContext(), retTys)
-                       : retTys[0];
-
-      Value ret = gcnBuilder.launch(rewriter, loc, retTy);
-#else
       for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
         std::cout << "wordIdx: " << wordIdx << std::endl;
-        Value ret = load(ptrElems[vecStart + wordIdx]);
+        Value ret = bitcast(load(ptrElems[vecStart + wordIdx]), valueElemTy);
         loadedVals.push_back(ret);
       }
-#endif
-     
 #else
       // TODO(Superjomn) Add cache policy fields to StoreOp.
       // TODO(Superjomn) Deal with cache policy here.
@@ -1147,7 +1110,6 @@ struct LoadOpConversion
       // auto asmDialectAttr = LLVM::AsmDialectAttr::get(rewriter.getContext(),
       //                                                 LLVM::AsmDialect::AD_ATT);
       Value ret = ptxBuilder.launch(rewriter, loc, retTy);
-
       // ---
       // extract and store return values
       // ---
@@ -1270,46 +1232,16 @@ struct StoreOpConversion
         }
 #ifdef USE_ROCM
         llWord = bitcast(llWord, valueElemTy);
+        store(llWord, ptrElems[vecStart + wordIdx]);
 #else
         llWord = bitcast(llWord, valArgTy);
-#endif
         std::string constraint =
             (width == 64) ? "l" : ((width == 32) ? "r" : "c");
         asmArgs.emplace_back(llWord, constraint);
-      }
-      
-#ifdef USE_ROCM
-#if USE_ROCM_GCN_LOAD_AND_STORE
-      // Prepare the AMDGCN inline asm.
-      GCNBuilder gcnBuilder;
-      auto *asmArgList = gcnBuilder.newListOperand(asmArgs);
-      auto *asmAddr = gcnBuilder.newAddrOperand(ptrElems[vecStart], "v");
-      for (size_t ii = 0; ii < vec; ++ii) {
-        auto &gstore =
-            gcnBuilder.create<GCNMemInstr>("global_store")->store_type(width);
-        unsigned offset = ii * (width / 8);
-        auto *offsetMod =
-            gcnBuilder.newModifier("off offset", std::to_string(offset));
-        gstore({asmAddr, asmArgList->listGet(ii)}, {offsetMod});
-      }
-
-      auto &wait_cnt = *gcnBuilder.create<>("s_waitcnt vmcnt(0)");
-      wait_cnt();
-
-      Type boolTy = getTypeConverter()->convertType(rewriter.getIntegerType(1));
-      llvm::SmallVector<Type> argTys({boolTy, ptr.getType()});
-      argTys.insert(argTys.end(), nWords, valArgTy);
-
-      auto ASMReturnTy = LLVM::LLVMVoidType::get(ctx);
-
-      gcnBuilder.launch(rewriter, loc, ASMReturnTy);
-#else
-      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-        store(asmArgs[wordIdx].first, ptrElems[vecStart + wordIdx]);
-      }
 #endif
+      }
 
-#else
+#ifndef USE_ROCM
       // Prepare the PTX inline asm.
       PTXBuilder ptxBuilder;
       auto *asmArgList = ptxBuilder.newListOperand(asmArgs);
