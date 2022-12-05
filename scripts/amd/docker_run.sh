@@ -13,7 +13,8 @@ VOLUMES="-v $HOME/dockerx:/dockerx -v /data:/data"
 WORK_DIR="/dockerx/$(basename $(pwd))"
 
 # IMAGE_NAME=nvcr.io/nvidia/pytorch:21.08-py3
-IMAGE_NAME=rocm/pytorch:latest # latest doesnot work
+# IMAGE_NAME=rocm/pytorch:latest 
+IMAGE_NAME=rocm/pytorch:rocm5.4_ubuntu20.04_py3.8_pytorch_1.12.1
 # IMAGE_NAME=rocm/pytorch:rocm4.3.1_ubuntu18.04_py3.6_pytorch_1.10.0
 # IMAGE_NAME=triton_rocm_20-52 # build this docker before running
 
