@@ -313,3 +313,78 @@ def test_bitwise_op(dtype_x, dtype_y, op, device='cuda'):
         assert re.match('invalid operands of type', str(exc_info.value.__cause__))
     else:
         _test_binary(dtype_x, dtype_y, expr, numpy_expr, device=device)
+
+# ---------------
+# test compare ops
+# ---------------
+ops = ['==', '!=', '>', '<', '>=', '<=']
+
+
+@pytest.mark.parametrize("dtype_x, dtype_y, op, mode_x, mode_y",
+                         # real
+                         [
+                             (dtype_x, dtype_y, op, 'real', 'real')
+                             for op in ops
+                             for dtype_x in dtypes
+                             for dtype_y in dtypes
+                         ] +
+                         # NaNs
+                         [('float32', 'float32', op, mode_x, mode_y)
+                             for op in ops
+                             for mode_x, mode_y in [('nan', 'real'),
+                                                    ('real', 'nan'),
+                                                    ('nan', 'nan')]
+
+                          ])
+def test_compare_op(dtype_x, dtype_y, op, mode_x, mode_y, device='cuda'):
+    expr = f'x {op} y'
+    if (dtype_x in uint_dtypes and dtype_y in int_dtypes and _bitwidth(dtype_x) >= _bitwidth(dtype_y)):
+        numpy_expr = f'x.astype(np.{dtype_x}) {op} y.astype(np.{dtype_x})'
+    elif (dtype_y in uint_dtypes and dtype_x in int_dtypes and _bitwidth(dtype_y) >= _bitwidth(dtype_x)):
+        numpy_expr = f'x.astype(np.{dtype_y}) {op} y.astype(np.{dtype_y})'
+    else:
+        numpy_expr = None
+    _test_binary(dtype_x, dtype_y, expr, numpy_expr, mode_x=mode_x, mode_y=mode_y, device=device)
+
+# ---------------
+# test where
+# ---------------
+@pytest.mark.parametrize("dtype", dtypes_with_bfloat16 + ["*int32"])
+def test_where(dtype):
+    select_ptrs = False
+    if dtype == "*int32":
+        dtype = "int64"
+        select_ptrs = True
+    check_type_supported(dtype)
+
+    @triton.jit
+    def where_kernel(cond_ptr, a_ptr, b_ptr, output_ptr, n_elements,
+                     BLOCK_SIZE: tl.constexpr,
+                     TEST_POINTERS: tl.constexpr):
+        offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        decide = tl.load(cond_ptr + offsets, mask=mask)
+        if TEST_POINTERS:
+            a = tl.load(a_ptr + offsets, mask=mask).to(tl.pi32_t)
+            b = tl.load(b_ptr + offsets, mask=mask).to(tl.pi32_t)
+        else:
+            a = tl.load(a_ptr + offsets, mask=mask)
+            b = tl.load(b_ptr + offsets, mask=mask)
+        output = tl.where(decide, a, b)
+        tl.store(output_ptr + offsets, output, mask=mask)
+
+    SIZE = 1_000
+    rs = RandomState(17)
+    cond = numpy_random(SIZE, 'bool', rs)
+    x = numpy_random(SIZE, dtype_str=dtype, rs=rs)
+    y = numpy_random(SIZE, dtype_str=dtype, rs=rs)
+    z = np.where(cond, x, y)
+
+    cond_tri = to_triton(cond, device='cuda')
+    x_tri = to_triton(x, device='cuda', dst_type=dtype)
+    y_tri = to_triton(y, device='cuda', dst_type=dtype)
+    z_tri = to_triton(np.empty(SIZE, dtype=z.dtype), device='cuda', dst_type=dtype)
+
+    grid = lambda meta: (triton.cdiv(SIZE, meta['BLOCK_SIZE']),)
+    where_kernel[grid](cond_tri, x_tri, y_tri, z_tri, SIZE, BLOCK_SIZE=1024, TEST_POINTERS=select_ptrs)
+    assert (z == to_numpy(z_tri)).all()
