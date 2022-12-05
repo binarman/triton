@@ -1304,8 +1304,8 @@ struct StoreOpConversion
 
       gcnBuilder.launch(rewriter, loc, ASMReturnTy);
 #else
-      for (size_t ii = 0; ii < vec; ++ii) {
-        store(asmArgs[ii].first, ptrElems[ii]);
+      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
+        store(asmArgs[wordIdx].first, ptrElems[wordIdx]);
       }
 #endif
 
