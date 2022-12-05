@@ -32,7 +32,7 @@
 #include <numeric>
 #include <string>
 
-#define USE_ROCM_GCN_LOAD_AND_STORE 1
+#define USE_ROCM_GCN_LOAD_AND_STORE 0
 
 using namespace mlir;
 using namespace mlir::triton;
@@ -997,6 +997,9 @@ struct LoadOpConversion
 
     SmallVector<Value> loadedVals;
     for (size_t vecStart = 0; vecStart < numElems; vecStart += vec) {
+      std::cout << "=================================================" << std::endl;
+      std::cout << "vecStart: " << vecStart << std::endl;
+      std::cout << "vec: " << vec << std::endl;
       // TODO: optimization when ptr is GEP with constant offset
       size_t in_off = 0;
 
@@ -1007,8 +1010,17 @@ struct LoadOpConversion
       const size_t wordNElems = width / valueElemNbits;
       assert(wordNElems * nWords * numVecs == numElems);
 
+      std::cout << "maxWordWidth: " << maxWordWidth << std::endl;
+      std::cout << "totalWidth: " << totalWidth << std::endl;
+      std::cout << "width: " << width << std::endl;
+
+      std::cout << "numVecs: " << numVecs << std::endl;
+      std::cout << "numElems: " << numElems << std::endl;
+      std::cout << "nWords: " << nWords << std::endl;
+      std::cout << "wordNElems: " << wordNElems << std::endl;
+
 #ifdef USE_ROCM
-#ifdef USE_ROCM_GCN_LOAD_AND_STORE
+#if USE_ROCM_GCN_LOAD_AND_STORE
       GCNBuilder gcnBuilder;
 
       const std::string readConstraint = "v";
@@ -1041,11 +1053,11 @@ struct LoadOpConversion
 
       Value ret = gcnBuilder.launch(rewriter, loc, retTy);
 #else
-      SmallVector<Type> retTys(nWords, IntegerType::get(getContext(), width));
-      Type retTy = retTys.size() > 1
-                       ? LLVM::LLVMStructType::getLiteral(getContext(), retTys)
-                       : retTys[0];
-      Value ret = load(ptrElems[vecStart]);
+      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
+        std::cout << "wordIdx: " << wordIdx << std::endl;
+        Value ret = load(ptrElems[vecStart + wordIdx]);
+        loadedVals.push_back(ret);
+      }
 #endif
      
 #else
@@ -1135,7 +1147,7 @@ struct LoadOpConversion
       // auto asmDialectAttr = LLVM::AsmDialectAttr::get(rewriter.getContext(),
       //                                                 LLVM::AsmDialect::AD_ATT);
       Value ret = ptxBuilder.launch(rewriter, loc, retTy);
-#endif
+
       // ---
       // extract and store return values
       // ---
@@ -1159,6 +1171,7 @@ struct LoadOpConversion
         Value loaded = extract_element(valueElemTy, rets[ii / tmp], vecIdx);
         loadedVals.push_back(loaded);
       }
+#endif
     } // end vec
 
     Type llvmResultStructTy = getTypeConverter()->convertType(valueTy);
@@ -1266,7 +1279,7 @@ struct StoreOpConversion
       }
       
 #ifdef USE_ROCM
-#ifdef USE_ROCM_GCN_LOAD_AND_STORE
+#if USE_ROCM_GCN_LOAD_AND_STORE
       // Prepare the AMDGCN inline asm.
       GCNBuilder gcnBuilder;
       auto *asmArgList = gcnBuilder.newListOperand(asmArgs);
@@ -1291,7 +1304,9 @@ struct StoreOpConversion
 
       gcnBuilder.launch(rewriter, loc, ASMReturnTy);
 #else
-      store(asmArgs[vecStart].first, ptrElems[vecStart]);
+      for (size_t ii = 0; ii < vec; ++ii) {
+        store(asmArgs[ii].first, ptrElems[ii]);
+      }
 #endif
 
 #else

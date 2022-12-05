@@ -12,7 +12,7 @@ chmod -R 777 $LOG_DIR
 
 gdb -ex "set pagination off" \
     -ex "file python" \
-    -ex 'run -m pytest --capture=tee-sys --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf[4-256-shape0]"' \
+    -ex 'run -m pytest --capture=tee-sys --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf[1-64-shape0]"' \
     -ex "backtrace" \
     -ex "set confirm off" \
     -ex "q" \
