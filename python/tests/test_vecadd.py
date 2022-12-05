@@ -167,6 +167,8 @@ def vecadd_fcmp_no_scf_tester(num_warps, block_size, shape):
     for i in range(golden_z.numel()):
         gz_data[i] = gz_data[i] if gz_data[i] < 0. or gz_data[i] > 1. else 0.
 
+    print(f"z: {z}")
+    print(f"golden_z: {golden_z}")
     assert_close(z, golden_z, rtol=1e-7, atol=1e-7)
 
 
@@ -206,6 +208,7 @@ def test_vecadd_no_scf_masked_randomly():
 
 
 @pytest.mark.parametrize('num_warps, block_size, shape', [
+    [1, 2, (4 + 1,)],
     [1, 128, (256 + 1,)],
     [1, 256, (256 + 1,)],
     [2, 256, (3, 256 + 7)],

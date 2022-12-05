@@ -1018,9 +1018,15 @@ struct LoadOpConversion
       std::cout << "wordNElems: " << wordNElems << std::endl;
 
 #ifdef USE_ROCM
+      Value pred = mask ? maskElems[vecStart] : int_val(1, 1);
+
+      auto ifBlock = rewriter.create<scf::IfOp>(loc, valueTy, pred);
+      OpBuilder thenBlock = ifBlock.getThenBodyBuilder(rewriter.getListener());
       for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
         std::cout << "wordIdx: " << wordIdx << std::endl;
-        Value ret = bitcast(load(ptrElems[vecStart + wordIdx]), valueElemTy);
+        Value thenResult = thenBlock.create<LLVM::LoadOp>(loc, ptrElems[vecStart + wordIdx]);
+        thenBlock.create<scf::YieldOp>(loc, thenResult);
+        Value ret = ifBlock.getResult(0);
         loadedVals.push_back(ret);
       }
 #else
@@ -5067,15 +5073,15 @@ public:
     Allocation allocation(mod);
     MembarAnalysis membar(&allocation);
 
-    RewritePatternSet scf_patterns(context);
-    mlir::populateLoopToStdConversionPatterns(scf_patterns);
-    mlir::ConversionTarget scf_target(*context);
-    scf_target.addIllegalOp<scf::ForOp, scf::IfOp, scf::ParallelOp,
-                            scf::WhileOp, scf::ExecuteRegionOp>();
-    scf_target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
-    if (failed(
-            applyPartialConversion(mod, scf_target, std::move(scf_patterns))))
-      return signalPassFailure();
+    // RewritePatternSet scf_patterns(context);
+    // mlir::populateLoopToStdConversionPatterns(scf_patterns);
+    // mlir::ConversionTarget scf_target(*context);
+    // scf_target.addIllegalOp<scf::ForOp, scf::IfOp, scf::ParallelOp,
+    //                         scf::WhileOp, scf::ExecuteRegionOp>();
+    // scf_target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
+    // if (failed(
+    //         applyPartialConversion(mod, scf_target, std::move(scf_patterns))))
+    //   return signalPassFailure();
 
     RewritePatternSet func_patterns(context);
     func_patterns.add<FuncOpConversion>(typeConverter, numWarps, 1 /*benefit*/);
