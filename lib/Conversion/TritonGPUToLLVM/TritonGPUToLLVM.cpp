@@ -5073,15 +5073,15 @@ public:
     Allocation allocation(mod);
     MembarAnalysis membar(&allocation);
 
-    // RewritePatternSet scf_patterns(context);
-    // mlir::populateLoopToStdConversionPatterns(scf_patterns);
-    // mlir::ConversionTarget scf_target(*context);
-    // scf_target.addIllegalOp<scf::ForOp, scf::IfOp, scf::ParallelOp,
-    //                         scf::WhileOp, scf::ExecuteRegionOp>();
-    // scf_target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
-    // if (failed(
-    //         applyPartialConversion(mod, scf_target, std::move(scf_patterns))))
-    //   return signalPassFailure();
+    RewritePatternSet scf_patterns(context);
+    mlir::populateLoopToStdConversionPatterns(scf_patterns);
+    mlir::ConversionTarget scf_target(*context);
+    scf_target.addIllegalOp<scf::ForOp, scf::IfOp, scf::ParallelOp,
+                            scf::WhileOp, scf::ExecuteRegionOp>();
+    scf_target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
+    if (failed(
+            applyPartialConversion(mod, scf_target, std::move(scf_patterns))))
+      return signalPassFailure();
 
     RewritePatternSet func_patterns(context);
     func_patterns.add<FuncOpConversion>(typeConverter, numWarps, 1 /*benefit*/);
