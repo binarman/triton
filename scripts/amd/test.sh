@@ -37,8 +37,11 @@ sh scripts/amd/clean.sh
 # pytest -rfs --verbose python/tests/test_core.py::test_load_cache_modifier 2>&1 | tee /dockerx/triton/test_load.log
 
 # python3 python/tutorials/01-vector-add.py
-pytest -rfs --verbose "python/tests/test_vecadd.py"
-# pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_scf_no_mask[4-256-1]"
+# pytest -rfs --verbose "python/tests/test_vecadd.py"
+pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_fcmp_no_scf_masked[1-2-shape0]"
+# pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_scf_mask"
+# pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf_masked"
+# pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf[1-256-shape2]"
 # pytest --capture=tee-sys -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf"
 # pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf[1-32-shape0]"
 # pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf[1-64-shape1]"
