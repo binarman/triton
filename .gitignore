@@ -13,3 +13,4 @@ python/triton/_C/libtriton.so
 
 log_*
 triton_cache*
+clang+llvm*
