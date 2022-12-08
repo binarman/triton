@@ -9,7 +9,6 @@
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -1007,16 +1006,6 @@ struct LoadOpConversion
       size_t size = width / valueElemNbits;
       assert(wordNElems * nWords * numVecs == numElems);
 
-      std::cout << "maxWordWidth: " << maxWordWidth << std::endl;
-      std::cout << "totalWidth: " << totalWidth << std::endl;
-      std::cout << "width: " << width << std::endl;
-
-      std::cout << "numVecs: " << numVecs << std::endl;
-      std::cout << "numElems: " << numElems << std::endl;
-      std::cout << "nWords: " << nWords << std::endl;
-      std::cout << "wordNElems: " << wordNElems << std::endl;
-      std::cout << "size: " << size << std::endl;
-
 #ifdef USE_ROCM
 
       Value pred = mask ? maskElems[vecStart] : int_val(1, 1);
@@ -1151,7 +1140,6 @@ struct LoadOpConversion
     Value resultStruct =
         getStructFromElements(loc, loadedVals, rewriter, llvmResultStructTy);
     rewriter.replaceOp(op, {resultStruct});
-    // rewriter.getBlock()->dump();
     return success();
   }
 };
@@ -5083,7 +5071,6 @@ public:
 
     RewritePatternSet scf_patterns(context);
     mlir::populateLoopToStdConversionPatterns(scf_patterns);
-    // mlir::populateReconcileUnrealizedCastsPatterns(scf_patterns);
     mlir::ConversionTarget scf_target(*context);
     scf_target.addIllegalOp<scf::ForOp, scf::IfOp, scf::ParallelOp,
                             scf::WhileOp, scf::ExecuteRegionOp>();
@@ -5097,7 +5084,6 @@ public:
     if (failed(
             applyPartialConversion(mod, funcTarget, std::move(func_patterns))))
       return signalPassFailure();
-    // mlir::populateReconcileUnrealizedCastsPatterns(func_patterns);
 
     auto axisAnalysis = runAxisAnalysis(mod);
     initSharedMemory(allocation.getSharedMemorySize(), typeConverter);
@@ -5112,8 +5098,6 @@ public:
     populateTritonToLLVMPatterns(typeConverter, patterns, numWarps,
                                  *axisAnalysis, &allocation, smem,
                                  10 /*benefit*/);
-    // mlir::populateLoopToStdConversionPatterns(patterns);
-    // mlir::populateReconcileUnrealizedCastsPatterns(patterns);
 
     // Add arith/math's patterns to help convert scalar expression to LLVM.
     mlir::arith::populateArithmeticToLLVMConversionPatterns(typeConverter,
