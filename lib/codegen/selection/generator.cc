@@ -1182,6 +1182,27 @@ void generator::visit_load_inst(ir::load_inst* x){
     // has_evict_policy = false; // currently disable until supported in `store`
 
 #ifdef USE_ROCM
+#if 0
+    // for each block
+    for (size_t wordIdx = 0; wordIdx < n_words; wordIdx++)
+    {
+      size_t wordNElems = width / nbits;
+      for(size_t wordElem = 0; wordElem < wordNElems; wordElem++){
+        size_t elemOffset = vecStart + wordIdx * wordNElems + wordElem;
+
+        // pointer value
+        Value *ptr = vals_[op][idxs[elemOffset]];
+
+        // create load
+        Value *trueVal = builder_->CreateLoad(ty, ptr);
+        Value zeroVal = bitcast(i32_val(0), ty);
+        Value falseVal = other ? load(otherElems[elemOffset]) : zeroVal;
+        Value ret = select(pred, trueVal, falseVal);
+
+        // upload to global vals map
+        vals_[x][idxs[elemOffset]] = _ret;
+      }
+#else
     // for each block
     for (size_t ii = 0; ii < n_words; ii++)
     {
@@ -1198,6 +1219,7 @@ void generator::visit_load_inst(ir::load_inst* x){
         vals_[x][idxs[iii]] = _ret;
       }
     }
+#endif
 #else
     // -----
     // create inline asm string

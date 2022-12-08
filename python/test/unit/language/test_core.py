@@ -891,7 +891,7 @@ def test_f16_to_f8_rounding():
                           for shape in [32, 64, 128, 512]])
 def test_reduce1d(op, dtype_str, shape, device='cuda'):
     check_type_supported(dtype_str)  # bfloat16 on cc < 80 will not be tested
-    if torch.version.hip is not None:
+    if torch.version.hip is not None: #TODO look at segfault
         if dtype_str in ["int8", "int16", "uint8", "uint16"]:
             pytest.skip(f"test_reduce1d[{dtype_str}] skipped on ROCM")
 
@@ -1227,8 +1227,8 @@ def test_arange(start, device='cuda'):
 # test load
 # ---------------
 
-
-@pytest.mark.parametrize("dtype_str, size, size_diff", [(dtype_str, size, size_diff) for dtype_str in torch_dtypes for size in [128, 512] for size_diff in [1, 2, 3, 4]])
+# @pytest.mark.parametrize("dtype_str, size, size_diff", [(dtype_str, size, size_diff) for dtype_str in torch_dtypes for size in [128, 512] for size_diff in [1, 2, 3, 4]])
+@pytest.mark.parametrize("dtype_str, size, size_diff", [('float32', 8, 4)])
 def test_masked_load(dtype_str, size, size_diff, device='cuda'):
     dtype = getattr(torch, dtype_str)
     check_type_supported(dtype)  # bfloat16 on cc < 80 will not be tested
@@ -1256,7 +1256,9 @@ def test_masked_load(dtype_str, size, size_diff, device='cuda'):
 
     reference_out = input
     reference_out = torch.cat((reference_out, torch.ones((size_diff,), dtype=dtype, device=device)))
-    triton.testing.allclose(output, reference_out)
+    print(f"reference_out: {reference_out}")
+    print(f"output: {output}")
+    np.testing.assert_allclose(to_numpy(output), to_numpy(reference_out))
 
 
 # 'bfloat16': torch.bfloat16,
@@ -1264,8 +1266,6 @@ def test_masked_load(dtype_str, size, size_diff, device='cuda'):
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])
 def test_masked_load_shared_memory(dtype, device='cuda'):
-    if torch.version.hip is not None:
-        pytest.skip(f"test_masked_load_shared_memory currently has segfaults on ROCM")
     check_type_supported(dtype)  # bfloat16 on cc < 80 will not be tested
 
     M = 32
@@ -1310,7 +1310,7 @@ def test_masked_load_shared_memory(dtype, device='cuda'):
                         M=M, N=N, K=K)
 
     reference_out = torch.matmul(in1, in2)
-    triton.testing.allclose(out, reference_out)
+    np.testing.assert_allclose(to_numpy(out), to_numpy(reference_out))
 
 
 @pytest.mark.parametrize("cache", ["", ".ca", ".cg"])
