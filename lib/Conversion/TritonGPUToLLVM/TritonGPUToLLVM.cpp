@@ -1477,9 +1477,9 @@ Value ReduceOpConversion::shflSync(ConversionPatternRewriter &rewriter,
   DenseMap<short, unsigned int> masks{{16, 0x401F}, {8, 0x201F}, {4, 0x101F}, {2, 0x081F}, {1, 0x041F}};
   GCNBuilder builder; 
   auto shfl = builder.create("ds_swizzle_b32");
-  auto dOpr = builder.newOperand("=v");
-  auto aOpr = builder.newOperand(val, "v");
-  auto maskOpr = builder.newConstantOperand("offset:" + std::to_string(masks[i])+"\ns_waitcnt lgkmcnt(0)\n");
+  auto dOpr = builder.newOperand(" ");
+  auto aOpr = builder.newOperand(val, " ");
+  auto maskOpr = builder.newConstantOperand("offset:" + std::to_string(masks[i]));
   (*shfl)(dOpr, aOpr, maskOpr);
 #else
   PTXBuilder builder;
