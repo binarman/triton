@@ -208,7 +208,7 @@ def test_vecadd_no_scf_masked_randomly():
 
 
 @pytest.mark.parametrize('num_warps, block_size, shape', [
-    [1, 2, (4 + 1,)],
+    [1, 4, (8 + 1,)],
     [1, 128, (256 + 1,)],
     [1, 256, (256 + 1,)],
     [2, 256, (3, 256 + 7)],
