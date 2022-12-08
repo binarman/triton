@@ -10,7 +10,7 @@ rm -rf triton_rocm_kernels
 # remove cache to avoid segfaults
 # TODO: inform triton dev the cache cause segfault
 # rm -rf /tmp/triton
-sh scripts/amd/clean.sh
+# sh scripts/amd/clean.sh
 
 # test simple hip kernel
 # sh scripts/amd/test_hip_kernel.sh
@@ -37,8 +37,8 @@ sh scripts/amd/clean.sh
 # pytest -rfs --verbose python/tests/test_core.py::test_load_cache_modifier 2>&1 | tee /dockerx/triton/test_load.log
 
 # python3 python/tutorials/01-vector-add.py
-# pytest -rfs --verbose "python/tests/test_vecadd.py"
-pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_fcmp_no_scf_masked[1-2-shape0]"
+pytest -rfs --verbose "python/tests/test_vecadd.py"
+# pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_fcmp_no_scf_masked[1-4-shape0]"
 # pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_scf_mask"
 # pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf_masked"
 # pytest -rfs --verbose "python/tests/test_vecadd.py::test_vecadd_no_scf[1-256-shape2]"

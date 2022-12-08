@@ -997,8 +997,8 @@ struct LoadOpConversion
     SmallVector<Value> loadedVals;
     for (size_t vecStart = 0; vecStart < numElems; vecStart += vec) {
       std::cout << "=================================================" << std::endl;
-      // std::cout << "vecStart: " << vecStart << std::endl;
-      // std::cout << "vec: " << vec << std::endl;
+      std::cout << "vecStart: " << vecStart << std::endl;
+      std::cout << "vec: " << vec << std::endl;
       // TODO: optimization when ptr is GEP with constant offset
       size_t in_off = 0;
 
@@ -1009,31 +1009,35 @@ struct LoadOpConversion
       const size_t wordNElems = width / valueElemNbits;
       assert(wordNElems * nWords * numVecs == numElems);
 
-      // std::cout << "maxWordWidth: " << maxWordWidth << std::endl;
-      // std::cout << "totalWidth: " << totalWidth << std::endl;
-      // std::cout << "width: " << width << std::endl;
+      std::cout << "maxWordWidth: " << maxWordWidth << std::endl;
+      std::cout << "totalWidth: " << totalWidth << std::endl;
+      std::cout << "width: " << width << std::endl;
 
-      // std::cout << "numVecs: " << numVecs << std::endl;
-      // std::cout << "numElems: " << numElems << std::endl;
-      // std::cout << "nWords: " << nWords << std::endl;
-      // std::cout << "wordNElems: " << wordNElems << std::endl;
+      std::cout << "numVecs: " << numVecs << std::endl;
+      std::cout << "numElems: " << numElems << std::endl;
+      std::cout << "nWords: " << nWords << std::endl;
+      std::cout << "wordNElems: " << wordNElems << std::endl;
 
 #ifdef USE_ROCM
-#if 1
-      
-      // Value pred = int_val(1, 1);
-      // Value pred = int_val(1, 0);
-      //  Value pred = maskElems[vecStart];
+#if 0
       Value pred = mask ? maskElems[vecStart] : int_val(1, 1);
 
-      std::vector<mlir::Type> retTypes = {valueElemTy};
-      mlir::scf::IfOp ifBlock = rewriter.create<mlir::scf::IfOp>(loc, retTypes, pred, false);
+      mlir::scf::IfOp ifBlock = rewriter.create<mlir::scf::IfOp>(loc, pred, false);
       OpBuilder thenBlock = ifBlock.getThenBodyBuilder(rewriter.getListener());
       for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-        // std::cout << "wordIdx: " << wordIdx << std::endl;
         Value thenResult = thenBlock.create<LLVM::LoadOp>(loc, ptrElems[vecStart + wordIdx]);
-        thenBlock.create<scf::YieldOp>(loc, thenResult);
-        Value ret = ifBlock.getResult(0);
+        loadedVals.push_back(thenResult);
+      }
+#elif 1
+
+      Value pred = mask ? maskElems[vecStart] : int_val(1, 1);
+      // Value pred = int_val(1, 0);
+     
+      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
+        std::cout << "wordIdx: " << wordIdx << std::endl;
+        // Value pred = maskElems[vecStart + wordIdx];
+        Value load_val = load(ptrElems[vecStart + wordIdx]);
+        Value ret = select(pred, load_val , f32_val(0.0));
         loadedVals.push_back(ret);
       }
 #else
@@ -1159,6 +1163,7 @@ struct LoadOpConversion
     Value resultStruct =
         getStructFromElements(loc, loadedVals, rewriter, llvmResultStructTy);
     rewriter.replaceOp(op, {resultStruct});
+    // rewriter.getBlock()->dump();
     return success();
   }
 };
@@ -1243,7 +1248,9 @@ struct StoreOpConversion
             elem = rewriter.create<LLVM::SExtOp>(loc, type::i8Ty(ctx), elem);
           elem = bitcast(elem, valueElemTy);
 #ifdef USE_ROCM
-          store(elem, ptrElems[elemOffset]);
+          Value maskVal = llMask ? maskElems[vecStart] : int_val(1, 1);
+          Value ret = select(maskVal, elem , f32_val(0.0));
+          store(ret, ptrElems[elemOffset]);
         }
       }
 #else
@@ -5100,7 +5107,7 @@ public:
     if (failed(
             applyPartialConversion(mod, funcTarget, std::move(func_patterns))))
       return signalPassFailure();
-    // populateReconcileUnrealizedCastsPatterns(func_patterns);
+    // mlir::populateReconcileUnrealizedCastsPatterns(func_patterns);
 
     auto axisAnalysis = runAxisAnalysis(mod);
     initSharedMemory(allocation.getSharedMemorySize(), typeConverter);
