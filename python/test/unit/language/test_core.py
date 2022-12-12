@@ -1227,8 +1227,8 @@ def test_arange(start, device='cuda'):
 # test load
 # ---------------
 
+@pytest.mark.parametrize("dtype_str, size, size_diff", [('bool', 8, 4)])
 # @pytest.mark.parametrize("dtype_str, size, size_diff", [(dtype_str, size, size_diff) for dtype_str in torch_dtypes for size in [128, 512] for size_diff in [1, 2, 3, 4]])
-@pytest.mark.parametrize("dtype_str, size, size_diff", [('float32', 8, 4)])
 def test_masked_load(dtype_str, size, size_diff, device='cuda'):
     dtype = getattr(torch, dtype_str)
     check_type_supported(dtype)  # bfloat16 on cc < 80 will not be tested
@@ -1256,6 +1256,7 @@ def test_masked_load(dtype_str, size, size_diff, device='cuda'):
 
     reference_out = input
     reference_out = torch.cat((reference_out, torch.ones((size_diff,), dtype=dtype, device=device)))
+    print(f"input: {input}")
     print(f"reference_out: {reference_out}")
     print(f"output: {output}")
     np.testing.assert_allclose(to_numpy(output), to_numpy(reference_out))
