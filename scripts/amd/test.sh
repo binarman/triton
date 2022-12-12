@@ -24,3 +24,11 @@ pytest -rfs --verbose "python/tests/test_reduce.py" 2>&1 | tee $LOG_DIR/test_red
 pytest -rfs --verbose "python/tests/test_transpose.py" 2>&1 | tee $LOG_DIR/test_transpose.log
 pytest -rfs --verbose "python/tests/test_vecadd.py" 2>&1 | tee $LOG_DIR/test_vecadd.log
 
+
+# tutorials
+python  python/tutorials/01-vector-add.py 2>&1 | tee $LOG_DIR/01-vector-add.log
+python  python/tutorials/02-fused-softmax.py 2>&1 | tee $LOG_DIR/02-fused-softmax.log
+python  python/tutorials/03-matrix-multiplication.py 2>&1 | tee $LOG_DIR/03-matrix-multiplication.log
+python  python/tutorials/04-low-memory-dropout.py 2>&1 | tee $LOG_DIR/04-low-memory-dropout.log
+python  python/tutorials/05-layer-norm.py 2>&1 | tee $LOG_DIR/05-layer-norm.log
+python  python/tutorials/06-fused-attention.py 2>&1 | tee $LOG_DIR/06-fused-attention.log
