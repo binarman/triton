@@ -918,6 +918,13 @@ def test_reduce1d(op, dtype_str, shape, device='cuda'):
                       device=device, dst_type=z_tri_dtype_str)
     kernel[(1,)](x_tri, z_tri, BLOCK=shape)
     z_tri = to_numpy(z_tri)
+
+    print(f"x:{x}")
+    # print(f"x_tri:{x_tri}")
+    print(f"z_ref:{z_ref}")
+    print(f"z_tri:{z_tri}")
+
+
     # compare
     if op == 'sum':
         np.testing.assert_allclose(z_ref, z_tri, rtol=0.01)
