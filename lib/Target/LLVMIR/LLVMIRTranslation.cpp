@@ -107,7 +107,7 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
   llvm::DenseMap<llvm::StringRef, NVVMMetadata> nvvmMetadata;
   extractNVVMMetadata(module, &nvvmMetadata);
 
-  module->dump();
+  // module->dump();
   auto llvmModule = mlir::translateModuleToLLVMIR(module, *llvmContext);
   if (!llvmModule) {
     llvm::errs() << "Failed to emit LLVM IR\n";
