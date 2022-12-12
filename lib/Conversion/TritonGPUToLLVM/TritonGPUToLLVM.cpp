@@ -5000,7 +5000,7 @@ void populateTritonToLLVMPatterns(mlir::LLVMTypeConverter &typeConverter,
   POPULATE_UNARY_OP(arith::UIToFPOp, LLVM::UIToFPOp)
   POPULATE_UNARY_OP(arith::SIToFPOp, LLVM::SIToFPOp)
   POPULATE_UNARY_OP(arith::ExtFOp, LLVM::FPExtOp)
-#ifdef 0
+#if 0
   // fixes test_core::math_ops but segfaults test_ext_elemwise.py
   POPULATE_UNARY_OP(math::LogOp, LLVM::LogOp)
   POPULATE_UNARY_OP(math::CosOp, LLVM::CosOp)
