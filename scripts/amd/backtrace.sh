@@ -10,9 +10,10 @@ rm -rf $LOG_DIR
 mkdir -p $LOG_DIR
 chmod -R 777 $LOG_DIR
 
+COMMAND="python/tests/test_elementwise.py::test_single_input[log-float64-float64]"
 gdb -ex "set pagination off" \
     -ex "file python" \
-    -ex 'run -m pytest --capture=tee-sys --verbose "python/tests/test_core.py::test_math_op[exp]"' \
+    -ex "run -m pytest --capture=tee-sys --verbose $COMMAND" \
     -ex "backtrace" \
     -ex "set confirm off" \
     -ex "q" \
