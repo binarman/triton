@@ -27,7 +27,6 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "llvm/Support/Format.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <memory>
 #include <numeric>
@@ -511,9 +510,7 @@ public:
                                  ArrayRef<unsigned> shape,
                                  ArrayRef<unsigned> order) const {
     unsigned rank = shape.size();
-    llvm::outs()<<"rank "<<rank<<'\n';
     assert(rank == order.size());
-    llvm::outs()<<"order "<<order[0]<<'\n';
     auto reordered = reorder(shape, order);
     auto reorderedMultiDim = delinearize(rewriter, loc, linear, reordered);
     SmallVector<Value> multiDim(rank);
@@ -1413,8 +1410,8 @@ ReduceOpConversion::matchAndRewrite(triton::ReduceOp op, OpAdaptor adaptor,
                                     ConversionPatternRewriter &rewriter) const {
   auto srcTy = op.operand().getType().cast<RankedTensorType>();
   auto srcLayout = srcTy.getEncoding().cast<BlockedEncodingAttr>();
-   if (op.axis() == srcLayout.getOrder()[0])
-     return matchAndRewriteFast(op, adaptor, rewriter);
+  if (op.axis() == srcLayout.getOrder()[0])
+    return matchAndRewriteFast(op, adaptor, rewriter);
   return matchAndRewriteBasic(op, adaptor, rewriter);
 }
 
@@ -1613,34 +1610,14 @@ LogicalResult ReduceOpConversion::matchAndRewriteFast(
     ConversionPatternRewriter &rewriter) const {
   Location loc = op->getLoc();
   unsigned axis = adaptor.axis();
-  llvm::outs()<<"axis: "<<axis<<'\n';
 
   auto srcTy = op.operand().getType().cast<RankedTensorType>();
   auto srcLayout = srcTy.getEncoding().cast<BlockedEncodingAttr>();
   auto srcShape = srcTy.getShape();
   auto srcRank = srcTy.getRank();
 
-  llvm::outs()<<"srcShape ";
-  for (int i = 0; i < srcShape.size(); i++){
-    llvm::outs()<<srcShape[i]<<" ";
-  }
-  llvm::outs()<<'\n';
-  llvm::outs()<<"srcRank";
-  llvm::outs()<<srcRank<<" ";
-  llvm::outs()<<'\n';
   auto threadsPerWarp = srcLayout.getThreadsPerWarp();
-  llvm::outs()<<"srcLayout threadPerWarp ";
-  for (auto items : threadsPerWarp){
-    llvm::outs()<<items<<" ";
-  }
-  llvm::outs()<<"\n";
-
-  llvm::outs()<<"warpsPerCTA ";
   auto warpsPerCTA = srcLayout.getWarpsPerCTA();
-  for (auto items : warpsPerCTA){
-    llvm::outs()<<items<<" ";
-  }
-  llvm::outs()<<"\n";
 
   auto llvmElemTy = getTypeConverter()->convertType(srcTy.getElementType());
   auto elemPtrTy = LLVM::LLVMPointerType::get(llvmElemTy, 3);
@@ -1648,18 +1625,10 @@ LogicalResult ReduceOpConversion::matchAndRewriteFast(
   smemBase = bitcast(smemBase, elemPtrTy);
 
   auto order = srcLayout.getOrder();
-  llvm::outs()<<"order size " << order.size()<<'\n';
-  for (int i = 0; i < order.size();i++){
-    llvm::outs()<<i<<"th component: "<<order[i]<<'\n';
-  }
-  llvm::outs()<<'\n';
   unsigned sizeIntraWarps = threadsPerWarp[axis];
   unsigned sizeInterWarps = warpsPerCTA[axis];
-  llvm::outs()<<"sizeIntraWarps "<<sizeIntraWarps<<'\n';
-  llvm::outs()<<"sizeInterWarps "<<sizeInterWarps<<'\n';
 
   unsigned srcElems = getElemsPerThread(srcTy);
-  llvm::outs()<<"src elems "<<srcElems<<'\n';
   auto srcIndices = emitIndices(loc, rewriter, srcLayout, srcShape);
   auto srcValues = getElementsFromStruct(loc, adaptor.operand(), rewriter);
 
