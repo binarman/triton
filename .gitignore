@@ -11,6 +11,7 @@ python/triton/_C/libtriton.so
 .vscode
 .vs
 
+results.html
 log_*
 triton_cache*
 clang+llvm*

@@ -16,5 +16,5 @@ bash scripts/amd/build.sh
 bash scripts/amd/test.sh  2>&1 |tee $LOG_DIR/test.log
 # bash scripts/amd/backtrace.sh 2>&1 |tee $LOG_DIR/backtrace.log
 
-bash scripts/amd/cache_print.sh  2>&1 |tee $LOG_DIR/cache.log
+# bash scripts/amd/cache_print.sh  2>&1 |tee $LOG_DIR/cache.log
 # bash scripts/amd/post.sh # dont double call

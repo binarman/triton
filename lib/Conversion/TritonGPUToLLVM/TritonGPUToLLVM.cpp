@@ -5015,11 +5015,20 @@ void populateTritonToLLVMPatterns(mlir::LLVMTypeConverter &typeConverter,
   POPULATE_UNARY_OP(arith::UIToFPOp, LLVM::UIToFPOp)
   POPULATE_UNARY_OP(arith::SIToFPOp, LLVM::SIToFPOp)
   POPULATE_UNARY_OP(arith::ExtFOp, LLVM::FPExtOp)
+#if 0
+  // fixes test_core::math_ops but segfaults test_ext_elemwise.py
+  POPULATE_UNARY_OP(math::LogOp, LLVM::LogOp)
+  POPULATE_UNARY_OP(math::CosOp, LLVM::CosOp)
+  POPULATE_UNARY_OP(math::SinOp, LLVM::SinOp)
+  POPULATE_UNARY_OP(math::SqrtOp, LLVM::SqrtOp)
+  POPULATE_UNARY_OP(math::ExpOp, LLVM::ExpOp)
+#else
   POPULATE_UNARY_OP(math::LogOp, math::LogOp)
   POPULATE_UNARY_OP(math::CosOp, math::CosOp)
   POPULATE_UNARY_OP(math::SinOp, math::SinOp)
   POPULATE_UNARY_OP(math::SqrtOp, math::SqrtOp)
   POPULATE_UNARY_OP(math::ExpOp, math::ExpOp)
+#endif
   POPULATE_UNARY_OP(triton::BitcastOp, LLVM::BitcastOp)
   POPULATE_UNARY_OP(triton::IntToPtrOp, LLVM::IntToPtrOp)
   POPULATE_UNARY_OP(triton::PtrToIntOp, LLVM::PtrToIntOp)
