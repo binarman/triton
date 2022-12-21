@@ -1395,6 +1395,10 @@ private:
                  int i) const;
 
   // Use shared memory for reduction within warps and across warps
+  LogicalResult matchAndRewriteConstant(triton::ReduceOp op, OpAdaptor adaptor,
+                                     ConversionPatternRewriter &rewriter) const;
+
+  // Use shared memory for reduction within warps and across warps
   LogicalResult matchAndRewriteBasic(triton::ReduceOp op, OpAdaptor adaptor,
                                      ConversionPatternRewriter &rewriter) const;
 
@@ -1409,9 +1413,13 @@ ReduceOpConversion::matchAndRewrite(triton::ReduceOp op, OpAdaptor adaptor,
                                     ConversionPatternRewriter &rewriter) const {
   auto srcTy = op.operand().getType().cast<RankedTensorType>();
   auto srcLayout = srcTy.getEncoding().cast<BlockedEncodingAttr>();
+#if 1
   if (op.axis() == srcLayout.getOrder()[0])
     return matchAndRewriteFast(op, adaptor, rewriter);
   return matchAndRewriteBasic(op, adaptor, rewriter);
+#else
+  return matchAndRewriteConstant(op, adaptor, rewriter);
+#endif
 }
 
 void ReduceOpConversion::accumulate(ConversionPatternRewriter &rewriter,
@@ -1494,6 +1502,15 @@ Value ReduceOpConversion::shflSync(ConversionPatternRewriter &rewriter,
   shfl(dOpr, aOpr, bOpr, cOpr, maskOpr);
 #endif
   return builder.launch(rewriter, loc, val.getType(), false);
+}
+
+LogicalResult ReduceOpConversion::matchAndRewriteConstant(
+    triton::ReduceOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  auto srcValues = getElementsFromStruct(op->getLoc(), adaptor.operand(), rewriter);
+  rewriter.replaceOp(op, srcValues[0]);
+  return success();
 }
 
 LogicalResult ReduceOpConversion::matchAndRewriteBasic(
@@ -5043,7 +5060,7 @@ void populateTritonToLLVMPatterns(mlir::LLVMTypeConverter &typeConverter,
   patterns.add<ExtElemwiseOpConversion>(typeConverter, benefit);
 
   patterns.add<BroadcastOpConversion>(typeConverter, benefit);
-  patterns.add<ReduceOpConversion>(typeConverter, allocation, smem, benefit);
+  patterns.add<ReduceOpConversion>(typeConverter, allocation, smem, benefit); // Reduce TTGIR to LLVM Conversion
   patterns.add<ConvertLayoutOpConversion>(typeConverter, allocation, smem,
                                           benefit);
 

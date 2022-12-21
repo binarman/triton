@@ -17,3 +17,5 @@ for file in ${CACHED_FILES[@]}; do
 		cp $file triton_cache
 	fi
 done
+
+chmod -R 777 triton_cache

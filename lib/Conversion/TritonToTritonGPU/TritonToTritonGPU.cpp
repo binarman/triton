@@ -347,8 +347,21 @@ struct TritonReducePattern : public OpConversionPattern<triton::ReduceOp> {
   LogicalResult
   matchAndRewrite(triton::ReduceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+#if 0
     rewriter.replaceOpWithNewOp<triton::ReduceOp>(
         op, adaptor.redOp(), adaptor.operand(), adaptor.axis());
+#else
+    auto value = adaptor.operand();
+    rewriter.replaceOpWithNewOp<mlir::arith::ConstantFloatOp>(
+        op, mlir::APFloat(3.14),
+        mlir::FloatType::getF32(rewriter.getContext()));
+    // rewriter.replaceOpWithNewOp<triton::ReduceOp>(
+    //   op,mlir::arith::ConstantFloatOp, mlir::APFloat(3.14), adaptor.axis());
+
+    auto moduleOp =
+        rewriter.getBlock()->getParent()->getParentOfType<ModuleOp>();
+    moduleOp->dump();
+#endif
     return success();
   }
 };
