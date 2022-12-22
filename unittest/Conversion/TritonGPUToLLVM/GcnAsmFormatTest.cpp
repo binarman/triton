@@ -59,13 +59,12 @@ TEST_F(GcnAsmFormatTest, complexInstruction) {
   Value addrVal = v[0];
   auto dst = builder.newOperand("=v");
   auto addr = builder.newAddrOperand(addrVal, "v");
-  auto offOpr = builder.newEmptyOperand("off");
   auto offsetMod = builder.newModifier("offset", std::to_string(offset));
 
   auto &ld = builder.create<GCNMemInstr>("global_load")->load_type(width);
 
   // Link the instruction to operands
-  ld({addr, dst, offOpr}, {offsetMod});
+  ld({addr, dst}, {offsetMod});
 
   EXPECT_EQ(builder.dump(), "global_load_ushort $1, $0, off offset:128;");
 

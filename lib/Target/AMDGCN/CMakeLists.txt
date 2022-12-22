@@ -5,8 +5,5 @@ add_mlir_translation_library(TritonAMDGCN
         Core
 
         LINK_LIBS PUBLIC
-        MLIRIR
-        MLIRLLVMIR
-        MLIRSupport
-        MLIRTargetLLVMIRExport
+        TritonLLVMIR
         )

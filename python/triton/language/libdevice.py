@@ -1,10 +1,16 @@
 import os
+import torch
 
 from . import core, extern
 
-LIBDEVICE_PATH = os.path.dirname(
-    os.path.abspath(__file__)) + "/libdevice.10.bc"
 
+LIBDEVICE_PATH = os.path.dirname(
+    os.path.abspath(__file__))
+
+if torch.version.hip is not None:
+    LIBDEVICE_PATH += "/cuda2gcn.bc"
+else:
+    LIBDEVICE_PATH += "/libdevice.10.bc"
 
 @extern.extern
 def clz(arg0, _builder=None):
@@ -32,13 +38,13 @@ def byte_perm(arg0, arg1, arg2, _builder=None):
 @extern.extern
 def min(arg0, arg1, _builder=None):
     return extern.elementwise("libdevice", LIBDEVICE_PATH, [arg0, arg1, ],
-                              {(core.dtype("int32"), core.dtype("int32"),): ("__nv_min", core.dtype("int32")),
-                               (core.dtype("uint32"), core.dtype("uint32"),): ("__nv_umin", core.dtype("uint32")),
-                               (core.dtype("int64"), core.dtype("int64"),): ("__nv_llmin", core.dtype("int64")),
-                               (core.dtype("uint64"), core.dtype("uint64"),): ("__nv_ullmin", core.dtype("uint64")),
-                               (core.dtype("fp32"), core.dtype("fp32"),): ("__nv_fminf", core.dtype("fp32")),
-                               (core.dtype("fp64"), core.dtype("fp64"),): ("__nv_fmin", core.dtype("fp64")),
-                               }, _builder)
+                                {(core.dtype("int32"), core.dtype("int32"),): ("__nv_min", core.dtype("int32")),
+                                (core.dtype("uint32"), core.dtype("uint32"),): ("__nv_umin", core.dtype("uint32")),
+                                (core.dtype("int64"), core.dtype("int64"),): ("__nv_llmin", core.dtype("int64")),
+                                (core.dtype("uint64"), core.dtype("uint64"),): ("__nv_ullmin", core.dtype("uint64")),
+                                (core.dtype("fp32"), core.dtype("fp32"),): ("__nv_fminf", core.dtype("fp32")),
+                                (core.dtype("fp64"), core.dtype("fp64"),): ("__nv_fmin", core.dtype("fp64")),
+                                }, _builder)
 
 
 @extern.extern
@@ -56,11 +62,11 @@ def max(arg0, arg1, _builder=None):
 @extern.extern
 def mulhi(arg0, arg1, _builder=None):
     return extern.elementwise("libdevice", LIBDEVICE_PATH, [arg0, arg1, ],
-                              {(core.dtype("int32"), core.dtype("int32"),): ("__nv_mulhi", core.dtype("int32")),
-                               (core.dtype("uint32"), core.dtype("uint32"),): ("__nv_umulhi", core.dtype("uint32")),
-                               (core.dtype("int64"), core.dtype("int64"),): ("__nv_mul64hi", core.dtype("int64")),
-                               (core.dtype("uint64"), core.dtype("uint64"),): ("__nv_umul64hi", core.dtype("uint64")),
-                               }, _builder)
+                                {(core.dtype("int32"), core.dtype("int32"),): ("__nv_mulhi", core.dtype("int32")),
+                                (core.dtype("uint32"), core.dtype("uint32"),): ("__nv_umulhi", core.dtype("uint32")),
+                                (core.dtype("int64"), core.dtype("int64"),): ("__nv_mul64hi", core.dtype("int64")),
+                                (core.dtype("uint64"), core.dtype("uint64"),): ("__nv_umul64hi", core.dtype("uint64")),
+                                }, _builder)
 
 
 @extern.extern
@@ -154,9 +160,9 @@ def saturatef(arg0, _builder=None):
 @extern.extern
 def fma_rn(arg0, arg1, arg2, _builder=None):
     return extern.elementwise("libdevice", LIBDEVICE_PATH, [arg0, arg1, arg2, ],
-                              {(core.dtype("fp32"), core.dtype("fp32"), core.dtype("fp32"),): ("__nv_fmaf_rn", core.dtype("fp32")),
-                               (core.dtype("fp64"), core.dtype("fp64"), core.dtype("fp64"),): ("__nv_fma_rn", core.dtype("fp64")),
-                               }, _builder)
+                                {(core.dtype("fp32"), core.dtype("fp32"), core.dtype("fp32"),): ("__nv_fmaf_rn", core.dtype("fp32")),
+                                (core.dtype("fp64"), core.dtype("fp64"), core.dtype("fp64"),): ("__nv_fma_rn", core.dtype("fp64")),
+                                }, _builder)
 
 
 @extern.extern
@@ -976,9 +982,9 @@ def rsqrt_rn(arg0, _builder=None):
 @extern.extern
 def ffs(arg0, _builder=None):
     return extern.elementwise("libdevice", LIBDEVICE_PATH, [arg0, ],
-                              {(core.dtype("int32"),): ("__nv_ffs", core.dtype("int32")),
-                               (core.dtype("int64"),): ("__nv_ffsll", core.dtype("int32")),
-                               }, _builder)
+                                {(core.dtype("int32"),): ("__nv_ffs", core.dtype("int32")),
+                                (core.dtype("int64"),): ("__nv_ffsll", core.dtype("int32")),
+                                }, _builder)
 
 
 @extern.extern
@@ -1055,10 +1061,9 @@ def nextafter(arg0, arg1, _builder=None):
 @extern.extern
 def sin(arg0, _builder=None):
     return extern.elementwise("libdevice", LIBDEVICE_PATH, [arg0, ],
-                              {(core.dtype("fp32"),): ("__nv_sinf", core.dtype("fp32")),
-                               (core.dtype("fp64"),): ("__nv_sin", core.dtype("fp64")),
-                               }, _builder)
-
+                                {(core.dtype("fp32"),): ("__nv_sinf", core.dtype("fp32")),
+                                (core.dtype("fp64"),): ("__nv_sin", core.dtype("fp64")),
+                                }, _builder)
 
 @extern.extern
 def cos(arg0, _builder=None):
@@ -1263,9 +1268,9 @@ def rnorm3d(arg0, arg1, arg2, _builder=None):
 @extern.extern
 def norm4d(arg0, arg1, arg2, arg3, _builder=None):
     return extern.elementwise("libdevice", LIBDEVICE_PATH, [arg0, arg1, arg2, arg3, ],
-                              {(core.dtype("fp32"), core.dtype("fp32"), core.dtype("fp32"), core.dtype("fp32"),): ("__nv_norm4df", core.dtype("fp32")),
-                               (core.dtype("fp64"), core.dtype("fp64"), core.dtype("fp64"), core.dtype("fp64"),): ("__nv_norm4d", core.dtype("fp64")),
-                               }, _builder)
+                                {(core.dtype("fp32"), core.dtype("fp32"), core.dtype("fp32"), core.dtype("fp32"),): ("__nv_norm4df", core.dtype("fp32")),
+                                (core.dtype("fp64"), core.dtype("fp64"), core.dtype("fp64"), core.dtype("fp64"),): ("__nv_norm4d", core.dtype("fp64")),
+                                }, _builder)
 
 
 @extern.extern

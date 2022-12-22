@@ -335,4 +335,4 @@ struct PTXInstrExecution {
 } // namespace triton
 } // namespace mlir
 
-#endif // TRITON_CONVERSION_TRITON_GPU_TO_LLVM_ASM_FORMAT_H_
+#endif // TRITON_CONVERSION_TRITON_GPU_TO_LLVM_PTX_ASM_FORMAT_H_

@@ -22,6 +22,8 @@
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include <iostream>
+
 namespace mlir {
 namespace triton {
 
@@ -38,7 +40,6 @@ void amendLLVMFunc(llvm::Function *func, const NVVMMetadata &metadata) {
   auto *module = func->getParent();
   auto &ctx = func->getContext();
 
-#ifndef USE_ROCM
   if (metadata.maxntidx > 0) {
     auto i32_ty = llvm::IntegerType::get(ctx, 32);
     auto warps =
@@ -51,7 +52,6 @@ void amendLLVMFunc(llvm::Function *func, const NVVMMetadata &metadata) {
     module->getOrInsertNamedMetadata("nvvm.annotations")
         ->addOperand(llvm::MDNode::get(ctx, md_args));
   }
-#endif
 
   if (metadata.is_kernel) {
 #ifndef USE_ROCM
@@ -99,11 +99,8 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
   DialectRegistry registry;
   mlir::registerLLVMDialectTranslation(registry);
 
-#ifdef USE_ROCM
   mlir::registerROCDLDialectTranslation(registry);
-#else
   mlir::registerNVVMDialectTranslation(registry);
-#endif
 
   context->appendDialectRegistry(registry);
 
@@ -206,6 +203,14 @@ translateTritonGPUToLLVMIR(llvm::LLVMContext *llvmContext,
   for (auto &lib : externLibs) {
     if (linkExternLib(*llvmir, lib.second))
       return nullptr;
+  }
+
+  if (::triton::tools::getBoolEnv("LLVM_IR_ENABLE_DUMP")) {
+    std::string mod_string;
+    std::unique_ptr<llvm::raw_string_ostream> ir_ss(
+           new llvm::raw_string_ostream(mod_string));
+    llvmir->print(*ir_ss, nullptr);
+    std::cout << "// -----// LLVM IR Dump //----- //\n" << mod_string << std::endl;
   }
 
   return llvmir;

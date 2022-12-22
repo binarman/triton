@@ -27,6 +27,12 @@ import triton
 import triton._C.libtriton.triton as _triton
 from .tools.disasm import extract
 
+def static_vars(**kwargs):
+    def decorate(func):
+        for k in kwargs:
+            setattr(func, k, kwargs[k])
+        return func
+    return decorate
 
 def str_to_ty(name):
     if name[0] == "*":
@@ -1254,7 +1260,6 @@ PyMODINIT_FUNC PyInit_launcher(void) {{
   return m;
 }}
 """
-
     return src
 
 
@@ -1325,6 +1330,10 @@ def libhip_dir():
 def hip_home_dirs():
     default_dir = "/opt/rocm"
     return os.getenv("ROCM_HOME", default=default_dir)
+
+@functools.lru_cache()
+def rocm_path_dir():
+    return os.getenv("ROCM_PATH", default="/opt/rocm")
 
 def _build(name, src, srcdir):
     if torch.version.hip is not None:
@@ -1401,7 +1410,6 @@ def make_fn_cache_key(fn_hash, signature, configs, constants, num_warps, num_sta
     key = hashlib.md5(key.encode("utf-8")).hexdigest()
     return key
 
-
 def read_or_execute(cache_manager, force_compile, file_name, metadata,
                     run_if_found: Callable[[str], bytes] = None,
                     run_if_not_found: Callable = None):
@@ -1431,7 +1439,7 @@ def read_or_execute_hip(cache_manager, force_compile, file_name_1, file_name_2,
         data_2 = module_2 if isinstance(module_2, bytes) else str(module_2).encode("utf-8")
         md5_1 = hashlib.md5(data_1).hexdigest()
         md5_2 = hashlib.md5(data_2).hexdigest()
-        has_changed = (metadata and md5_1 != metadata["md5"][suffix_1]) or (metadata and md5_2 != metadata["md5"][suffix_2])
+        has_changed = metadata and ((md5_1 != metadata["md5"][suffix_1]) or (md5_2 != metadata["md5"][suffix_2]))
         return module_1, md5_1, module_2, md5_2, has_changed, True
     module_1, module_2 = run_if_not_found()
     data_1 = module_1 if isinstance(module_1, bytes) else str(module_1).encode("utf-8")
@@ -1442,7 +1450,15 @@ def read_or_execute_hip(cache_manager, force_compile, file_name_1, file_name_2,
     cache_manager.put(data_2, file_name_2, True if isinstance(data_2, bytes) else data_2)
     return module_1, md5_1, module_2, md5_2, True, False
 
+def _get_amdgpu_arch():
+    try:
+        rocminfo = subprocess.check_output(rocm_path_dir() + '/bin/rocminfo').decode()
+        gfx_arch = re.search('Name:\\s+.*(gfx\\w+)', rocminfo)
+        return gfx_arch.group(1).strip()
+    except:
+        return None
 
+@static_vars(discovered_gfx_arch = _get_amdgpu_arch())
 def compile(fn, signature: str, device: int = -1, constants=dict(), num_warps: int = 4, num_stages: int = 3, extern_libs=None, configs=None):
     if isinstance(signature, str):
         signature = {k: v.strip() for k, v in enumerate(signature.split(","))}
@@ -1496,12 +1512,14 @@ def compile(fn, signature: str, device: int = -1, constants=dict(), num_warps: i
 
     if torch.version.hip is not None:
       #llvm-ir -> amdgcn/hsaco (or read from cache)
-      gcn_arch = os.environ.get('MI_GPU_ARCH', "gfx90a")
+      gfx_arch = os.environ.get('MI_GPU_ARCH', compile.discovered_gfx_arch)
+      if gfx_arch is None:
+          raise RuntimeError('gfx_arch is None (not specified)')
       amdgcn, amdgcn_md5, hsaco_path, hsaco_path_md5, force_compile, _ = read_or_execute_hip(fn_cache_manager, force_compile,
                                                                          f"{name}.amdgcn", f"{name}.hsaco_path", metadata,
                             run_if_found_1 = lambda path: Path(path).read_text(),
                             run_if_found_2 = lambda path: Path(path).read_text(),
-                            run_if_not_found = lambda: llir_to_amdgcn(llir, gcn_arch))
+                            run_if_not_found = lambda: llir_to_amdgcn(llir, gfx_arch))
       kernel_name = amdgcn_get_kernel_name(amdgcn)
       metadata = {"name": kernel_name, "shared": shmem_size, "num_warps": num_warps, "num_stages": num_stages,
                   "md5": {  "hsaco_path": hsaco_path_md5,  "amdgcn": amdgcn_md5,
@@ -1525,11 +1543,35 @@ def compile(fn, signature: str, device: int = -1, constants=dict(), num_warps: i
                   "md5": {  "cubin": cubin_md5,  "ptx": ptx_md5,
                             "llir": llir_md5,
                             "ttir": ttir_md5, "ttgir": ttgir_md5 }}
-      fn_cache_manager.put(json.dumps(metadata), f"{name}.json", binary=False)
 
+      fn_cache_manager.put(json.dumps(metadata), f"{name}.json", binary=False)
       asm = {"ttir": ttir, "ttgir": ttgir, "llir": llir, "ptx": ptx, "cubin": cubin}
     return CompiledKernel(so_path, metadata, asm)
 
+@static_vars(discovered_gfx_arch = _get_amdgpu_arch())
+def _get_amdgcn_bitcode_paths():
+  gpu_arch_agnostic_bitcode_libraries = ["opencl.bc",
+                                         "ocml.bc",
+                                         "ockl.bc",
+                                         "oclc_finite_only_off.bc",
+                                         "oclc_daz_opt_off.bc",
+                                         "oclc_correctly_rounded_sqrt_on.bc",
+                                         "oclc_unsafe_math_off.bc",
+                                         "oclc_wavefrontsize64_on.bc"]
+  gfx_arch_id = re.search('gfx(\\w+)', _get_amdgcn_bitcode_paths.discovered_gfx_arch).group(1).strip()
+  gpu_arch_specific_bitcode_library = 'oclc_isa_version_' + gfx_arch_id + ".bc"
+  bitcode_path_dir = rocm_path_dir() + '/amdgcn/bitcode/'
+  amdgcn_bitcode_paths = {}
+  i = 1
+  for bc_lib in gpu_arch_agnostic_bitcode_libraries:
+    amdgcn_bitcode_paths['library' + str(i)] = bitcode_path_dir + bc_lib
+    i += 1
+  amdgcn_bitcode_paths['library' + str(i)] = bitcode_path_dir + gpu_arch_specific_bitcode_library
+  return amdgcn_bitcode_paths
+
+@static_vars(amdgcn_bitcode_paths = _get_amdgcn_bitcode_paths())
+def get_amdgcn_bitcode_paths():
+  return get_amdgcn_bitcode_paths.amdgcn_bitcode_paths
 
 class CompiledKernel:
 

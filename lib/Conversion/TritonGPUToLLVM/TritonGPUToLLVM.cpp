@@ -299,7 +299,7 @@ struct FuncOpConversion : public FuncOpConversionBase {
     // Set an attribute to indicate this function is a kernel entry.
     newFuncOp->setAttr(NVVMMetadataField::Kernel,
                        rewriter.getIntegerAttr(type::u1Ty(ctx), 1));
-#ifdef USE_ROCM
+#ifndef USE_ROCM
     // Set an attribute for maxntidx, it could be used in latter LLVM codegen
     // for `nvvm.annotation` metadata.
     newFuncOp->setAttr(NVVMMetadataField::MaxNTid,
@@ -387,16 +387,20 @@ static T getLinearIndex(ArrayRef<T> multiDimIndex, ArrayRef<T> shape) {
 
 static Value storeShared(ConversionPatternRewriter &rewriter, Location loc,
                          Value ptr, Value val, Value pred) {
-  MLIRContext *ctx = rewriter.getContext();
-  unsigned bits = val.getType().getIntOrFloatBitWidth();
-  const char *c = bits == 64 ? "l" : (bits == 16 ? "h" : "r");
-
+#if USE_ROCM
+  store(val, ptr);
+  return val;
+#else
   PTXBuilder builder;
   auto &st = builder.create<PTXIOInstr>("st")->shared().b(bits);
   auto *ptrOpr = builder.newAddrOperand(ptr, "r");
   auto *valOpr = builder.newOperand(val, c);
   st(ptrOpr, valOpr).predicate(pred, "b");
   return builder.launch(rewriter, loc, void_ty(ctx));
+#endif
+  MLIRContext *ctx = rewriter.getContext();
+  unsigned bits = val.getType().getIntOrFloatBitWidth();
+  const char *c = bits == 64 ? "l" : (bits == 16 ? "h" : "r");
 }
 
 struct SharedMemoryObject {
@@ -1004,64 +1008,21 @@ struct LoadOpConversion
       const size_t wordNElems = width / valueElemNbits;
       assert(wordNElems * nWords * numVecs == numElems);
 #ifdef USE_ROCM
-      GCNBuilder gcnBuilder;
-
-      const std::string readConstraint = "v";
-      const std::string writeConstraint = "=&v";
-
-      auto *dstsOpr = gcnBuilder.newListOperand();
+      Value pred = mask ? maskElems[vecStart] : int_val(1, 1);
       for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-        auto *opr = gcnBuilder.newOperand(writeConstraint); // =v operations
-        dstsOpr->listAppend(opr);
-      }
+        for (size_t wordElem = 0; wordElem < wordNElems; ++wordElem) {
+          size_t elemOffset = vecStart + wordIdx * wordNElems + wordElem;
 
-      auto *addrOpr = gcnBuilder.newAddrOperand(ptrElems[vecStart], "v");
-      auto *offOpr = gcnBuilder.newEmptyOperand("off");
+          // get values
+          Value trueVal = load(ptrElems[elemOffset]);
+          Value zeroVal = bitcast(i32_val(0), valueElemTy);
+          Value falseVal = other ? load(otherElems[elemOffset]) : zeroVal;
 
-      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-        auto &gload = gcnBuilder.create<GCNMemInstr>("global_load")
-                          ->load_type(valueElemNbits);
-        unsigned offset = wordIdx * (valueElemNbits / 8);
-        auto *offsetMod =
-            gcnBuilder.newModifier("offset", std::to_string(offset));
-        gload({dstsOpr->listGet(wordIdx), addrOpr, offOpr}, {offsetMod});
-      }
-
-      auto &wait_cnt = *gcnBuilder.create<>("s_waitcnt vmcnt(0)");
-      wait_cnt();
-
-      if (other) {
-        for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-          GCNInstr &mov = *gcnBuilder.create<>("v_mov_b32");
-
-          size_t size = width / valueElemNbits;
-
-          auto vecTy = LLVM::getFixedVectorType(valueElemTy, size);
-          Value v = rewriter.create<LLVM::UndefOp>(loc, vecTy);
-          for (size_t s = 0; s < size; ++s) {
-            Value falseVal = otherElems[vecStart + wordIdx * size + s];
-            Value sVal = createIndexAttrConstant(
-                rewriter, loc, this->getTypeConverter()->getIndexType(), s);
-            v = insert_element(vecTy, v, falseVal, sVal);
-          }
-          v = bitcast(v, IntegerType::get(getContext(), width));
-
-          GCNInstr::Operand *opr{};
-          if (otherIsSplatConstInt)
-            opr = gcnBuilder.newConstantOperand(splatVal);
-          else
-            opr = gcnBuilder.newOperand(v, readConstraint);
-
-          mov(dstsOpr->listGet(wordIdx), opr);
+          // select value based on mask
+          Value ret = select(pred, trueVal, falseVal);
+          loadedVals.push_back(ret);
         }
       }
-
-      SmallVector<Type> retTys(nWords, IntegerType::get(getContext(), width));
-      Type retTy = retTys.size() > 1
-                       ? LLVM::LLVMStructType::getLiteral(getContext(), retTys)
-                       : retTys[0];
-
-      Value ret = gcnBuilder.launch(rewriter, loc, retTy);
 #else
       // TODO(Superjomn) Add cache policy fields to StoreOp.
       // TODO(Superjomn) Deal with cache policy here.
@@ -1149,7 +1110,6 @@ struct LoadOpConversion
       // auto asmDialectAttr = LLVM::AsmDialectAttr::get(rewriter.getContext(),
       //                                                 LLVM::AsmDialect::AD_ATT);
       Value ret = ptxBuilder.launch(rewriter, loc, retTy);
-#endif
       // ---
       // extract and store return values
       // ---
@@ -1173,6 +1133,7 @@ struct LoadOpConversion
         Value loaded = extract_element(valueElemTy, rets[ii / tmp], vecIdx);
         loadedVals.push_back(loaded);
       }
+#endif
     } // end vec
 
     Type llvmResultStructTy = getTypeConverter()->convertType(valueTy);
@@ -1262,7 +1223,13 @@ struct StoreOpConversion
           if (elem.getType().isInteger(1))
             elem = rewriter.create<LLVM::SExtOp>(loc, type::i8Ty(ctx), elem);
           elem = bitcast(elem, valueElemTy);
-
+#ifdef USE_ROCM
+          Value maskVal = llMask ? maskElems[vecStart] : int_val(1, 1);
+          Value ret = select(maskVal, elem , bitcast(i32_val(0), valueElemTy));
+          store(ret, ptrElems[elemOffset]);
+        }
+      }
+#else
           Type u32Ty = typeConverter->convertType(type::u32Ty(ctx));
           llWord =
               insert_element(wordTy, llWord, elem,
@@ -1270,40 +1237,10 @@ struct StoreOpConversion
                                  loc, u32Ty, IntegerAttr::get(u32Ty, elemIdx)));
         }
         llWord = bitcast(llWord, valArgTy);
-#ifdef USE_ROCM
-        std::string constraint = "v";
-#else
         std::string constraint =
             (width == 64) ? "l" : ((width == 32) ? "r" : "c");
-#endif
         asmArgs.emplace_back(llWord, constraint);
       }
-#ifdef USE_ROCM
- // Prepare the AMDGCN inline asm.
-      GCNBuilder gcnBuilder;
-      auto *asmArgList = gcnBuilder.newListOperand(asmArgs);
-      auto *asmAddr = gcnBuilder.newAddrOperand(ptrElems[vecStart], "v");
-      auto *offOpr = gcnBuilder.newEmptyOperand("off");
-      for (size_t wordIdx = 0; wordIdx < nWords; ++wordIdx) {
-        auto &gstore = gcnBuilder.create<GCNMemInstr>("global_store")
-                           ->store_type(valueElemNbits);
-        unsigned offset = wordIdx * (valueElemNbits / 8);
-        auto *offsetMod =
-            gcnBuilder.newModifier("offset", std::to_string(offset));
-        gstore({asmAddr, asmArgList->listGet(wordIdx), offOpr}, {offsetMod});
-      }
-
-      auto &wait_cnt = *gcnBuilder.create<>("s_waitcnt vmcnt(0)");
-      wait_cnt();
-
-      Type boolTy = getTypeConverter()->convertType(rewriter.getIntegerType(1));
-      llvm::SmallVector<Type> argTys({boolTy, ptr.getType()});
-      argTys.insert(argTys.end(), nWords, valArgTy);
-
-      auto ASMReturnTy = LLVM::LLVMVoidType::get(ctx);
-
-      gcnBuilder.launch(rewriter, loc, ASMReturnTy);
-#else
       // Prepare the PTX inline asm.
       PTXBuilder ptxBuilder;
       auto *asmArgList = ptxBuilder.newListOperand(asmArgs);
@@ -1531,6 +1468,18 @@ Value ReduceOpConversion::shflSync(ConversionPatternRewriter &rewriter,
     return bitcast(vec, val.getType());
   }
 
+#ifdef USE_ROCM
+  // This map facilates the butterfly shuffle pattern for a stride less than 16. The pattern stride is the key of the map.
+  DenseMap<short, unsigned int> masks{{16, 0x401F}, {8, 0x201F}, {4, 0x101F}, {2, 0x081F}, {1, 0x041F}};
+  GCNBuilder builder; 
+  auto shfl = builder.create("ds_swizzle_b32");
+  auto dOpr = builder.newOperand("=v");
+  auto aOpr = builder.newOperand(val, "v");
+  auto maskOpr = builder.newConstantOperand("offset:" + std::to_string(masks[i]));
+  (*shfl)(dOpr, aOpr, maskOpr);
+  auto swait = builder.create("s_waitcnt lgkmcnt(0)");
+  (*swait)();
+#else
   PTXBuilder builder;
   auto &shfl = builder.create("shfl.sync")->o("bfly").o("b32");
   auto *dOpr = builder.newOperand("=r");
@@ -1539,6 +1488,7 @@ Value ReduceOpConversion::shflSync(ConversionPatternRewriter &rewriter,
   auto *cOpr = builder.newConstantOperand("0x1f");
   auto *maskOpr = builder.newConstantOperand("0xffffffff");
   shfl(dOpr, aOpr, bOpr, cOpr, maskOpr);
+#endif
   return builder.launch(rewriter, loc, val.getType(), false);
 }
 
@@ -4962,6 +4912,29 @@ struct FDivOpConversion
                      ConversionPatternRewriter &rewriter, Type elemTy,
                      ValueRange operands, Location loc) const {
 
+#ifdef USE_ROCM
+    const std::string readConstraint = "v";
+    const std::string writeConstraint = "=v";
+
+    GCNBuilder gcnBuilder;
+    unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+
+    auto res = gcnBuilder.newOperand(writeConstraint);
+    auto lhs = gcnBuilder.newOperand(operands[0], readConstraint);
+    auto rhs = gcnBuilder.newOperand(operands[1], readConstraint);
+
+    // create inst
+    auto &rcp = gcnBuilder.create<GCNInstr>("v_rcp")->float_op_type(bitwidth);
+    auto &mul_inst = gcnBuilder.create<GCNInstr>("v_mul")->float_op_type(bitwidth);
+
+    // launch insts
+    rcp(res, rhs);
+    mul_inst(res, lhs, res);
+
+    // return result
+    Value ret = gcnBuilder.launch(rewriter, loc, elemTy, false);
+    return ret;
+#else
     PTXBuilder ptxBuilder;
     auto &fdiv = *ptxBuilder.create<PTXInstr>("div");
     unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
@@ -4983,6 +4956,7 @@ struct FDivOpConversion
 
     Value ret = ptxBuilder.launch(rewriter, loc, elemTy, false);
     return ret;
+#endif
   }
 };
 
@@ -5049,7 +5023,9 @@ void populateTritonToLLVMPatterns(mlir::LLVMTypeConverter &typeConverter,
   POPULATE_UNARY_OP(triton::PtrToIntOp, LLVM::PtrToIntOp)
 #undef POPULATE_UNARY_OP
 
+#ifndef USE_ROCM
   patterns.add<FDivOpConversion>(typeConverter, benefit);
+#endif
 
   patterns.add<ExtElemwiseOpConversion>(typeConverter, benefit);
 

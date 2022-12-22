@@ -6,6 +6,8 @@ from torch.testing import assert_close
 import triton
 import triton.language as tl
 
+if torch.version.hip is not None:
+    e_libs = triton.get_amdgcn_bitcode_paths()
 
 @pytest.mark.parametrize('num_warps, block_size, iter_size', [
     [4, 256, 1],
@@ -33,8 +35,12 @@ def test_sin_no_mask(num_warps, block_size, iter_size):
     y = torch.empty((block_size,), device=x.device, dtype=x.dtype)
 
     grid = lambda EA: (x.shape.numel() // (block_size),)
-    kernel[grid](x_ptr=x, y_ptr=y,
-                 block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps)
+    if torch.version.hip is not None:
+        kernel[grid](x_ptr=x, y_ptr=y,
+                     block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps, extern_libs=e_libs)
+    else:
+        kernel[grid](x_ptr=x, y_ptr=y,
+                     block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps)
 
     golden_y = torch.sin(x)
     assert_close(y, golden_y, rtol=1e-7, atol=1e-7)
@@ -72,8 +78,12 @@ def test_fmin_no_mask(num_warps, block_size, iter_size):
     z = torch.empty((block_size,), device=x.device, dtype=x.dtype)
 
     grid = lambda EA: (x.shape.numel() // (block_size),)
-    kernel[grid](x_ptr=x, y_ptr=y, z_ptr=z,
-                 block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps)
+    if torch.version.hip is not None:
+        kernel[grid](x_ptr=x, y_ptr=y, z_ptr=z,
+                     block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps, extern_libs=e_libs)
+    else:
+        kernel[grid](x_ptr=x, y_ptr=y, z_ptr=z,
+                     block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps)
 
     golden_z = torch.minimum(x, y)
     assert_close(z, golden_z, rtol=1e-7, atol=1e-7)
@@ -84,32 +94,60 @@ def test_fmin_no_mask(num_warps, block_size, iter_size):
     [4, 1024, 256],
 ])
 def test_fmad_rn_no_mask(num_warps, block_size, iter_size):
-    @triton.jit
-    def kernel(x_ptr,
-               y_ptr,
-               z_ptr,
-               w_ptr,
-               block_size,
-               iter_size: tl.constexpr):
-        pid = tl.program_id(axis=0)
-        for i in range(0, block_size, iter_size):
-            offset = pid * block_size + tl.arange(0, iter_size)
-            x_ptrs = x_ptr + offset
-            y_ptrs = y_ptr + offset
-            z_ptrs = z_ptr + offset
+    if torch.version.hip is not None:
+        @triton.jit
+        def kernel(x_ptr,
+                   y_ptr,
+                   z_ptr,
+                   w_ptr,
+                   block_size,
+                   iter_size: tl.constexpr):
+            pid = tl.program_id(axis=0)
+            for i in range(0, block_size, iter_size):
+                offset = pid * block_size + tl.arange(0, iter_size)
+                x_ptrs = x_ptr + offset
+                y_ptrs = y_ptr + offset
+                z_ptrs = z_ptr + offset
 
-            x = tl.load(x_ptrs)
-            y = tl.load(y_ptrs)
-            z = tl.load(z_ptrs)
+                x = tl.load(x_ptrs)
+                y = tl.load(y_ptrs)
+                z = tl.load(z_ptrs)
 
-            w = tl.libdevice.fma_rn(x, y, z)
-            w_ptrs = w_ptr + offset
-            tl.store(w_ptrs, w)
+                w = tl.libdevice.fma(x, y, z)
+                w_ptrs = w_ptr + offset
+                tl.store(w_ptrs, w)
 
-            x_ptr += iter_size
-            y_ptr += iter_size
-            z_ptr += iter_size
-            w_ptr += iter_size
+                x_ptr += iter_size
+                y_ptr += iter_size
+                z_ptr += iter_size
+                w_ptr += iter_size
+    else:
+        @triton.jit
+        def kernel(x_ptr,
+                   y_ptr,
+                   z_ptr,
+                   w_ptr,
+                   block_size,
+                   iter_size: tl.constexpr):
+            pid = tl.program_id(axis=0)
+            for i in range(0, block_size, iter_size):
+                offset = pid * block_size + tl.arange(0, iter_size)
+                x_ptrs = x_ptr + offset
+                y_ptrs = y_ptr + offset
+                z_ptrs = z_ptr + offset
+
+                x = tl.load(x_ptrs)
+                y = tl.load(y_ptrs)
+                z = tl.load(z_ptrs)
+
+                w = tl.libdevice.fma_rn(x, y, z)
+                w_ptrs = w_ptr + offset
+                tl.store(w_ptrs, w)
+
+                x_ptr += iter_size
+                y_ptr += iter_size
+                z_ptr += iter_size
+                w_ptr += iter_size
 
     x = torch.randn((block_size,), device='cuda', dtype=torch.float64)
     y = torch.randn((block_size,), device='cuda', dtype=torch.float64)
@@ -117,8 +155,12 @@ def test_fmad_rn_no_mask(num_warps, block_size, iter_size):
     w = torch.empty((block_size,), device=x.device, dtype=x.dtype)
 
     grid = lambda EA: (x.shape.numel() // (block_size),)
-    kernel[grid](x_ptr=x, y_ptr=y, z_ptr=z, w_ptr=w,
-                 block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps)
+    if torch.version.hip is not None:
+        kernel[grid](x_ptr=x, y_ptr=y, z_ptr=z, w_ptr=w,
+                     block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps, extern_libs=e_libs)
+    else:
+        kernel[grid](x_ptr=x, y_ptr=y, z_ptr=z, w_ptr=w,
+                     block_size=x.shape[0], iter_size=iter_size, num_warps=num_warps)
 
     golden_w = x * y + z
     assert_close(w, golden_w, rtol=1e-7, atol=1e-7)
@@ -173,6 +215,9 @@ def kernel(X, Y, BLOCK: tl.constexpr):
 
     # triton result
     y = torch.zeros(shape, dtype=x.dtype, device="cuda")
-    kernel[(1,)](x, y, BLOCK=shape[0], extern_libs={"libdevice": lib_path})
+    if torch.version.hip is not None:
+      kernel[(1,)](x, y, BLOCK=shape[0], extern_libs=e_libs)
+    else:
+      kernel[(1,)](x, y, BLOCK=shape[0], extern_libs={"libdevice": lib_path})
     # compare
     assert_close(y, y_ref)

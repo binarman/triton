@@ -52,8 +52,7 @@ std::string GCNBuilder::getConstraints() const {
   auto args = getAllArgs();
   llvm::SmallVector<std::string, 4> argReprs;
   for (auto arg : args)
-    if (!arg->constraint.empty())
-      argReprs.push_back(arg->constraint);
+    argReprs.push_back(arg->constraint);
   return strJoin(argReprs, ",");
 }
 
@@ -127,17 +126,6 @@ GCNInstr::Operand *GCNBuilder::newAddrOperand(mlir::Value addr,
   return opr;
 }
 
-GCNInstr::Operand *GCNBuilder::newEmptyOperand(std::string arg) {
-  auto *opr = newOperand();
-  opr->repr = [arg](int idx) -> std::string {
-    std::stringstream ss;
-    ss << arg;
-    return ss.str();
-  };
-
-  return opr;
-}
-
 std::string GCNBuilder::dump() const {
   llvm::SmallVector<std::string> lines;
   for (auto &exec : executions) {
@@ -178,7 +166,11 @@ std::string GCNInstrExecution::dump() const {
   }
 
   std::string modsRepr = strJoin(modReprs, " ");
-  os << instrRepr << " " << argsRepr << " " << modsRepr << ";";
+  if (!modsRepr.empty()) {
+    os << instrRepr << " " << argsRepr << ", " << modsRepr;
+  } else {
+    os << instrRepr << " " << argsRepr;
+  }
   os.flush();
   return osStr;
 }
