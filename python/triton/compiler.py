@@ -1160,8 +1160,11 @@ static PyObject* launch(PyObject* self, PyObject* args) {{
   uint64_t _function;
   int num_warps;
   int shared_memory;
+  PyObject *launch_enter_hook = NULL;
+  PyObject *launch_exit_hook = NULL;
+  PyObject *compiled_kernel = NULL;
   {' '.join([f"{_extracted_type(ty)} _arg{i}; " for i, ty in signature.items()])}
-  if(!PyArg_ParseTuple(args, \"{format}\", &gridX, &gridY, &gridZ, &num_warps, &shared_memory, &_stream, &_function, {', '.join(f"&_arg{i}" for i, ty in signature.items())})) {{
+  if(!PyArg_ParseTuple(args, \"{format}\", &gridX, &gridY, &gridZ, &num_warps, &shared_memory, &_stream, &_function, &launch_enter_hook, &launch_exit_hook, &compiled_kernel, {', '.join(f"&_arg{i}" for i, ty in signature.items())})) {{
     return NULL;
   }}
   _launch(gridX, gridY, gridZ, num_warps, shared_memory, (hipStream_t)_stream, (hipFunction_t)_function, {', '.join(f"getPointer(_arg{i},{i})" if ty[0]=="*" else f"_arg{i}"for i, ty in signature.items())});
@@ -1561,6 +1564,7 @@ arg_type_pattern = {
 
 
 # def compile(fn, signature: str, device: int = -1, constants=dict(), num_warps: int = 4, num_stages: int = 3, extern_libs=None, configs=None):
+@static_vars(discovered_gfx_arch = _get_amdgpu_arch())
 def compile(fn, **kwargs):
     capability = kwargs.get("cc", None)
     if capability is None:
@@ -1577,19 +1581,35 @@ def compile(fn, **kwargs):
     num_stages = kwargs.get("num_stages", 3 if capability >= 75 else 2)
     extern_libs = kwargs.get("extern_libs", dict())
     # build compilation stages
-    stages = {
-        "ast": (lambda path: fn, None),
-        "ttir": (lambda path: _triton.ir.parse_mlir_module(path, context),
-                 lambda src: ast_to_ttir(src, signature, configs[0], constants)),
-        "ttgir": (lambda path: _triton.ir.parse_mlir_module(path, context),
-                  lambda src: ttir_to_ttgir(src, num_warps, num_stages, capability)),
-        "llir": (lambda path: Path(path).read_bytes(),
-                 lambda src: ttgir_to_llir(src, extern_libs, capability)),
-        "ptx": (lambda path: Path(path).read_text(),
-                lambda src: llir_to_ptx(src, capability)),
-        "cubin": (lambda path: Path(path).read_bytes(),
-                  lambda src: ptx_to_cubin(src, capability))
-    }
+    if torch.version.hip is not None:
+        gfx_arch = os.environ.get('MI_GPU_ARCH', compile.discovered_gfx_arch)
+        if gfx_arch is None:
+            raise RuntimeError('gfx_arch is None (not specified)')
+        stages = {
+            "ast": (lambda path: fn, None),
+            "ttir": (lambda path: _triton.ir.parse_mlir_module(path, context),
+                     lambda src: ast_to_ttir(src, signature, configs[0], constants)),
+            "ttgir": (lambda path: _triton.ir.parse_mlir_module(path, context),
+                      lambda src: ttir_to_ttgir(src, num_warps, num_stages, capability)),
+            "llir": (lambda path: Path(path).read_bytes(),
+                     lambda src: ttgir_to_llir(src, extern_libs, capability)),
+            "amdgcn": (lambda path: Path(path).read_text(),
+                       lambda src: llir_to_amdgcn(src, gfx_arch)),
+        }
+    else:
+        stages = {
+            "ast": (lambda path: fn, None),
+            "ttir": (lambda path: _triton.ir.parse_mlir_module(path, context),
+                     lambda src: ast_to_ttir(src, signature, configs[0], constants)),
+            "ttgir": (lambda path: _triton.ir.parse_mlir_module(path, context),
+                      lambda src: ttir_to_ttgir(src, num_warps, num_stages, capability)),
+            "llir": (lambda path: Path(path).read_bytes(),
+                     lambda src: ttgir_to_llir(src, extern_libs, capability)),
+            "ptx": (lambda path: Path(path).read_text(),
+                    lambda src: llir_to_ptx(src, capability)),
+            "cubin": (lambda path: Path(path).read_bytes(),
+                      lambda src: ptx_to_cubin(src, capability))
+        }
     # find out the signature of the function
     if isinstance(fn, triton.runtime.JITFunction):
         configs = kwargs.get("configs", None)
@@ -1642,17 +1662,24 @@ def compile(fn, **kwargs):
     asm = dict()
     module = fn
     # run compilation pipeline  and populate metadata
-    for ir, (parse, compile) in list(stages.items())[first_stage:]:
+    for ir, (parse, compile_kernel) in list(stages.items())[first_stage:]:
         path = fn_cache_manager._make_path(f"{name}.{ir}")
         if ir == ext:
             next_module = parse(fn)
         elif os.path.exists(path) and\
                 ir in metadata["ctime"] and\
                 os.path.getctime(path) == metadata["ctime"][ir]:
-            next_module = parse(path)
+            if ir == "amdgcn":
+                next_module = (parse(path), parse(fn_cache_manager._make_path(f"{name}.hsaco_path")))
+            else:
+                next_module = parse(path)
         else:
-            next_module = compile(module)
-            fn_cache_manager.put(next_module, f"{name}.{ir}")
+            next_module = compile_kernel(module)
+            if ir == "amdgcn":
+                fn_cache_manager.put(next_module[0], f"{name}.{ir}")
+                fn_cache_manager.put(next_module[1], f"{name}.hsaco_path")
+            else:
+                fn_cache_manager.put(next_module, f"{name}.{ir}")
         if os.path.exists(path):
             metadata["ctime"][ir] = os.path.getctime(path)
         asm[ir] = next_module if ir == "cubin" else str(next_module)
@@ -1660,6 +1687,9 @@ def compile(fn, **kwargs):
             metadata["shared"] = _triton.get_shared_memory_size(module)
         if ir == "ptx":
             metadata["name"] = ptx_get_kernel_name(next_module)
+        if ir == "amdgcn":
+            metadata["name"] = amdgcn_get_kernel_name(next_module[0])
+            asm["hsaco_path"] = next_module[1]
         module = next_module
     # write-back metadata
     fn_cache_manager.put(json.dumps(metadata), f"{name}.json", binary=False)

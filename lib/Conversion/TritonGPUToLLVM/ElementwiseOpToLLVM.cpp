@@ -575,6 +575,10 @@ struct FDivOpConversion
   Value createDestOp(mlir::arith::DivFOp op, OpAdaptor adaptor,
                      ConversionPatternRewriter &rewriter, Type elemTy,
                      ValueRange operands, Location loc) const {
+#ifdef USE_ROCM
+      return rewriter.create<LLVM::FDivOp>(loc, elemTy, operands[0],
+                                           operands[1]);
+#else
     PTXBuilder ptxBuilder;
     auto &fdiv = *ptxBuilder.create<PTXInstr>("div");
     unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
@@ -593,6 +597,7 @@ struct FDivOpConversion
 
     Value ret = ptxBuilder.launch(rewriter, loc, elemTy, false);
     return ret;
+#endif
   }
 };
 
