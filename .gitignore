@@ -10,3 +10,5 @@ python/triton/_C/libtriton.so
 
 .vscode
 .vs
+
+triton_cache*
