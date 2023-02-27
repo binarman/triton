@@ -192,6 +192,10 @@ static std::map<std::string, std::string> getExternLibs(mlir::ModuleOp module) {
     }
   }
 
+  for (auto const &item: externLibs) {
+    std::cout << "external lib: " << item.first << " path:" << item.second << "\n";
+  }
+
   return externLibs;
 }
 
@@ -235,6 +239,7 @@ static bool linkExternLib(llvm::Module &module, llvm::StringRef name,
   if (name == "libdevice") {
     linkLibdevice(module);
   } else {
+    std::cout << "unknown extern lib: " << name.str() << "\n";
     assert(false && "unknown extern lib: ");
   }
 #endif

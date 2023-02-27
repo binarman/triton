@@ -1020,6 +1020,7 @@ def add_external_libs(mod, libs):
 def ttgir_to_llir(mod, extern_libs, compute_capability):
     if extern_libs:
         add_external_libs(mod, extern_libs)
+    print(mod)
     return _triton.translate_triton_gpu_to_llvmir(mod, compute_capability)
 
 
