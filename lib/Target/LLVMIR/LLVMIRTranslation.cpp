@@ -217,12 +217,14 @@ static void linkLibdevice(llvm::Module &module) {
 
 static bool linkExternLib(llvm::Module &module, llvm::StringRef name,
                           llvm::StringRef path) {
+  std::cout << "linkExternLib: " << name.str() << " start\n";
   llvm::SMDiagnostic err;
   auto &ctx = module.getContext();
 
   auto extMod = llvm::parseIRFile(path, err, ctx);
   if (!extMod) {
     llvm::errs() << "Failed to load " << path;
+    std::cout << "  linkExternLib exit1\n";
     return true;
   }
 
@@ -231,24 +233,29 @@ static bool linkExternLib(llvm::Module &module, llvm::StringRef name,
 
   if (llvm::Linker::linkModules(module, std::move(extMod),
                                 llvm::Linker::Flags::LinkOnlyNeeded)) {
+    std::cout << "  linkExternLib exit2\n";
     llvm::errs() << "Failed to link " << path;
     return true;
   }
 
 #ifndef USE_ROCM
+  std::cout << "  linkExternLib inside USE_ROCM\n";
   if (name == "libdevice") {
+    std::cout << "known extern lib: " << name.str() << " " << path.str() << "\n";
     linkLibdevice(module);
   } else {
-    std::cout << "unknown extern lib: " << name.str() << "\n";
+    std::cout << "unknown extern lib: " << name.str() << " " << path.str() << "\n";
     assert(false && "unknown extern lib: ");
   }
 #endif
+  std::cout << "  linkExternLib success\n";
 
   return false;
 }
 
 std::unique_ptr<llvm::Module>
 translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
+  std::cout << "translateLLVMToLLVMIR\n";
   DialectRegistry registry;
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);
@@ -273,6 +280,7 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
   // analyses on the used library functions, and eliminate any used functions as
   // dead code.
   auto externLibs = getExternLibs(module);
+  std::cout << "fetched external libs\n";
   for (auto &lib : externLibs) {
     if (linkExternLib(*llvmModule, lib.first, lib.second))
       return nullptr;
