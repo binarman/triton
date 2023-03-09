@@ -1603,7 +1603,7 @@ def read_or_execute(cache_manager, force_compile, file_name, metadata,
 
 def get_amdgpu_arch_fulldetails():
     """
-    get the amdgpu fulll ISA details for compiling:
+    get the amdgpu full ISA details for compiling:
     i.e., arch_triple: amdgcn-amd-amdhsa; arch_name: gfx906; arch_features: sramecc+:xnack-
     """
     try:
@@ -1720,10 +1720,11 @@ def compile(fn, **kwargs):
     extern_libs = kwargs.get("extern_libs", dict())
     # build compilation stages
     if torch.version.hip is not None:
+        compute_settings = ROCmDeviceLibsSettings.make_better_precision()
         if extern_libs is None:
-            extern_libs = get_amdgcn_bitcode_paths()
+            extern_libs = get_amdgcn_bitcode_paths(compute_settings)
         else:
-            extern_libs.update(get_amdgcn_bitcode_paths())
+            extern_libs.update(get_amdgcn_bitcode_paths(compute_settings))
 
         for key in list(extern_libs):
             if extern_libs[key] == '' or extern_libs[key] is None:
@@ -1852,42 +1853,132 @@ def compile(fn, **kwargs):
     # return handle to compiled kernel
     return CompiledKernel(fn, so_path, metadata, asm)
 
+
 @static_vars(discovered_gfx_arch_fulldetails = get_amdgpu_arch_fulldetails())
-def _get_amdgcn_bitcode_paths():
-  if torch.version.hip is not None:
-      gpu_arch_agnostic_bitcode_libraries = ["opencl.bc",
-                                             "ocml.bc",
-                                             "ockl.bc",
-                                             "oclc_finite_only_off.bc",
-                                             "oclc_daz_opt_off.bc",
-                                             "oclc_correctly_rounded_sqrt_on.bc",
-                                             "oclc_unsafe_math_off.bc",
-                                             "oclc_wavefrontsize64_on.bc"]
+def _get_all_amdgcn_bitcode_paths():
+    """
+    Get all bitcode libraries for detected GPU architecture.
+    Returns mapping <library category> -> list of library paths
+
+    Available library categories are:
+    - arch_agnostic
+    - arch_specific
+    - finite_arith 
+    - denorm_as_zero
+    - round_sqrt
+    - unsafe_math
+    - wavefront_size
+    """
+    if torch.version.hip is not None:
+        # common libraries with various math and helper functions
+        gpu_arch_agnostic_bitcode_libraries = ["opencl.bc",
+                                                "ocml.bc",
+                                                "ockl.bc"]
+        
+        # library containing target arch information
+        # TODO make gfx_arch configurable
+        gfx_arch = _get_all_amdgcn_bitcode_paths.discovered_gfx_arch_fulldetails[1]
+        gfx_arch_id = re.search('gfx(\\w+)', gfx_arch).group(1).strip()
+        gpu_arch_specific_bitcode_libraries = ['oclc_isa_version_' + gfx_arch_id + ".bc"]
+
+        # libraries containing constants used for common libraries specialization during compile time
+        # Note: order of libraries in list is crucial:
+        # - index 0 corresponds to "off" option
+        # - index 1 coresponds to "on" option
+        finite_arithmetics_bitcide_libraries = ["oclc_finite_only_off.bc",
+                                                "oclc_finite_only_on.bc"]
+        denorm_as_zero_bitcode_libraries = ["oclc_daz_opt_off.bc",
+                                            "oclc_daz_opt_on.bc"]
+        round_sqrt_bitcode_libraries = ["oclc_correctly_rounded_sqrt_off.bc",
+                                        "oclc_correctly_rounded_sqrt_on.bc"]
+        unsafe_math_bitcode_libraries = ["oclc_unsafe_math_off.bc",
+                                        "oclc_unsafe_math_on.bc"]
+        wavefront_size_64_bitcode_libraries = ["oclc_wavefrontsize64_off.bc",
+                                                "oclc_wavefrontsize64_on.bc"]
+        
+        bitcode_path_dir = os.path.join(Path(__file__).parent.resolve(), "third_party/rocm/lib/bitcode/")
+
+        def libs_to_paths(libs_list):
+            bitcode_paths = []
+            for bc_lib in libs_list:
+                bc_path = os.path.join(bitcode_path_dir, bc_lib)
+                if os.path.exists(bc_path):
+                    bitcode_paths.append(bc_path)
+            return bitcode_paths
+
+        bitcode_paths = {}
+        bitcode_paths["arch_agnostic"] = libs_to_paths(gpu_arch_agnostic_bitcode_libraries)
+        bitcode_paths["arch_specific"] = libs_to_paths(gpu_arch_specific_bitcode_libraries)
+        bitcode_paths["finite_arith"] = libs_to_paths(finite_arithmetics_bitcide_libraries)
+        bitcode_paths["denorm_as_zero"] = libs_to_paths(denorm_as_zero_bitcode_libraries)
+        bitcode_paths["round_sqrt"] = libs_to_paths(round_sqrt_bitcode_libraries)
+        bitcode_paths["unsafe_math"] = libs_to_paths(unsafe_math_bitcode_libraries)
+        bitcode_paths["wavefront_size64"] = libs_to_paths(wavefront_size_64_bitcode_libraries)
     
-      gfx_arch = _get_amdgcn_bitcode_paths.discovered_gfx_arch_fulldetails[1]
-      gfx_arch_id = re.search('gfx(\\w+)', gfx_arch).group(1).strip()
+        return bitcode_paths
+    else:
+        return {}
 
-      gpu_arch_specific_bitcode_library = 'oclc_isa_version_' + gfx_arch_id + ".bc"
-      bitcode_path_dir = os.path.join(Path(__file__).parent.resolve(), "third_party/rocm/lib/bitcode/")
+class ROCmDeviceLibsSettings:
+    """
+    Class is used to specify ROCm DeviceLib operation mode.
+    all fields should be initialized with True or False before use
+    """
 
-      amdgcn_bitcode_paths = {}
-      i = 1
-      for bc_lib in gpu_arch_agnostic_bitcode_libraries:
-        bc_path = bitcode_path_dir + bc_lib
-        if os.path.exists(bc_path):
-            amdgcn_bitcode_paths['library_' + str(i)] = bc_path
+    def __init__(self):
+        self.finite_arith = None
+        self.denorm_as_zero = None
+        self.round_sqrt = None
+        self.unsafe_math = None
+        # TODO make this option adjustable
+        self.wavefront_size = 64
+
+    def make_better_performance():
+        s = ROCmDeviceLibsSettings()
+        s.finite_arith = False
+        s.denorm_as_zero = True
+        s.round_sqrt = False
+        s.unsafe_math = True
+        return s
+
+    def make_better_precision():
+        s = ROCmDeviceLibsSettings()
+        s.finite_arith = False
+        s.denorm_as_zero = False
+        s.round_sqrt = True
+        s.unsafe_math = False
+        return s
+
+@static_vars(amdgcn_bitcode_paths = _get_all_amdgcn_bitcode_paths())
+def get_amdgcn_bitcode_paths(settings: ROCmDeviceLibsSettings):
+    library_collection = get_amdgcn_bitcode_paths.amdgcn_bitcode_paths
+    bitcode_paths = {}
+
+    def add_list_of_libraries(name_prefix, lib_list):
+        i = 0
+        for lib_path in lib_list:
+            bitcode_paths[name_prefix + "_" + str(i)] = lib_path
             i += 1
-      bc_gfx_path = bitcode_path_dir + gpu_arch_specific_bitcode_library
-      if os.path.exists(bc_gfx_path):
-        amdgcn_bitcode_paths['library_' + str(i)] = bc_gfx_path
-    
-      return amdgcn_bitcode_paths
-  else:
-      return {}
 
-@static_vars(amdgcn_bitcode_paths = _get_amdgcn_bitcode_paths())
-def get_amdgcn_bitcode_paths():
-  return get_amdgcn_bitcode_paths.amdgcn_bitcode_paths
+    # add common libraries, used in all configurations
+    add_list_of_libraries("common_library", library_collection["arch_agnostic"])
+    
+    # add architecture specific libraries
+    add_list_of_libraries("arch_library", library_collection["arch_specific"])
+
+    # add libraries specific to chosen options
+    # if some option is not set(i.e. equal to None), exception will be thrown
+    def add_switch_library(name, mode):
+        selected_library = library_collection[name][int(mode)]
+        bitcode_paths[name + "_library"] = selected_library
+
+    add_switch_library("finite_arith", settings.finite_arith)
+    add_switch_library("denorm_as_zero", settings.denorm_as_zero)
+    add_switch_library("denorm_as_zero", settings.denorm_as_zero)
+    add_switch_library("unsafe_math", settings.unsafe_math)
+    add_switch_library("wavefront_size64", True if settings.wavefront_size == 64 else False)
+
+    return bitcode_paths
 
 class CompiledKernel:
 
