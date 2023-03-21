@@ -761,7 +761,10 @@ class ConvertTritonToTritonGPU
 public:
   ConvertTritonToTritonGPU() = default;
   // constructor with some parameters set explicitly.
-  ConvertTritonToTritonGPU(int numWarps) { this->numWarps = numWarps; }
+  ConvertTritonToTritonGPU(int numWarps, std::shared_ptr<CompilationTargetBase> target) {
+    this->target_info = std::move(target);
+    this->numWarps = numWarps;
+  }
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
@@ -791,18 +794,43 @@ public:
         AttrNumWarpsName,
         IntegerAttr::get(i32_ty, llvm::APInt(32, numWarps.getValue())));
 
+    mod->setAttr(
+        AttrTripleName,
+        StringAttr::get(context, target_info->getTriple()));
+
+    switch (target_info->getVendor()) {
+    case CompilationTargetBase::Vendor::AMD:
+      mod->setAttr(
+          AttrGFXArchName,
+          StringAttr::get(context, static_cast<CompilationTargetAMD*>(target_info.get())->getArch()));
+      mod->setAttr(
+          AttrFeaturesName,
+          StringAttr::get(context, static_cast<CompilationTargetAMD*>(target_info.get())->getFeatures()));
+      break;
+    case CompilationTargetBase::Vendor::NVIDIA:
+      mod->setAttr(
+          AttrComputeCapabilityName,
+          IntegerAttr::get(i32_ty, static_cast<CompilationTargetNvidia*>(target_info.get())->getComputeCapability()));
+      break;
+    default:
+      return signalPassFailure();
+    }
+
     // update layouts
     //  broadcast src => multicast, dst => broadcasted
     // if (failed(target.refineLayouts(mod, numWarps)))
     //   return signalPassFailure();
   }
+
+private:
+  std::shared_ptr<CompilationTargetBase> target_info;
 };
 
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-mlir::triton::createConvertTritonToTritonGPUPass(int numWarps) {
-  return std::make_unique<::ConvertTritonToTritonGPU>(numWarps);
+mlir::triton::createConvertTritonToTritonGPUPass(int numWarps, std::shared_ptr<CompilationTargetBase> target) {
+  return std::make_unique<::ConvertTritonToTritonGPU>(numWarps, std::move(target));
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>

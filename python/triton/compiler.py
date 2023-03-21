@@ -1104,13 +1104,39 @@ def optimize_triton_ir(mod):
 
 def ast_to_ttir(fn, signature, specialization, constants, debug=False):
     mod, _ = build_triton_ir(fn, signature, specialization, constants, debug)
-    return optimize_triton_ir(mod)
+    optimized = optimize_triton_ir(mod)
+    return optimized
 
 
-def ttir_to_ttgir(mod, num_warps):
+class CompilationTarget:
+    def __init__(self,
+                 triple : str,
+                 gfx_arch = None,
+                 compute_capability = None,
+                 features = None):
+        self.triple = triple
+        self.arch, self.vendor, self.platform = triple.split("-")
+        if self.vendor == "amd":
+            self.gfx_arch = gfx_arch if gfx_arch is not None else "gfx90a"
+            self.features = features if features is not None else ""
+        if self.vendor == "nvidia":
+            self.compute_capability = compute_capability if compute_capability else 80
+
+
+def ttir_to_ttgir(mod, num_warps, compilation_target):
     pm = _triton.ir.pass_manager(mod.context)
-    pm.add_convert_triton_to_tritongpu_pass(num_warps)
+    if compilation_target.vendor == "amd":
+        pm.add_convert_triton_to_amd_tritongpu_pass(num_warps,
+                                                    compilation_target.triple,
+                                                    compilation_target.gfx_arch,
+                                                    compilation_target.features)
+    if compilation_target.vendor == "nvidia":
+        pm.add_convert_triton_to_nvidia_tritongpu_pass(num_warps,
+                                                       compilation_target.triple,
+                                                       compilation_target.compute_capability)
+    print("module before tt to ttg:\n", mod)
     pm.run(mod)
+    print("module after tt to ttg:\n", mod)
     return mod
 
 
@@ -1861,12 +1887,16 @@ def compile(fn, **kwargs):
         gfx_arch = os.environ.get('MI_GPU_ARCH', gfx_arch_full_details[1])
         if gfx_arch is None:
             raise RuntimeError('gfx_arch is None (not specified)')
+        gfx_triple = gfx_arch_full_details[0]
+        gfx_features = gfx_arch_full_details[2]
+        compilation_target = CompilationTarget(gfx_triple, gfx_arch=gfx_arch, features = gfx_features)
         stages = {
             "ast": (lambda path: fn, None),
             "ttir": (lambda path: parse_mlir_module(path, context),
                      lambda src: ast_to_ttir(src, signature, configs[0], constants, debug)),
             "ttgir": (lambda path: parse_mlir_module(path, context),
-                      lambda src: optimize_ttgir(ttir_to_ttgir(src, num_warps), num_stages, capability)),
+                      lambda src: optimize_ttgir(ttir_to_ttgir(src, num_warps, compilation_target),
+                                                 num_stages, capability)),
             "llir": (lambda path: Path(path).read_text(),
                      lambda src: ttgir_to_llir(src, extern_libs, capability)),
             "amdgcn": (lambda path: Path(path).read_text(),
@@ -1875,12 +1905,13 @@ def compile(fn, **kwargs):
                                                         gfx_arch_full_details[2])),
         }
     else:
+        compilation_target = CompilationTarget("nvptx64-nvidia-cuda", compute_capability=capability)
         stages = {
             "ast": (lambda path: fn, None),
             "ttir": (lambda path: parse_mlir_module(path, context),
                      lambda src: ast_to_ttir(src, signature, configs[0], constants, debug)),
             "ttgir": (lambda path: parse_mlir_module(path, context),
-                      lambda src: optimize_ttgir(ttir_to_ttgir(src, num_warps), num_stages, capability)),
+                      lambda src: optimize_ttgir(ttir_to_ttgir(src, num_warps, compilation_target), num_stages, capability)),
             "llir": (lambda path: Path(path).read_text(),
                      lambda src: ttgir_to_llir(src, extern_libs, capability)),
             "ptx": (lambda path: Path(path).read_text(),

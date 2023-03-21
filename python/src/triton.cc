@@ -1539,10 +1539,24 @@ void init_triton_ir(py::module &&m) {
            [](mlir::PassManager &self) {
              self.addPass(mlir::triton::createCombineOpsPass());
            })
-      .def("add_convert_triton_to_tritongpu_pass",
-           [](mlir::PassManager &self, int numWarps) {
+      .def("add_convert_triton_to_amd_tritongpu_pass",
+           [](mlir::PassManager &self,
+              int numWarps,
+              const std::string triple,
+              const std::string arch,
+              const std::string features) {
+             auto t = std::make_shared<mlir::triton::CompilationTargetAMD>(triple, arch, features);
              self.addPass(
-                 mlir::triton::createConvertTritonToTritonGPUPass(numWarps));
+                 mlir::triton::createConvertTritonToTritonGPUPass(numWarps, std::move(t)));
+           })
+     .def("add_convert_triton_to_nvidia_tritongpu_pass",
+           [](mlir::PassManager &self,
+              int numWarps,
+              const std::string triple,
+              int compute_capability) {
+             auto t = std::make_shared<mlir::triton::CompilationTargetNvidia>(triple, compute_capability);
+             self.addPass(
+                 mlir::triton::createConvertTritonToTritonGPUPass(numWarps, std::move(t)));
            })
       .def("add_tritongpu_pipeline_pass",
            [](mlir::PassManager &self, int numStages) {
