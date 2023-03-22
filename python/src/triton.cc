@@ -1567,9 +1567,9 @@ void init_triton_ir(py::module &&m) {
              self.addPass(mlir::createTritonGPUPrefetchPass());
            })
       .def("add_tritongpu_accelerate_matmul_pass",
-           [](mlir::PassManager &self, int computeCapability) {
+           [](mlir::PassManager &self) {
              self.addPass(
-                 mlir::createTritonGPUAccelerateMatmulPass(computeCapability));
+                 mlir::createTritonGPUAccelerateMatmulPass());
            })
       .def("add_tritongpu_optimize_dot_operands_pass",
            [](mlir::PassManager &self) {

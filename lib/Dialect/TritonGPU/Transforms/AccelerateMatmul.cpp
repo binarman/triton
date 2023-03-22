@@ -199,12 +199,19 @@ class TritonGPUAccelerateMatmulPass
     : public TritonGPUAccelerateMatmulBase<TritonGPUAccelerateMatmulPass> {
 public:
   TritonGPUAccelerateMatmulPass() = default;
-  TritonGPUAccelerateMatmulPass(int computeCapability) {
-    this->computeCapability = computeCapability;
-  }
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp m = getOperation();
+
+    auto triple = triton::gpu::TritonGPUDialect::getTriple(m);
+    int computeCapability;
+    if (triple == "nvptx64-nvidia-cuda") {
+      computeCapability = triton::gpu::TritonGPUDialect::getComputeCapability(m);
+    } else if (triple == "amdgcn-amd-amdhsa") {
+      computeCapability = 80;
+    } else {
+      assert(false && "unsupported target triple");
+    }
 
     mlir::RewritePatternSet patterns(context);
     patterns.add<::BlockedToMMA>(context, computeCapability);
@@ -215,6 +222,6 @@ public:
 };
 
 std::unique_ptr<Pass>
-mlir::createTritonGPUAccelerateMatmulPass(int computeCapability) {
-  return std::make_unique<TritonGPUAccelerateMatmulPass>(computeCapability);
+mlir::createTritonGPUAccelerateMatmulPass() {
+  return std::make_unique<TritonGPUAccelerateMatmulPass>();
 }
