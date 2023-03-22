@@ -72,8 +72,9 @@ if __name__ == '__main__':
 
         # triton-ir -> triton-gpu-ir
         # use compute_capability == 80
-        module = triton.compiler.ttir_to_ttgir(module, num_warps=args.num_warps) # num_stages=3, compute_capability=80)
-        module = triton.compiler.optimize_ttgir(module, num_stages=3, compute_capability=80)
+        compilation_target = triton.compiler.CompilationTarget(arch_triple, gfx_arch = arch_name, features = arch_features)
+        module = triton.compiler.ttir_to_ttgir(module, num_warps=args.num_warps, compilation_target=compilation_target)
+        module = triton.compiler.optimize_ttgir(module, num_stages=3)
         # triton-gpu-ir -> llvm-ir
         # use compute_capability == 80
         module = triton.compiler.ttgir_to_llir(module, extern_libs=None, compute_capability=80)
@@ -89,7 +90,8 @@ if __name__ == '__main__':
 
     # triton-ir -> triton-gpu-ir
     module = triton.compiler.ttir_to_ttgir(module, num_warps=args.num_warps)
-    module = triton.compiler.optimize_ttgir(module, num_stages=3, compute_capability=args.sm)
+    compilation_target = triton.compiler.CompilationTarget(arch_triple, compute_capability = args.sm)
+    module = triton.compiler.optimize_ttgir(module, num_stages=3, compilation_target=compilation_target)
     if args.target == 'triton-gpu-ir':
         print(module.str())
         sys.exit(0)
