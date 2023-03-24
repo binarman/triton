@@ -40,6 +40,53 @@ Right now, Triton implements two classes of layouts: shared, and distributed.
   }];
 }
 
+class TritonGPU_TargetAttr<string name>
+  : AttrDef<TritonGPU_Dialect, name> {
+  let description = [{
+TritonGPU Module could be target specific, attributes of this class contain data about target hardware and platform.
+  }];
+}
+
+//===-------------------------------------------------------------------------===//
+// TritonGPU Module Attribute Definitions
+//===-------------------------------------------------------------------------===//
+
+def TargetCommonInfo : TritonGPU_TargetAttr<"TargetCommonInfo"> {
+  let mnemonic = "targetCommonInfo";
+
+  let description = [{
+    Common target information.
+  }];
+
+  let parameters = (ins "std::string":$triple);
+
+  let hasCustomAssemblyFormat = 1;
+}
+
+def TargetAMDInfoAttr : TritonGPU_TargetAttr<"TargetAMDInfo"> {
+  let mnemonic = "targetAMDInfo";
+
+  let description = [{
+    AMD specific target information.
+  }];
+
+  let parameters = (ins "std::string":$gfxArch, "std::string":$gfxFeatures);
+
+  let hasCustomAssemblyFormat = 1;
+}
+
+def TargetNvidiaInfoAttr : TritonGPU_TargetAttr<"TargetNvidiaInfo"> {
+  let mnemonic = "targetNvidiaInfo";
+
+  let description = [{
+    Nvidia specific target information.
+  }];
+
+  let parameters = (ins "int":$computeCapability);
+
+  let hasCustomAssemblyFormat = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Shared Layout Encoding
 //===----------------------------------------------------------------------===//

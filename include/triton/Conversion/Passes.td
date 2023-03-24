@@ -20,7 +20,19 @@ def ConvertTritonToTritonGPU: Pass<"convert-triton-to-tritongpu", "mlir::ModuleO
    let options = [
        Option<"numWarps", "num-warps",
               "int32_t", /*default*/"4",
-              "number of warps">
+              "number of warps">,
+       Option<"computeCapability", "compute-capability",
+              "int32_t", /*default*/"80",
+              "target compute capability">,
+       Option<"triple", "triple",
+              "std::string", /*default*/"\"nvptx64-nvidia-cuda\"",
+              "target arch triple">,
+       Option<"GFXArch", "gfx-arch",
+              "std::string", /*default*/"\"gfx90a\"",
+              "target gfx arch">,
+       Option<"features", "features",
+              "std::string", /*default*/"\"\"",
+              "list of enabled and disabled hardware features">,
    ];
 }
 

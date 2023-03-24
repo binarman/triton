@@ -41,6 +41,16 @@ SmallVector<unsigned> getOrder(const Attribute &layout);
 
 bool isaDistributedLayout(const Attribute &layout);
 
+std::string getTargetCommonInfoAttrName();
+std::string getTargetAMDInfoAttrName();
+std::string getTargetNvidiaInfoAttrName();
+
+TargetCommonInfoAttr getTargetCommonInfo(ModuleOp mod);
+
+TargetAMDInfoAttr getTargetAMDInfo(ModuleOp mod);
+
+TargetNvidiaInfoAttr getTargetNvidiaInfo(ModuleOp mod);
+
 } // namespace gpu
 } // namespace triton
 } // namespace mlir

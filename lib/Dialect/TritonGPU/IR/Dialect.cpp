@@ -261,6 +261,40 @@ bool isaDistributedLayout(const Attribute &layout) {
          layout.isa<SliceEncodingAttr>();
 }
 
+std::string getTargetCommonInfoAttrName() { return "triton_gpu.common-target"; }
+std::string getTargetAMDInfoAttrName() { return "triton_gpu.amd-target"; }
+std::string getTargetNvidiaInfoAttrName() { return "triton_gpu.nvidia-target"; }
+
+TargetCommonInfoAttr getTargetCommonInfo(ModuleOp mod) {
+  const auto attributeName = getTargetCommonInfoAttrName();
+  if(!mod->hasAttr(attributeName)) {
+    auto errorMessage =
+        llvm::Twine("TritonGPU module should contain a ") + attributeName + " attribute";
+    llvm::report_fatal_error(errorMessage);
+  }
+  return mod->getAttrOfType<TargetCommonInfoAttr>(attributeName);
+}
+
+TargetAMDInfoAttr getTargetAMDInfo(ModuleOp mod) {
+  const auto attributeName = getTargetAMDInfoAttrName();
+  if(!mod->hasAttr(attributeName)) {
+    auto errorMessage =
+        llvm::Twine("TritonGPU module should contain a ") + attributeName + " attribute";
+    llvm::report_fatal_error(errorMessage);
+  }
+  return mod->getAttrOfType<TargetAMDInfoAttr>(attributeName);
+}
+
+TargetNvidiaInfoAttr getTargetNvidiaInfo(ModuleOp mod) {
+  const auto attributeName = getTargetNvidiaInfoAttrName();
+  if(!mod->hasAttr(attributeName)) {
+    auto errorMessage =
+        llvm::Twine("TritonGPU module should contain a ") + attributeName + " attribute";
+    llvm::report_fatal_error(errorMessage);
+  }
+  return mod->getAttrOfType<TargetNvidiaInfoAttr>(attributeName);
+}
+
 } // namespace gpu
 } // namespace triton
 } // namespace mlir

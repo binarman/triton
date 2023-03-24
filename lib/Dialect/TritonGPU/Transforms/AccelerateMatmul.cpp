@@ -203,10 +203,11 @@ public:
     MLIRContext *context = &getContext();
     ModuleOp m = getOperation();
 
-    auto triple = triton::gpu::TritonGPUDialect::getTriple(m);
+    auto common_info = triton::gpu::getTargetCommonInfo(m);
     int computeCapability;
+    auto triple = common_info.getTriple();
     if (triple == "nvptx64-nvidia-cuda") {
-      computeCapability = triton::gpu::TritonGPUDialect::getComputeCapability(m);
+      computeCapability = triton::gpu::getTargetNvidiaInfo(m).getComputeCapability();
     } else if (triple == "amdgcn-amd-amdhsa") {
       computeCapability = 80;
     } else {

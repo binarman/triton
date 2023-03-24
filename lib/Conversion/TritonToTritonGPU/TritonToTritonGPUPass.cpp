@@ -759,8 +759,19 @@ void populateCFPatterns(TritonGPUTypeConverter &typeConverter,
 class ConvertTritonToTritonGPU
     : public ConvertTritonToTritonGPUBase<ConvertTritonToTritonGPU> {
 public:
-  ConvertTritonToTritonGPU() = default;
-  // constructor with some parameters set explicitly.
+  // default constructor, gets target from MLIR command line parameters.
+  ConvertTritonToTritonGPU() {
+    if (triple.getValue() == "nvptx64-nvidia-cuda") {
+      target_info.reset
+          (new CompilationTargetNvidia(triple.getValue(), computeCapability.getValue()));
+    } else if (triple.getValue() == "amdgcn-amd-amdhsa") {
+      target_info.reset
+          (new CompilationTargetAMD(triple.getValue(), GFXArch.getValue(), features.getValue()));
+    } else {
+      assert(false && "unsupported target triple");
+    }
+  }
+  // constructor with parameters set explicitly.
   ConvertTritonToTritonGPU(int numWarps, std::shared_ptr<CompilationTargetBase> target) {
     this->target_info = std::move(target);
     this->numWarps = numWarps;
@@ -795,27 +806,16 @@ public:
         IntegerAttr::get(i32_ty, llvm::APInt(32, numWarps.getValue())));
 
     mod->setAttr(
-        AttrTripleName,
-        StringAttr::get(context, target_info->getTriple()));
+        mlir::triton::gpu::getTargetCommonInfoAttrName(),
+        mlir::triton::gpu::TargetCommonInfoAttr::get(context, target_info->getTriple()));
 
-    switch (target_info->getVendor()) {
-    case CompilationTargetBase::Vendor::AMD:
-      mod->setAttr(
-          AttrGFXArchName,
-          StringAttr::get(context, static_cast<CompilationTargetAMD*>(target_info.get())->getArch()));
-      mod->setAttr(
-          AttrFeaturesName,
-          StringAttr::get(context, static_cast<CompilationTargetAMD*>(target_info.get())->getFeatures()));
-      break;
-    case CompilationTargetBase::Vendor::NVIDIA:
-      mod->setAttr(
-          AttrComputeCapabilityName,
-          IntegerAttr::get(i32_ty, static_cast<CompilationTargetNvidia*>(target_info.get())->getComputeCapability()));
-      break;
-    default:
+    if (triple == "amdgcn-amd-amdhsa") {
+        mod->setAttr(mlir::triton::gpu::getTargetAMDInfoAttrName(), mlir::triton::gpu::TargetAMDInfoAttr::get(context, GFXArch, features));
+    } else if (triple == "nvptx64-nvidia-cuda") {
+        mod->setAttr(mlir::triton::gpu::getTargetNvidiaInfoAttrName(), mlir::triton::gpu::TargetNvidiaInfoAttr::get(context, computeCapability));
+    } else {
       return signalPassFailure();
     }
-
     // update layouts
     //  broadcast src => multicast, dst => broadcasted
     // if (failed(target.refineLayouts(mod, numWarps)))
