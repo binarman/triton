@@ -89,9 +89,9 @@ if __name__ == '__main__':
         raise argparse.ArgumentError(None, "Must specify --sm for PTX compilation")
 
     # triton-ir -> triton-gpu-ir
-    module = triton.compiler.ttir_to_ttgir(module, num_warps=args.num_warps)
-    compilation_target = triton.compiler.CompilationTarget(arch_triple, compute_capability = args.sm)
-    module = triton.compiler.optimize_ttgir(module, num_stages=3, compilation_target=compilation_target)
+    compilation_target = triton.compiler.CompilationTarget("nvptx64-nvidia-cuda", compute_capability = args.sm)
+    module = triton.compiler.ttir_to_ttgir(module, num_warps=args.num_warps, compilation_target=compilation_target)
+    module = triton.compiler.optimize_ttgir(module, num_stages=3)
     if args.target == 'triton-gpu-ir':
         print(module.str())
         sys.exit(0)

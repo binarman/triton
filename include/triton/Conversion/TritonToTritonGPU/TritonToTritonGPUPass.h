@@ -72,9 +72,12 @@ private:
   int computeCapability;
 };
 
-// Create the pass with numWarps set explicitly.
+// Create the pass with parameters set explicitly.
 std::unique_ptr<OperationPass<ModuleOp>>
-createConvertTritonToTritonGPUPass(int numWarps, std::shared_ptr<CompilationTargetBase> target);
+createConvertTritonToTritonGPUPass(int numWarps, const CompilationTargetAMD &target);
+std::unique_ptr<OperationPass<ModuleOp>>
+createConvertTritonToTritonGPUPass(int numWarps, const CompilationTargetNvidia &target);
+
 
 } // namespace triton
 } // namespace mlir

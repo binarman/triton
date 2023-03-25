@@ -60,7 +60,7 @@ def TargetCommonInfo : TritonGPU_TargetAttr<"TargetCommonInfo"> {
 
   let parameters = (ins "std::string":$triple);
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "`<` `triple` `=` $triple `>`";
 }
 
 def TargetAMDInfoAttr : TritonGPU_TargetAttr<"TargetAMDInfo"> {
@@ -72,7 +72,7 @@ def TargetAMDInfoAttr : TritonGPU_TargetAttr<"TargetAMDInfo"> {
 
   let parameters = (ins "std::string":$gfxArch, "std::string":$gfxFeatures);
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "`<` `gfxArch` `=` $gfxArch `,` `gfxFeatures` `=` $gfxFeatures `>`";
 }
 
 def TargetNvidiaInfoAttr : TritonGPU_TargetAttr<"TargetNvidiaInfo"> {
@@ -84,7 +84,7 @@ def TargetNvidiaInfoAttr : TritonGPU_TargetAttr<"TargetNvidiaInfo"> {
 
   let parameters = (ins "int":$computeCapability);
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "`<` `computeCapability` `=` $computeCapability `>`";
 }
 
 //===----------------------------------------------------------------------===//

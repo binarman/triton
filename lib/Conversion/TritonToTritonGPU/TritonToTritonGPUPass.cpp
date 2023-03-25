@@ -760,21 +760,23 @@ class ConvertTritonToTritonGPU
     : public ConvertTritonToTritonGPUBase<ConvertTritonToTritonGPU> {
 public:
   // default constructor, gets target from MLIR command line parameters.
-  ConvertTritonToTritonGPU() {
-    if (triple.getValue() == "nvptx64-nvidia-cuda") {
-      target_info.reset
-          (new CompilationTargetNvidia(triple.getValue(), computeCapability.getValue()));
-    } else if (triple.getValue() == "amdgcn-amd-amdhsa") {
-      target_info.reset
-          (new CompilationTargetAMD(triple.getValue(), GFXArch.getValue(), features.getValue()));
-    } else {
-      assert(false && "unsupported target triple");
-    }
-  }
+  ConvertTritonToTritonGPU() = default;
+
   // constructor with parameters set explicitly.
-  ConvertTritonToTritonGPU(int numWarps, std::shared_ptr<CompilationTargetBase> target) {
-    this->target_info = std::move(target);
+  ConvertTritonToTritonGPU(int numWarps, const CompilationTargetAMD &target) {
     this->numWarps = numWarps;
+    this->triple = target.getTriple();
+    this->computeCapability = -1;
+    this->GFXArch = target.getArch();
+    this->features = target.getFeatures();
+  }
+
+  ConvertTritonToTritonGPU(int numWarps, const CompilationTargetNvidia &target) {
+    this->numWarps = numWarps;
+    this->triple = target.getTriple();
+    this->computeCapability = target.getComputeCapability();
+    this->GFXArch = "";
+    this->features = "";
   }
 
   void runOnOperation() override {
@@ -807,7 +809,7 @@ public:
 
     mod->setAttr(
         mlir::triton::gpu::getTargetCommonInfoAttrName(),
-        mlir::triton::gpu::TargetCommonInfoAttr::get(context, target_info->getTriple()));
+        mlir::triton::gpu::TargetCommonInfoAttr::get(context, triple.getValue()));
 
     if (triple == "amdgcn-amd-amdhsa") {
         mod->setAttr(mlir::triton::gpu::getTargetAMDInfoAttrName(), mlir::triton::gpu::TargetAMDInfoAttr::get(context, GFXArch, features));
@@ -821,16 +823,18 @@ public:
     // if (failed(target.refineLayouts(mod, numWarps)))
     //   return signalPassFailure();
   }
-
-private:
-  std::shared_ptr<CompilationTargetBase> target_info;
 };
 
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-mlir::triton::createConvertTritonToTritonGPUPass(int numWarps, std::shared_ptr<CompilationTargetBase> target) {
-  return std::make_unique<::ConvertTritonToTritonGPU>(numWarps, std::move(target));
+mlir::triton::createConvertTritonToTritonGPUPass(int numWarps, const CompilationTargetAMD &target) {
+  return std::make_unique<::ConvertTritonToTritonGPU>(numWarps, target);
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+mlir::triton::createConvertTritonToTritonGPUPass(int numWarps, const CompilationTargetNvidia &target) {
+  return std::make_unique<::ConvertTritonToTritonGPU>(numWarps, target);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
