@@ -58,7 +58,7 @@ def TargetCommonInfo : TritonGPU_TargetAttr<"TargetCommonInfo"> {
     Common target information.
   }];
 
-  let parameters = (ins "std::string":$triple);
+  let parameters = (ins StringRefParameter<>:$triple);
 
   let assemblyFormat = "`<` `triple` `=` $triple `>`";
 }
@@ -70,7 +70,7 @@ def TargetAMDInfoAttr : TritonGPU_TargetAttr<"TargetAMDInfo"> {
     AMD specific target information.
   }];
 
-  let parameters = (ins "std::string":$gfxArch, "std::string":$gfxFeatures);
+  let parameters = (ins StringRefParameter<>:$gfxArch, StringRefParameter<>:$gfxFeatures);
 
   let assemblyFormat = "`<` `gfxArch` `=` $gfxArch `,` `gfxFeatures` `=` $gfxFeatures `>`";
 }
