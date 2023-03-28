@@ -30,6 +30,7 @@
 #include "triton/Tools/Sys/GetPlatform.hpp"
 
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
@@ -1623,11 +1624,11 @@ void init_triton_translation(py::module &m) {
 
   m.def(
       "translate_triton_gpu_to_llvmir",
-      [](mlir::ModuleOp op, int computeCapability) {
+      [](mlir::ModuleOp op) {
         py::gil_scoped_release allow_threads;
         llvm::LLVMContext llvmContext;
         auto llvmModule = ::mlir::triton::translateTritonGPUToLLVMIR(
-            &llvmContext, op, computeCapability);
+            &llvmContext, op);
         if (!llvmModule)
           llvm::report_fatal_error("Failed to translate TritonGPU to LLVM IR.");
 
@@ -1641,7 +1642,7 @@ void init_triton_translation(py::module &m) {
 
   m.def(
       "translate_llvmir_to_ptx",
-      [](const std::string llvmIR, int capability, int version) -> std::string {
+      [](const std::string llvmIR, int version) -> std::string {
         py::gil_scoped_release allow_threads;
         // create LLVM module from C++
         llvm::LLVMContext context;
@@ -1657,6 +1658,9 @@ void init_triton_translation(py::module &m) {
         }
 
         // translate module to PTX
+        auto mdCc = llvm::mdconst::extract_or_null<llvm::ConstantInt>(module->getModuleFlag("target.nvidia.cc"));
+        // TODO remove this dependency from capability
+        int capability = mdCc->getSExtValue();
         auto ptxCode =
             triton::translateLLVMIRToPTX(*module, capability, version);
         return ptxCode;

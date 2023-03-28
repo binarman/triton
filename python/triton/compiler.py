@@ -1134,7 +1134,9 @@ def ttir_to_ttgir(mod, num_warps, compilation_target):
         pm.add_convert_triton_to_nvidia_tritongpu_pass(num_warps,
                                                        compilation_target.triple,
                                                        compilation_target.compute_capability)
+    print("module before tt to ttg:\n", mod)
     pm.run(mod)
+    print("module after tt to ttg:\n", mod)
     return mod
 
 
@@ -1165,13 +1167,13 @@ def add_external_libs(mod, libs):
     _triton.add_external_libs(mod, list(libs.keys()), list(libs.values()))
 
 
-def ttgir_to_llir(mod, extern_libs, compute_capability):
+def ttgir_to_llir(mod, extern_libs):
     if extern_libs:
         add_external_libs(mod, extern_libs)
-    return _triton.translate_triton_gpu_to_llvmir(mod, compute_capability)
+    return _triton.translate_triton_gpu_to_llvmir(mod)
 
 
-def llir_to_ptx(mod: Any, compute_capability: int, ptx_version: int = None) -> Tuple[str, int]:
+def llir_to_ptx(mod: Any, ptx_version: int = None) -> Tuple[str, int]:
     '''
     Translate TritonGPU module to PTX code.
     :param mod: a TritonGPU dialect module
@@ -1182,7 +1184,7 @@ def llir_to_ptx(mod: Any, compute_capability: int, ptx_version: int = None) -> T
     if ptx_version is None:
         _, cuda_version = path_to_ptxas()
         ptx_version = ptx_get_version(cuda_version)
-    return _triton.translate_llvmir_to_ptx(mod, compute_capability, ptx_version)
+    return _triton.translate_llvmir_to_ptx(mod, ptx_version)
 
 
 def ptx_to_cubin(ptx: str, compute_capability: int):
@@ -1896,7 +1898,7 @@ def compile(fn, **kwargs):
                       lambda src: optimize_ttgir(ttir_to_ttgir(src, num_warps, compilation_target),
                                                  num_stages)),
             "llir": (lambda path: Path(path).read_text(),
-                     lambda src: ttgir_to_llir(src, extern_libs, capability)),
+                     lambda src: ttgir_to_llir(src, extern_libs)),
             "amdgcn": (lambda path: Path(path).read_text(),
                        lambda src: llir_to_amdgcn_and_hsaco(src, gfx_arch,
                                                         gfx_arch_full_details[0],
@@ -1909,11 +1911,11 @@ def compile(fn, **kwargs):
             "ttir": (lambda path: parse_mlir_module(path, context),
                      lambda src: ast_to_ttir(src, signature, configs[0], constants, debug)),
             "ttgir": (lambda path: parse_mlir_module(path, context),
-                      lambda src: optimize_ttgir(ttir_to_ttgir(src, num_warps, compilation_target), num_stages, capability)),
+                      lambda src: optimize_ttgir(ttir_to_ttgir(src, num_warps, compilation_target), num_stages)),
             "llir": (lambda path: Path(path).read_text(),
-                     lambda src: ttgir_to_llir(src, extern_libs, capability)),
+                     lambda src: ttgir_to_llir(src, extern_libs)),
             "ptx": (lambda path: Path(path).read_text(),
-                    lambda src: llir_to_ptx(src, capability)),
+                    lambda src: llir_to_ptx(src)),
             "cubin": (lambda path: Path(path).read_bytes(),
                       lambda src: ptx_to_cubin(src, capability))
         }

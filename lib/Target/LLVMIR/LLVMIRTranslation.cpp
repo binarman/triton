@@ -10,6 +10,7 @@
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
+#include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"
 #include "mlir/Transforms/Passes.h"
@@ -111,6 +112,34 @@ extractNVVMMetadata(mlir::ModuleOp module,
 
     if (hasMetadata)
       dic->try_emplace(op.getNameAttr().strref(), std::move(meta));
+  }
+}
+
+void fillLLVMModuleMetadata(llvm::Module &llvmModule, const mlir::ModuleOp &module) {
+  // fill common metadata data
+  auto commonModuleInfo = mlir::triton::gpu::getTargetCommonInfo(module);
+  llvmModule.setTargetTriple(commonModuleInfo.getTriple());
+
+  auto &context = llvmModule.getContext();
+
+  auto behavior = llvm::Module::ModFlagBehavior::Error;
+  // fill vendor specific metadata data
+  if (commonModuleInfo.getTriple() == "nvptx64-nvidia-cuda") {
+    auto nvidiaModuleInfo = mlir::triton::gpu::getTargetNvidiaInfo(module);
+    auto cc = nvidiaModuleInfo.getComputeCapability();
+    auto ccConst = llvm::ConstantInt::get(context, APInt(32, cc));
+
+    llvmModule.addModuleFlag(behavior, "target.nvidia.cc", ccConst);
+  } else if (commonModuleInfo.getTriple() == "amdgcn-amd-amdhsa") {
+    auto amdModuleInfo = mlir::triton::gpu::getTargetAMDInfo(module);
+
+    auto arch = amdModuleInfo.getGfxArch();
+    auto features = amdModuleInfo.getGfxFeatures();
+    auto mdArch = llvm::MDString::get(context, arch);
+    auto mdFeatures = llvm::MDString::get(context, features);
+
+    llvmModule.addModuleFlag(behavior, "target.amd.arch", mdArch);
+    llvmModule.addModuleFlag(behavior, "target.amd.features", mdFeatures);
   }
 }
 
@@ -259,6 +288,8 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
     return nullptr;
   }
 
+  fillLLVMModuleMetadata(*llvmModule, module);
+
   // Link external libraries before perform optimizations
   // Note from libdevice users guide:
   // https://docs.nvidia.com/cuda/libdevice-users-guide/basic-usage.html
@@ -293,7 +324,7 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module) {
 
 std::unique_ptr<llvm::Module>
 translateTritonGPUToLLVMIR(llvm::LLVMContext *llvmContext,
-                           mlir::ModuleOp module, int computeCapability) {
+                           mlir::ModuleOp module) {
   mlir::PassManager pm(module->getContext());
   applyPassManagerCLOptions(pm);
   auto printingFlags = mlir::OpPrintingFlags();
@@ -310,7 +341,7 @@ translateTritonGPUToLLVMIR(llvm::LLVMContext *llvmContext,
 
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(createConvertTritonGPUToLLVMPass(computeCapability));
+  pm.addPass(createConvertTritonGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
   // Simplify the IR
@@ -327,6 +358,7 @@ translateTritonGPUToLLVMIR(llvm::LLVMContext *llvmContext,
   }
 
   auto llvmIR = translateLLVMToLLVMIR(llvmContext, module);
+  llvmIR->print(llvm::outs(), nullptr);
   if (!llvmIR) {
     llvm::errs() << "Translate to LLVM IR failed";
     return nullptr;

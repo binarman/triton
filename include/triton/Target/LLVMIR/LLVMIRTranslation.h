@@ -25,7 +25,7 @@ void addExternalLibs(mlir::ModuleOp &module,
 // Translate TritonGPU dialect to LLVMIR, return null if failed.
 std::unique_ptr<llvm::Module>
 translateTritonGPUToLLVMIR(llvm::LLVMContext *llvmContext,
-                           mlir::ModuleOp module, int computeCapability);
+                           mlir::ModuleOp module);
 
 // Translate mlir LLVM dialect to LLVMIR, return null if failed.
 std::unique_ptr<llvm::Module>

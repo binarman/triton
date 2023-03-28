@@ -13,7 +13,7 @@ template <typename T> class OperationPass;
 namespace triton {
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createConvertTritonGPUToLLVMPass(int computeCapability = 80);
+createConvertTritonGPUToLLVMPass();
 
 } // namespace triton
 
