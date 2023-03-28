@@ -148,8 +148,7 @@ class ConvertTritonGPUToLLVM
     : public ConvertTritonGPUToLLVMBase<ConvertTritonGPUToLLVM> {
 
 public:
-  explicit ConvertTritonGPUToLLVM(int computeCapability)
-      : computeCapability(computeCapability) {}
+  explicit ConvertTritonGPUToLLVM() {}
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
@@ -253,8 +252,6 @@ private:
   DenseMap<IndexCacheKeyT, SmallVector<SmallVector<Value>>,
            CacheKeyDenseMapInfo>
       indexCache;
-
-  int computeCapability{};
 
   void initSharedMemory(size_t size,
                         TritonGPUToLLVMTypeConverter &typeConverter) {
@@ -360,6 +357,13 @@ private:
     // =>
     // %tmp = load %src, %mask, %other
     // %res = insert_slice %tmp into %dst[%idx]
+    auto commonArchInfo = mlir::triton::gpu::getTargetCommonInfo(mod);
+    const bool needCheckCC = (commonArchInfo.getTriple() == "nvptx64-nvidia-cuda");
+    int computeCapability = -1;
+    if (needCheckCC) {
+      auto archInfo = mlir::triton::gpu::getTargetNvidiaInfo(mod);
+      computeCapability = archInfo.getComputeCapability();
+    }
     mod.walk([&](triton::gpu::InsertSliceAsyncOp insertSliceAsyncOp) -> void {
       OpBuilder builder(insertSliceAsyncOp);
 
@@ -384,12 +388,10 @@ private:
 
       // If the load byte width is not eligible or the current compute
       // capability does not support async copy, then we do decompose
-#ifndef USE_ROCM
-      if (triton::gpu::InsertSliceAsyncOp::getEligibleLoadByteWidth(
+      if (needCheckCC && triton::gpu::InsertSliceAsyncOp::getEligibleLoadByteWidth(
               computeCapability)
               .contains(byteWidth))
         return;
-#endif
 
       // load
       auto tmpTy =
@@ -426,23 +428,27 @@ private:
         asyncCommitGroupOp.erase();
     });
 
-    mod.walk([&](triton::gpu::AsyncWaitOp asyncWaitOp) -> void {
-#ifdef USE_ROCM
-      assert(decomposed &&
-             "AsyncWait is not supported for ROCM and should be removed");
-      asyncWaitOp.erase();
-#else
-      if (!triton::gpu::AsyncWaitOp::isSupported(computeCapability)) {
-        // async wait is supported in Ampere and later
+    const bool asyncWaitSupported = (commonArchInfo.getTriple() == "nvptx64-nvidia-cuda");
+
+    if (asyncWaitSupported) {
+      mod.walk([&](triton::gpu::AsyncWaitOp asyncWaitOp) -> void {
+        if (!triton::gpu::AsyncWaitOp::isSupported(computeCapability)) {
+          // async wait is supported in Ampere and later
+          asyncWaitOp.erase();
+        } else if (decomposed) {
+          // Wait for all previous async ops
+          OpBuilder builder(asyncWaitOp);
+          builder.create<triton::gpu::AsyncWaitOp>(asyncWaitOp.getLoc(), 0);
+          asyncWaitOp.erase();
+        }
+      });
+    } else {
+      mod.walk([&](triton::gpu::AsyncWaitOp asyncWaitOp) -> void {
+        assert(decomposed &&
+              "AsyncWait is not supported for ROCM and should be removed");
         asyncWaitOp.erase();
-      } else if (decomposed) {
-        // Wait for all previous async ops
-        OpBuilder builder(asyncWaitOp);
-        builder.create<triton::gpu::AsyncWaitOp>(asyncWaitOp.getLoc(), 0);
-        asyncWaitOp.erase();
-      }
-#endif
-    });
+      });
+    }
     return success();
   }
 };
@@ -453,8 +459,8 @@ namespace mlir {
 namespace triton {
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createConvertTritonGPUToLLVMPass(int computeCapability) {
-  return std::make_unique<::ConvertTritonGPUToLLVM>(computeCapability);
+createConvertTritonGPUToLLVMPass() {
+  return std::make_unique<::ConvertTritonGPUToLLVM>();
 }
 
 } // namespace triton
