@@ -20,6 +20,7 @@ if __name__ == '__main__':
     parser.add_argument('--ptx-version', type=int, help="PTX version to compile for")
     parser.add_argument('--gfx', type=str, help="AMDGPU target to compile for")
     parser.add_argument('--triple', type=str, help="target triple, for example: amdgcn-amd-amdhsa")
+    parser.add_argument('--warp-size', type=int, help="target warp size, for example: 64")
     parser.add_argument('--features', type=str, help="target features, for example: +sramecc,-xnack")
     parser.add_argument('--num_warps', type=int, help="number of warps to compile ttgir for")
 
@@ -55,8 +56,9 @@ if __name__ == '__main__':
             arch_name = ""
             arch_triple = "amdgcn-amd-amdhsa"
             arch_features = ""
+            arch_warp_size = 64
         else:
-            arch_triple, arch_name, arch_features = arch_details
+            arch_triple, arch_name, arch_features, arch_warp_size = arch_details
 
         # stop processing if architecture name is not automatically detected and is not set manually
         if not args.gfx and not arch_name:
@@ -69,11 +71,17 @@ if __name__ == '__main__':
             arch_triple = args.triple
         if args.features:
             arch_features = args.features
-
+        if args.warp_size:
+            arch_warp_size = args.warp_size
         # triton-ir -> triton-gpu-ir
         # use compute_capability == 80
-        compilation_target = triton.compiler.CompilationTarget(arch_triple, gfx_arch = arch_name, features = arch_features)
-        module = triton.compiler.ttir_to_ttgir(module, num_warps=args.num_warps, compilation_target=compilation_target)
+        compilation_target = triton.compiler.CompilationTarget(arch_triple,
+                                                               warp_size = arch_warp_size,
+                                                               gfx_arch = arch_name,
+                                                               features = arch_features)
+        module = triton.compiler.ttir_to_ttgir(module,
+                                               num_warps=args.num_warps,
+                                               compilation_target=compilation_target)
         module = triton.compiler.optimize_ttgir(module, num_stages=3)
         # triton-gpu-ir -> llvm-ir
         # use compute_capability == 80
@@ -89,8 +97,12 @@ if __name__ == '__main__':
         raise argparse.ArgumentError(None, "Must specify --sm for PTX compilation")
 
     # triton-ir -> triton-gpu-ir
-    compilation_target = triton.compiler.CompilationTarget("nvptx64-nvidia-cuda", compute_capability = args.sm)
-    module = triton.compiler.ttir_to_ttgir(module, num_warps=args.num_warps, compilation_target=compilation_target)
+    compilation_target = triton.compiler.CompilationTarget("nvptx64-nvidia-cuda",
+                                                           warp_size = 32,
+                                                           compute_capability = args.sm)
+    module = triton.compiler.ttir_to_ttgir(module,
+                                           num_warps=args.num_warps,
+                                           compilation_target=compilation_target)
     module = triton.compiler.optimize_ttgir(module, num_stages=3)
     if args.target == 'triton-gpu-ir':
         print(module.str())

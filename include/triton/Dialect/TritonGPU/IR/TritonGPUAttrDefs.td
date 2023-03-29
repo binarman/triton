@@ -58,9 +58,9 @@ def TargetCommonInfo : TritonGPU_TargetAttr<"TargetCommonInfo"> {
     Common target information.
   }];
 
-  let parameters = (ins StringRefParameter<>:$triple);
+  let parameters = (ins StringRefParameter<>:$triple, "int": $warpSize);
 
-  let assemblyFormat = "`<` `triple` `=` $triple `>`";
+  let assemblyFormat = "`<` `triple` `=` $triple `,` `warpSize` `=` $warpSize `>`";
 }
 
 def TargetAMDInfoAttr : TritonGPU_TargetAttr<"TargetAMDInfo"> {

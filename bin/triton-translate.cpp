@@ -88,6 +88,10 @@ LogicalResult tritonTranslateMain(int argc, char **argv,
   static llvm::cl::opt<int> ptxVersion(
       "ptx-version", llvm::cl::desc("PTX version"), llvm::cl::init(10000));
 
+  static llvm::cl::opt<int> GCNWarpSize(
+      "warp-size", llvm::cl::desc("Target gpu warp size for example '64'"),
+      llvm::cl::init(64));
+
   static llvm::cl::opt<std::string> GCNArch(
       "gfx", llvm::cl::desc("AMDGCN target. e.g. '90a'"),
       llvm::cl::value_desc("architecture"), llvm::cl::init("90a"));
@@ -114,18 +118,22 @@ LogicalResult tritonTranslateMain(int argc, char **argv,
 
   // set target metadata according options
   std::string triple;
+  int warpSize = -1;
   if (targetKind == "llvmir" || targetKind == "ptx") {
     triple = "nvptx64-nvidia-cuda";
+    warpSize = 32;
     auto nvidiaInfo = mlir::triton::gpu::TargetNvidiaInfoAttr::get(&context, SMArch.getValue());
     module.get()->setAttr(mlir::triton::gpu::getTargetNvidiaInfoAttrName(), nvidiaInfo);
   } else if (targetKind == "hsaco") {
     triple = "amdgcn" + GCNTriple.getValue();
+    warpSize = GCNWarpSize.getValue();
     const std::string arch = "gfx" + GCNArch.getValue();
     const std::string features = GCNFeatures.getValue();
     auto amdInfo = mlir::triton::gpu::TargetAMDInfoAttr::get(&context, arch, features);
     module.get()->setAttr(mlir::triton::gpu::getTargetAMDInfoAttrName(), amdInfo);
   }
-  auto commonInfo = mlir::triton::gpu::TargetCommonInfoAttr::get(&context, triple);
+  assert(warpSize > 0);
+  auto commonInfo = mlir::triton::gpu::TargetCommonInfoAttr::get(&context, triple, warpSize);
   module.get()->setAttr(mlir::triton::gpu::getTargetCommonInfoAttrName(), commonInfo);
 
   std::string errorMessage;

@@ -1544,9 +1544,10 @@ void init_triton_ir(py::module &&m) {
            [](mlir::PassManager &self,
               int numWarps,
               const std::string triple,
+              int warpSize,
               const std::string arch,
               const std::string features) {
-             mlir::triton::CompilationTargetAMD target(triple, arch, features);
+             mlir::triton::CompilationTargetAMD target(triple, warpSize, arch, features);
              self.addPass(
                  mlir::triton::createConvertTritonToTritonGPUPass(numWarps, target));
            })
@@ -1554,8 +1555,9 @@ void init_triton_ir(py::module &&m) {
            [](mlir::PassManager &self,
               int numWarps,
               const std::string triple,
+              int warpSize,
               int compute_capability) {
-             mlir::triton::CompilationTargetNvidia target(triple, compute_capability);
+             mlir::triton::CompilationTargetNvidia target(triple, warpSize, compute_capability);
              self.addPass(
                  mlir::triton::createConvertTritonToTritonGPUPass(numWarps, target));
            })

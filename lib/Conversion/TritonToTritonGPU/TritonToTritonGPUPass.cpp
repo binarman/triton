@@ -764,19 +764,24 @@ public:
 
   // constructor with parameters set explicitly.
   ConvertTritonToTritonGPU(int numWarps, const CompilationTargetAMD &target) {
-    this->numWarps = numWarps;
-    this->triple = target.getTriple();
+    initializeCommonData(numWarps, target);
     this->computeCapability = -1;
     this->GFXArch = target.getArch();
     this->features = target.getFeatures();
   }
 
   ConvertTritonToTritonGPU(int numWarps, const CompilationTargetNvidia &target) {
-    this->numWarps = numWarps;
-    this->triple = target.getTriple();
+    initializeCommonData(numWarps, target);
     this->computeCapability = target.getComputeCapability();
     this->GFXArch = "";
     this->features = "";
+  }
+
+  // initialize data common for all targets
+  void initializeCommonData(int numWarps, const CompilationTargetBase &target) {
+    this->numWarps = numWarps;
+    this->triple = target.getTriple();
+    this->warpSize = target.getWarpSize();
   }
 
   void runOnOperation() override {
@@ -807,14 +812,17 @@ public:
         AttrNumWarpsName,
         IntegerAttr::get(i32_ty, llvm::APInt(32, numWarps.getValue())));
 
-    mod->setAttr(
-        mlir::triton::gpu::getTargetCommonInfoAttrName(),
-        mlir::triton::gpu::TargetCommonInfoAttr::get(context, triple.getValue()));
+    using namespace mlir::triton::gpu;
+
+    auto commonInfo = TargetCommonInfoAttr::get(context, triple.getValue(), warpSize.getValue());
+    mod->setAttr(getTargetCommonInfoAttrName(), commonInfo);
 
     if (triple == "amdgcn-amd-amdhsa") {
-        mod->setAttr(mlir::triton::gpu::getTargetAMDInfoAttrName(), mlir::triton::gpu::TargetAMDInfoAttr::get(context, GFXArch, features));
+        auto amdInfo = TargetAMDInfoAttr::get(context, GFXArch, features);
+        mod->setAttr(getTargetAMDInfoAttrName(), amdInfo);
     } else if (triple == "nvptx64-nvidia-cuda") {
-        mod->setAttr(mlir::triton::gpu::getTargetNvidiaInfoAttrName(), mlir::triton::gpu::TargetNvidiaInfoAttr::get(context, computeCapability));
+        auto nvidiaInfo = TargetNvidiaInfoAttr::get(context, computeCapability);
+        mod->setAttr(getTargetNvidiaInfoAttrName(), nvidiaInfo);
     } else {
       return signalPassFailure();
     }

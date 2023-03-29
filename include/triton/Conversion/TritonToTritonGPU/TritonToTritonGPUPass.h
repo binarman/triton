@@ -25,9 +25,11 @@ public:
 
   CompilationTargetBase() : triple(""), vendor(Vendor::INVALID) {}
 
-  CompilationTargetBase(const std::string &triple) : triple(triple), vendor(Vendor::INVALID) {}
+  CompilationTargetBase(const std::string &triple, int warpSize) : triple(triple), warpSize(warpSize), vendor(Vendor::INVALID) {}
 
   std::string getTriple() const { return triple; }
+
+  int getWarpSize() const { return warpSize; }
 
   Vendor getVendor() const { return vendor; }
 
@@ -35,6 +37,7 @@ public:
 
 private:
   std::string triple;
+  int warpSize;
 
 protected:
   Vendor vendor;
@@ -43,9 +46,10 @@ protected:
 class CompilationTargetAMD: public CompilationTargetBase {
 public:
   CompilationTargetAMD(const std::string &triple,
+                       int warpSize,
                        const std::string &arch,
                        const std::string &features)
-     : CompilationTargetBase(triple), arch(arch), features(features) {
+     : CompilationTargetBase(triple, warpSize), arch(arch), features(features) {
         this->vendor = CompilationTargetBase::Vendor::AMD;
      }
 
@@ -61,8 +65,9 @@ private:
 class CompilationTargetNvidia: public CompilationTargetBase {
 public:
   CompilationTargetNvidia(const std::string &triple,
+                          int warpSize,
                           int computeCapability)
-     : CompilationTargetBase(triple), computeCapability(computeCapability) {
+     : CompilationTargetBase(triple, warpSize), computeCapability(computeCapability) {
         this->vendor = CompilationTargetBase::Vendor::NVIDIA;
      }
   

@@ -1111,10 +1111,12 @@ def ast_to_ttir(fn, signature, specialization, constants, debug=False):
 class CompilationTarget:
     def __init__(self,
                  triple : str,
+                 warp_size = 32,
                  gfx_arch = None,
                  compute_capability = None,
                  features = None):
         self.triple = triple
+        self.warp_size = 32
         self.arch, self.vendor, self.platform = triple.split("-")
         if self.vendor == "amd":
             self.gfx_arch = gfx_arch if gfx_arch is not None else "gfx90a"
@@ -1128,11 +1130,13 @@ def ttir_to_ttgir(mod, num_warps, compilation_target):
     if compilation_target.vendor == "amd":
         pm.add_convert_triton_to_amd_tritongpu_pass(num_warps,
                                                     compilation_target.triple,
+                                                    compilation_target.warp_size,
                                                     compilation_target.gfx_arch,
                                                     compilation_target.features)
     if compilation_target.vendor == "nvidia":
         pm.add_convert_triton_to_nvidia_tritongpu_pass(num_warps,
                                                        compilation_target.triple,
+                                                       compilation_target.warp_size,
                                                        compilation_target.compute_capability)
   #  print("module before tt to ttg:\n", mod)
     pm.run(mod)
@@ -1770,7 +1774,9 @@ def get_amdgpu_arch_fulldetails():
         if (len(arch_name_features) == 3):
             arch_features = "+" + re.search('\\w+', arch_name_features[1]).group(0) + ","\
                             "-" + re.search('\\w+', arch_name_features[2]).group(0)
-        return [arch_triple, arch_name, arch_features]
+        wavefront_size = int(re.search("Wavefront Size: *([\\d]*)", rocminfo).group(1))
+
+        return [arch_triple, arch_name, arch_features, wavefront_size]
     except:
         return None
 
@@ -1889,7 +1895,8 @@ def compile(fn, **kwargs):
             raise RuntimeError('gfx_arch is None (not specified)')
         gfx_triple = gfx_arch_full_details[0]
         gfx_features = gfx_arch_full_details[2]
-        compilation_target = CompilationTarget(gfx_triple, gfx_arch=gfx_arch, features = gfx_features)
+        ws = gfx_arch_full_details[3]
+        compilation_target = CompilationTarget(gfx_triple, warp_size = ws, gfx_arch=gfx_arch, features = gfx_features)
         stages = {
             "ast": (lambda path: fn, None),
             "ttir": (lambda path: parse_mlir_module(path, context),
@@ -1903,7 +1910,7 @@ def compile(fn, **kwargs):
                        lambda src: llir_to_amdgcn_and_hsaco(src)),
         }
     else:
-        compilation_target = CompilationTarget("nvptx64-nvidia-cuda", compute_capability=capability)
+        compilation_target = CompilationTarget("nvptx64-nvidia-cuda", warp_size=32, compute_capability=capability)
         stages = {
             "ast": (lambda path: fn, None),
             "ttir": (lambda path: parse_mlir_module(path, context),
