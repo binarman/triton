@@ -21,6 +21,7 @@
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/BuiltinOps.h.inc"
 
 namespace mlir {
 namespace triton {
@@ -110,6 +111,22 @@ LogicalResult tritonTranslateMain(int argc, char **argv,
   if (!module) {
     return failure();
   }
+
+  // set target metadata according options
+  std::string triple;
+  if (targetKind == "llvmir" || targetKind == "ptx") {
+    triple = "nvptx64-nvidia-cuda";
+    auto nvidiaInfo = mlir::triton::gpu::TargetNvidiaInfoAttr::get(&context, SMArch.getValue());
+    module.get()->setAttr(mlir::triton::gpu::getTargetNvidiaInfoAttrName(), nvidiaInfo);
+  } else if (targetKind == "hsaco") {
+    triple = "amdgcn" + GCNTriple.getValue();
+    const std::string arch = "gfx" + GCNArch.getValue();
+    const std::string features = GCNFeatures.getValue();
+    auto amdInfo = mlir::triton::gpu::TargetAMDInfoAttr::get(&context, arch, features);
+    module.get()->setAttr(mlir::triton::gpu::getTargetAMDInfoAttrName(), amdInfo);
+  }
+  auto commonInfo = mlir::triton::gpu::TargetCommonInfoAttr::get(&context, triple);
+  module.get()->setAttr(mlir::triton::gpu::getTargetCommonInfoAttrName(), commonInfo);
 
   std::string errorMessage;
   auto output = openOutputFile(outputFilename, &errorMessage);
