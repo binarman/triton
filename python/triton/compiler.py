@@ -1222,7 +1222,7 @@ def amdgcn_get_kernel_name(amdgcn: str) -> str:
             return line.split()[-1].strip()
 
 
-def llir_to_amdgcn_and_hsaco(mod: Any, gfx_arch: str, gfx_triple: str, gfx_features: str) -> Tuple[str, str]:
+def llir_to_amdgcn_and_hsaco(mod: Any) -> Tuple[str, str]:
     '''
     Translate TritonGPU module to HSACO code based on full details of gpu architecture.
     :param mod: a TritonGPU dialect module
@@ -1230,7 +1230,7 @@ def llir_to_amdgcn_and_hsaco(mod: Any, gfx_arch: str, gfx_triple: str, gfx_featu
         - AMDGCN code
         - Path to HSACO object
     '''
-    return _triton.translate_llvmir_to_hsaco(mod, gfx_arch, gfx_triple, gfx_features)
+    return _triton.translate_llvmir_to_hsaco(mod)
 
 
 @functools.lru_cache
@@ -1900,9 +1900,7 @@ def compile(fn, **kwargs):
             "llir": (lambda path: Path(path).read_text(),
                      lambda src: ttgir_to_llir(src, extern_libs)),
             "amdgcn": (lambda path: Path(path).read_text(),
-                       lambda src: llir_to_amdgcn_and_hsaco(src, gfx_arch,
-                                                        gfx_arch_full_details[0],
-                                                        gfx_arch_full_details[2])),
+                       lambda src: llir_to_amdgcn_and_hsaco(src)),
         }
     else:
         compilation_target = CompilationTarget("nvptx64-nvidia-cuda", compute_capability=capability)

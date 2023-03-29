@@ -94,10 +94,7 @@ initialize_module(llvm::Module *module) {
   return std::unique_ptr<llvm::TargetMachine>(machine);
 }
 
-std::string generate_amdgcn_assembly(llvm::Module *module,
-                                     const std::string &triple,
-                                     const std::string &proc,
-                                     const std::string &features) {
+std::string generate_amdgcn_assembly(llvm::Module *module) {
   auto machine = initialize_module(module);
 
   if (machine == nullptr)
@@ -120,9 +117,7 @@ std::string generate_amdgcn_assembly(llvm::Module *module,
   return amdgcn;
 }
 
-std::string generate_hsaco(llvm::Module *module, const std::string &triple,
-                           const std::string &proc,
-                           const std::string &features) {
+std::string generate_hsaco(llvm::Module *module) {
   auto machine = initialize_module(module);
 
   if (machine == nullptr)
@@ -166,17 +161,16 @@ std::string generate_hsaco(llvm::Module *module, const std::string &triple,
 }
 
 std::tuple<std::string, std::string>
-llir_to_amdgcn_and_hsaco(llvm::Module *module, std::string gfx_arch,
-                         std::string gfx_triple, std::string gfx_features) {
+llir_to_amdgcn_and_hsaco(llvm::Module *module) {
 
   init_llvm();
 
   // verify and store llvm
   auto module_obj = llvm::CloneModule(*module);
   auto amdgcn =
-      generate_amdgcn_assembly(module, gfx_triple, gfx_arch, gfx_features);
+      generate_amdgcn_assembly(module);
   auto hsaco_path =
-      generate_hsaco(module_obj.get(), gfx_triple, gfx_arch, gfx_features);
+      generate_hsaco(module_obj.get());
 
   return std::make_tuple(amdgcn, hsaco_path);
 }
@@ -186,10 +180,9 @@ llir_to_amdgcn_and_hsaco(llvm::Module *module, std::string gfx_arch,
 namespace triton {
 
 std::tuple<std::string, std::string>
-translateLLVMIRToHSACO(llvm::Module &module, std::string gfx_arch,
-                       std::string gfx_triple, std::string gfx_features) {
+translateLLVMIRToHSACO(llvm::Module &module) {
   auto hsacoCode =
-      llir_to_amdgcn_and_hsaco(&module, gfx_arch, gfx_triple, gfx_features);
+      llir_to_amdgcn_and_hsaco(&module);
   return hsacoCode;
 }
 

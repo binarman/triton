@@ -147,11 +147,8 @@ LogicalResult tritonTranslateMain(int argc, char **argv,
   else if (targetKind == "ptx")
     llvm::outs() << ::triton::translateLLVMIRToPTX(*llvmir, ptxVersion.getValue());
   else if (targetKind == "hsaco") {
-    const std::string arch = "gfx" + GCNArch.getValue();
-    const std::string triple = "amdgcn" + GCNTriple.getValue();
-    const std::string features = GCNFeatures.getValue();
     auto [module, hsaco] =
-        ::triton::translateLLVMIRToHSACO(*llvmir, arch, triple, features);
+        ::triton::translateLLVMIRToHSACO(*llvmir);
     llvm::outs() << hsaco;
   } else {
     llvm::errs() << "Error: Unknown target specified: " << targetKind << "\n";

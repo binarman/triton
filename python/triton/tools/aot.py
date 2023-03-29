@@ -79,7 +79,7 @@ if __name__ == '__main__':
         # use compute_capability == 80
         module = triton.compiler.ttgir_to_llir(module, extern_libs=None)
         # llvm-ir -> amdgcn asm, hsaco binary
-        module, hsaco_path = triton.compiler.llir_to_amdgcn_and_hsaco(module, arch_name, arch_triple, arch_features)
+        module, hsaco_path = triton.compiler.llir_to_amdgcn_and_hsaco(module)
 
         print(hsaco_path)
         print(module)
