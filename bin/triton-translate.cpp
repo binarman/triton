@@ -128,8 +128,7 @@ LogicalResult tritonTranslateMain(int argc, char **argv,
   if (targetKind == "llvmir")
     llvm::outs() << *llvmir << '\n';
   else if (targetKind == "ptx")
-    llvm::outs() << ::triton::translateLLVMIRToPTX(*llvmir, SMArch.getValue(),
-                                                   ptxVersion.getValue());
+    llvm::outs() << ::triton::translateLLVMIRToPTX(*llvmir, ptxVersion.getValue());
   else if (targetKind == "hsaco") {
     const std::string arch = "gfx" + GCNArch.getValue();
     const std::string triple = "amdgcn" + GCNTriple.getValue();

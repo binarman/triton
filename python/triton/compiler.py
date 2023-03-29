@@ -1134,9 +1134,9 @@ def ttir_to_ttgir(mod, num_warps, compilation_target):
         pm.add_convert_triton_to_nvidia_tritongpu_pass(num_warps,
                                                        compilation_target.triple,
                                                        compilation_target.compute_capability)
-    print("module before tt to ttg:\n", mod)
+  #  print("module before tt to ttg:\n", mod)
     pm.run(mod)
-    print("module after tt to ttg:\n", mod)
+  #  print("module after tt to ttg:\n", mod)
     return mod
 
 

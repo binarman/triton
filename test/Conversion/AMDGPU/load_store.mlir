@@ -1,4 +1,4 @@
-// RUN: triton-opt %s -split-input-file --convert-triton-gpu-to-llvm | FileCheck --check-prefixes=CHECK,GCN %s
+// RUN: triton-opt %s -split-input-file --convert-triton-to-tritongpu --convert-triton-gpu-to-llvm | FileCheck --check-prefixes=CHECK,GCN %s
 
 // Check load instruction doesn't generate incorrect bitcast.
 module attributes {"triton_gpu.num-warps" = 4 : i32} {

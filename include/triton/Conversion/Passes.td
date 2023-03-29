@@ -30,7 +30,7 @@ def ConvertTritonToTritonGPU: Pass<"convert-triton-to-tritongpu", "mlir::ModuleO
        Option<"GFXArch", "gfx-arch",
               "std::string", /*default*/"\"gfx90a\"",
               "target gfx arch">,
-       Option<"features", "features",
+       Option<"features", "gfx-features",
               "std::string", /*default*/"\"\"",
               "list of enabled and disabled hardware features">,
    ];

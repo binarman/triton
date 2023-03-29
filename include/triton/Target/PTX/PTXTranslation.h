@@ -10,7 +10,7 @@ class Module;
 namespace triton {
 
 // Translate TritonGPU IR to PTX code.
-std::string translateLLVMIRToPTX(llvm::Module &module, int cc, int version);
+std::string translateLLVMIRToPTX(llvm::Module &module, int version);
 
 } // namespace triton
 

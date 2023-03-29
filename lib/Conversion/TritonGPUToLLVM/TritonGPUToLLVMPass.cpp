@@ -423,10 +423,13 @@ private:
       decomposed = true;
     });
 
-    mod.walk([&](triton::gpu::AsyncCommitGroupOp asyncCommitGroupOp) -> void {
-      if (!triton::gpu::AsyncCommitGroupOp::isSupported(computeCapability))
-        asyncCommitGroupOp.erase();
-    });
+    if (needCheckCC) {
+      // this part is Nvidia specific
+      mod.walk([&](triton::gpu::AsyncCommitGroupOp asyncCommitGroupOp) -> void {
+        if (!triton::gpu::AsyncCommitGroupOp::isSupported(computeCapability))
+          asyncCommitGroupOp.erase();
+      });
+    }
 
     const bool asyncWaitSupported = (commonArchInfo.getTriple() == "nvptx64-nvidia-cuda");
 

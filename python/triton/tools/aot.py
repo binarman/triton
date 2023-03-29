@@ -77,7 +77,7 @@ if __name__ == '__main__':
         module = triton.compiler.optimize_ttgir(module, num_stages=3)
         # triton-gpu-ir -> llvm-ir
         # use compute_capability == 80
-        module = triton.compiler.ttgir_to_llir(module, extern_libs=None, compute_capability=80)
+        module = triton.compiler.ttgir_to_llir(module, extern_libs=None)
         # llvm-ir -> amdgcn asm, hsaco binary
         module, hsaco_path = triton.compiler.llir_to_amdgcn_and_hsaco(module, arch_name, arch_triple, arch_features)
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # triton-gpu-ir -> llvm-ir
-    module = triton.compiler.ttgir_to_llir(module, extern_libs=None, compute_capability=args.sm)
+    module = triton.compiler.ttgir_to_llir(module, extern_libs=None)
     if args.target == 'llvm-ir':
         print(module)
         sys.exit(0)
@@ -106,6 +106,6 @@ if __name__ == '__main__':
     if args.target == 'ptx':
         if not args.ptx_version:
             raise argparse.ArgumentError(None, "Must specify --ptx-version for PTX compilation")
-        module = triton.compiler.llir_to_ptx(module, compute_capability=args.sm, ptx_version=args.ptx_version)
+        module = triton.compiler.llir_to_ptx(module, ptx_version=args.ptx_version)
 
     print(module)

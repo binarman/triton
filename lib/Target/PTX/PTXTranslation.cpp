@@ -33,10 +33,13 @@ static bool findAndReplace(std::string &str, const std::string &begin,
   return true;
 }
 
-std::string translateLLVMIRToPTX(llvm::Module &module, int cc, int version) {
+std::string translateLLVMIRToPTX(llvm::Module &module, int version) {
   // LLVM version in use may not officially support target hardware.
   // Supported versions for LLVM 14 are here:
   // https://github.com/llvm/llvm-project/blob/f28c006a5895fc0e329fe15fead81e37457cb1d1/clang/include/clang/Basic/BuiltinsNVPTX.def
+  auto mdCC = llvm::mdconst::extract_or_null<llvm::ConstantInt>(module.getModuleFlag("target.nvidia.cc"));
+  assert(mdCC);
+  int cc = mdCC->getSExtValue();
   int maxPTX = std::min(80, version);
   int maxCC = std::min(90, cc);
   // options

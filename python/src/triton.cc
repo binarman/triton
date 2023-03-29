@@ -1658,11 +1658,8 @@ void init_triton_translation(py::module &m) {
         }
 
         // translate module to PTX
-        auto mdCc = llvm::mdconst::extract_or_null<llvm::ConstantInt>(module->getModuleFlag("target.nvidia.cc"));
-        // TODO remove this dependency from capability
-        int capability = mdCc->getSExtValue();
         auto ptxCode =
-            triton::translateLLVMIRToPTX(*module, capability, version);
+            triton::translateLLVMIRToPTX(*module, version);
         return ptxCode;
       },
       ret::take_ownership);
