@@ -2,7 +2,6 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -34,6 +33,8 @@
 #include <memory>
 #include <random>
 
+#include "llvm/IR/Metadata.h"
+
 namespace {
 
 void init_llvm() {
@@ -55,14 +56,19 @@ uint64_t New64() {
 }
 
 std::unique_ptr<llvm::TargetMachine>
-initialize_module(llvm::Module *module, const std::string &triple,
-                  const std::string &proc, const std::string &features) {
+initialize_module(llvm::Module *module) {
   // verify and store llvm
+  auto archFlag = module->getModuleFlag("target.amd.arch");
+  auto mdArch = static_cast<llvm::MDString *>(archFlag);
+  auto proc = mdArch->getString();
+
+  auto featuresFLag = module->getModuleFlag("target.amd.features");
+  auto mdFeatures = static_cast<llvm::MDString *>(featuresFLag);
+  auto features = mdFeatures->getString();
+
   llvm::legacy::PassManager pm;
   pm.add(llvm::createVerifierPass());
   pm.run(*module);
-
-  module->setTargetTriple(triple);
 
   std::string error;
   auto target =
@@ -92,7 +98,7 @@ std::string generate_amdgcn_assembly(llvm::Module *module,
                                      const std::string &triple,
                                      const std::string &proc,
                                      const std::string &features) {
-  auto machine = initialize_module(module, triple, proc, features);
+  auto machine = initialize_module(module);
 
   if (machine == nullptr)
     return "";
@@ -117,7 +123,7 @@ std::string generate_amdgcn_assembly(llvm::Module *module,
 std::string generate_hsaco(llvm::Module *module, const std::string &triple,
                            const std::string &proc,
                            const std::string &features) {
-  auto machine = initialize_module(module, triple, proc, features);
+  auto machine = initialize_module(module);
 
   if (machine == nullptr)
     return "";
