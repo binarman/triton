@@ -2066,7 +2066,7 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
 
     # write the IR to a temporary file using mkstemp
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.ttgir') as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.ttir') as f:
         f.write(ir)
         f.flush()
         kernel = triton.compile(f.name)
