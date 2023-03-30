@@ -56,8 +56,7 @@ private:
                                        ConversionPatternRewriter &rewriter,
                                        unsigned elemId, RankedTensorType type,
                                        ArrayRef<unsigned> multiDimCTAInRepId,
-                                       ArrayRef<unsigned> shapePerCTA,
-                                       int warpSize) const {
+                                       ArrayRef<unsigned> shapePerCTA) const {
     auto shape = type.getShape();
     unsigned rank = shape.size();
     if (auto blockedLayout = layout.dyn_cast<BlockedEncodingAttr>()) {
@@ -82,8 +81,7 @@ private:
       auto multiDimOffsetParent =
           getMultiDimOffset(parentEncoding, loc, rewriter, elemId, parentTy,
                             sliceLayout.paddedShape(multiDimCTAInRepId),
-                            sliceLayout.paddedShape(shapePerCTA),
-                            warpSize);
+                            sliceLayout.paddedShape(shapePerCTA));
       SmallVector<Value> multiDimOffset(rank);
       for (unsigned d = 0; d < rank + 1; ++d) {
         if (d == dim)
@@ -160,8 +158,7 @@ private:
                       ArrayRef<unsigned> multiDimRepId, unsigned vec,
                       ArrayRef<unsigned> paddedRepShape,
                       ArrayRef<unsigned> outOrd, SmallVector<Value> &vals,
-                      Value smemBase,
-                      int warpSize) const {
+                      Value smemBase) const {
     auto accumNumCTAsEachRep = product<unsigned>(numCTAsEachRep);
     auto layout = type.getEncoding();
     auto rank = type.getRank();
@@ -201,7 +198,7 @@ private:
       for (unsigned elemId = 0; elemId < accumSizePerThread; elemId += vec) {
         SmallVector<Value> multiDimOffset =
             getMultiDimOffset(layout, loc, rewriter, elemId, type,
-                              multiDimCTAInRepId, shapePerCTA, warpSize);
+                              multiDimCTAInRepId, shapePerCTA);
         Value offset =
             linearize(rewriter, loc, multiDimOffset, paddedRepShape, outOrd);
 
@@ -247,7 +244,6 @@ private:
                               ArrayRef<unsigned> outOrd,
                               SmallVector<Value> &vals, Value smemBase,
                               ArrayRef<int64_t> shape,
-                              int warpSize,
                               bool isDestMma = false) const {
     unsigned accumNumCTAsEachRep = 1;
     auto layout = type.getEncoding();
@@ -292,7 +288,7 @@ private:
         // duplicate in Volta.
         SmallVector<Value> multiDimOffset =
             getMultiDimOffset(layout, loc, rewriter, elemId, type,
-                              multiDimCTAInRepId, shapePerCTA, warpSize);
+                              multiDimCTAInRepId, shapePerCTA);
         coord2val[elemId] = std::make_pair(multiDimOffset, vals[elemId]);
       }
 
@@ -406,9 +402,6 @@ private:
     auto outOrd = getOrder(dstLayout);
     SmallVector<Value> outVals(outElems);
 
-    auto mod = op->getParentOfType<ModuleOp>();
-    int warpSize = mlir::triton::gpu::getTargetCommonInfo(mod).getWarpSize();
-
     for (unsigned repId = 0; repId < accumNumReplicates; ++repId) {
       auto multiDimRepId =
           getMultiDimIndex<unsigned>(repId, numReplicates, outOrd);
@@ -420,11 +413,11 @@ private:
         if (isSrcMmaV1)
           processReplicaForMMAV1(loc, rewriter, /*stNotRd*/ true, srcTy,
                                  multiDimRepId, inVec, paddedRepShape, outOrd,
-                                 vals, smemBase, shape, warpSize);
+                                 vals, smemBase, shape);
         else
           processReplica(loc, rewriter, /*stNotRd*/ true, srcTy,
                          inNumCTAsEachRep, multiDimRepId, inVec, paddedRepShape,
-                         outOrd, vals, smemBase, warpSize);
+                         outOrd, vals, smemBase);
       } else {
         assert(0 && "ConvertLayout with input layout not implemented");
         return failure();
@@ -437,11 +430,11 @@ private:
         if (isDstMmaV1)
           processReplicaForMMAV1(loc, rewriter, /*stNotRd*/ false, dstTy,
                                  multiDimRepId, outVec, paddedRepShape, outOrd,
-                                 outVals, smemBase, shape, warpSize, /*isDestMma=*/true);
+                                 outVals, smemBase, shape, /*isDestMma=*/true);
         else
           processReplica(loc, rewriter, /*stNotRd*/ false, dstTy,
                          outNumCTAsEachRep, multiDimRepId, outVec,
-                         paddedRepShape, outOrd, outVals, smemBase, warpSize);
+                         paddedRepShape, outOrd, outVals, smemBase);
       } else {
         assert(0 && "ConvertLayout with output layout not implemented");
         return failure();
@@ -627,9 +620,6 @@ private:
     auto smemObj =
         getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(), rewriter);
     Value res;
-
-    auto mod = op->getParentOfType<ModuleOp>();
-    auto warpSize = mlir::triton::gpu::getTargetCommonInfo(mod).getWarpSize();
 
     if (!isOuter && mmaLayout.isAmpere() && isHMMA) { // tensor core v2
       MMA16816ConversionHelper mmaHelper(src.getType(), mmaLayout,
