@@ -8,13 +8,13 @@ using namespace mlir::triton;
 
 void populateElementwiseOpToLLVMPatterns(
     TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    int numWarps, AxisInfoAnalysis &axisInfoAnalysis,
+    int numWarps, int warpSize, AxisInfoAnalysis &axisInfoAnalysis,
     const Allocation *allocation, Value smem, PatternBenefit benefit);
 
 bool isLegalElementwiseOp(Operation *op);
 
 void populateElementwiseOpToPTXPatterns(
-    TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    PatternBenefit benefit);
+    TritonGPUToLLVMTypeConverter &typeConverter, int warpSize,
+    RewritePatternSet &patterns, PatternBenefit benefit);
 
 #endif

@@ -333,13 +333,13 @@ private:
     }
 
     Value threadId = getThreadId(rewriter, loc);
-#ifdef USE_ROCM
-    Value warpSize = i32_val(64);
-#else
-    Value warpSize = i32_val(32);
-#endif
-    Value warpId = udiv(threadId, warpSize);
-    Value laneId = urem(threadId, warpSize);
+
+    auto mod = op->getParentOfType<ModuleOp>();
+    auto warpSize = mlir::triton::gpu::getTargetCommonInfo(mod).getWarpSize();
+    
+    Value warpSizeValue = i32_val(64);
+    Value warpId = udiv(threadId, warpSizeValue);
+    Value laneId = urem(threadId, warpSizeValue);
 
     SmallVector<Value> multiDimLaneId =
         delinearize(rewriter, loc, laneId, threadsPerWarp, order);
@@ -391,13 +391,8 @@ private:
     //
     // Each thread needs to process:
     //   elemsPerThread = sizeInterWarps * s1 * s2 .. Sn / numThreads
-#ifdef USE_ROCM
     unsigned numThreads =
-        product<unsigned>(triton::gpu::getWarpsPerCTA(srcLayout)) * 64;
-#else
-    unsigned numThreads =
-        product<unsigned>(triton::gpu::getWarpsPerCTA(srcLayout)) * 32;
-#endif
+        product<unsigned>(triton::gpu::getWarpsPerCTA(srcLayout)) * warpSize;
     unsigned elemsPerThread = std::max<unsigned>(elems / numThreads, 1);
     Value readOffset = threadId;
     for (unsigned round = 0; round < elemsPerThread; ++round) {
@@ -480,10 +475,10 @@ private:
 
 void populateReduceOpToLLVMPatterns(
     TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    int numWarps, AxisInfoAnalysis &axisInfoAnalysis,
+    int numWarps, int warpSize, AxisInfoAnalysis &axisInfoAnalysis,
     const Allocation *allocation, Value smem,
     ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo &indexCacheInfo,
     PatternBenefit benefit) {
-  patterns.add<ReduceOpConversion>(typeConverter, allocation, smem,
+  patterns.add<ReduceOpConversion>(typeConverter, warpSize, allocation, smem,
                                    indexCacheInfo, benefit);
 }

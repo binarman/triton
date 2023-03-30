@@ -97,7 +97,7 @@ struct ReturnOpConversion : public ConvertOpToLLVMPattern<func::ReturnOp> {
 struct FuncOpConversion : public FuncOpConversionBase {
   FuncOpConversion(LLVMTypeConverter &converter, int numWarps,
                    PatternBenefit benefit)
-      : FuncOpConversionBase(converter, benefit), numWarps(numWarps) {}
+      : FuncOpConversionBase(converter, numWarps, benefit), numWarps(numWarps) {}
 
   LogicalResult
   matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
@@ -178,7 +178,7 @@ public:
       RewritePatternSet funcPatterns(context);
       funcPatterns.add<FuncOpConversion>(typeConverter, numWarps,
                                          /*benefit=*/1);
-      funcPatterns.add<ReturnOpConversion>(typeConverter);
+      funcPatterns.add<ReturnOpConversion>(typeConverter, numWarps);
       mlir::cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
                                                             funcPatterns);
       if (failed(
@@ -201,12 +201,13 @@ public:
     OpBuilder::InsertPoint indexInsertPoint;
     ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo indexCacheInfo{
         &baseIndexCache, &indexCache, &indexInsertPoint};
+    auto warpSize = mlir::triton::gpu::getTargetCommonInfo(mod).getWarpSize();
     auto populatePatterns1 = [&](auto populateFunc) {
-      populateFunc(typeConverter, patterns, numWarps, *axisInfoAnalysis,
+      populateFunc(typeConverter, patterns, numWarps, warpSize, *axisInfoAnalysis,
                    &allocation, smem, indexCacheInfo, /*benefit*/ 1);
     };
     auto populatePatterns2 = [&](auto populateFunc) {
-      populateFunc(typeConverter, patterns, numWarps, *axisInfoAnalysis,
+      populateFunc(typeConverter, patterns, numWarps, warpSize, *axisInfoAnalysis,
                    &allocation, smem, /*benefit*/ 1);
     };
     populatePatterns1(populateTritonGPUToLLVMPatterns);
@@ -235,7 +236,7 @@ public:
     TritonPTXConversionTarget ptxTarget(*context);
     RewritePatternSet ptxPatterns(context);
     // Add patterns to convert LLVM to PTX
-    populateElementwiseOpToPTXPatterns(typeConverter, ptxPatterns,
+    populateElementwiseOpToPTXPatterns(typeConverter, warpSize, ptxPatterns,
                                        /*benefits=*/10);
 
     if (failed(applyPartialConversion(mod, ptxTarget, std::move(ptxPatterns))))
@@ -281,6 +282,7 @@ private:
   void decomposeMmaToDotOperand(ModuleOp mod, int numWarps) const {
     // Replace `mma -> dot_op` with `mma -> blocked -> dot_op`
     // unless certain conditions are met
+    auto warpSize = mlir::triton::gpu::getTargetCommonInfo(mod).getWarpSize();
     mod.walk([&](triton::gpu::ConvertLayoutOp cvtOp) -> void {
       OpBuilder builder(cvtOp);
       auto srcType = cvtOp.getOperand().getType().cast<RankedTensorType>();
@@ -294,7 +296,7 @@ private:
             dstType.getShape(), dstType.getElementType(),
             triton::gpu::BlockedEncodingAttr::get(
                 mod.getContext(), srcType.getShape(), getSizePerThread(srcMma),
-                getOrder(srcMma), numWarps));
+                getOrder(srcMma), numWarps, warpSize));
         auto tmp = builder.create<triton::gpu::ConvertLayoutOp>(
             cvtOp.getLoc(), tmpType, cvtOp.getOperand());
         auto newConvert = builder.create<triton::gpu::ConvertLayoutOp>(

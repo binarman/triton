@@ -256,11 +256,10 @@ struct TritonDotPattern : public OpConversionPattern<triton::DotOp> {
     int numWarps = typeConverter->getNumWarps();
 
     SmallVector<unsigned> retSizePerThread = {1, 1};
-#ifdef USE_ROCM
-    int warpSize = 64;
-#else
-    int warpSize = 32;
-#endif
+
+    auto module = op->getParentOfType<ModuleOp>();
+    auto commonInfo = mlir::triton::gpu::getTargetCommonInfo(module);
+    int warpSize = commonInfo.getWarpSize();
 
     if (origShape[0] * origShape[1] / (numWarps * warpSize) >= 4)
       retSizePerThread = {2, 2};
@@ -268,7 +267,7 @@ struct TritonDotPattern : public OpConversionPattern<triton::DotOp> {
       retSizePerThread = {4, 4};
     SmallVector<unsigned> retOrder = {1, 0};
     Attribute dEncoding = triton::gpu::BlockedEncodingAttr::get(
-        getContext(), origShape, retSizePerThread, retOrder, numWarps);
+        getContext(), origShape, retSizePerThread, retOrder, numWarps, warpSize);
     RankedTensorType retType =
         RankedTensorType::get(origShape, origType.getElementType(), dEncoding);
     // a & b must be of smem layout
@@ -787,8 +786,23 @@ public:
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp mod = getOperation();
+
+    // Set module attributes
+    using namespace mlir::triton::gpu;
+    auto commonInfo = TargetCommonInfoAttr::get(context, triple.getValue(), warpSize);
+    mod->setAttr(getTargetCommonInfoAttrName(), commonInfo);
+    if (triple == "amdgcn-amd-amdhsa") {
+        auto amdInfo = TargetAMDInfoAttr::get(context, GFXArch, features);
+        mod->setAttr(getTargetAMDInfoAttrName(), amdInfo);
+    } else if (triple == "nvptx64-nvidia-cuda") {
+        auto nvidiaInfo = TargetNvidiaInfoAttr::get(context, computeCapability);
+        mod->setAttr(getTargetNvidiaInfoAttrName(), nvidiaInfo);
+    } else {
+      return signalPassFailure();
+    }
+
     // type converter
-    TritonGPUTypeConverter typeConverter(context, numWarps);
+    TritonGPUTypeConverter typeConverter(context, numWarps, warpSize);
     TritonGPUConversionTarget target(*context, typeConverter);
     // rewrite patterns
     RewritePatternSet patterns(context);
@@ -812,20 +826,6 @@ public:
         AttrNumWarpsName,
         IntegerAttr::get(i32_ty, llvm::APInt(32, numWarps.getValue())));
 
-    using namespace mlir::triton::gpu;
-
-    auto commonInfo = TargetCommonInfoAttr::get(context, triple.getValue(), warpSize.getValue());
-    mod->setAttr(getTargetCommonInfoAttrName(), commonInfo);
-
-    if (triple == "amdgcn-amd-amdhsa") {
-        auto amdInfo = TargetAMDInfoAttr::get(context, GFXArch, features);
-        mod->setAttr(getTargetAMDInfoAttrName(), amdInfo);
-    } else if (triple == "nvptx64-nvidia-cuda") {
-        auto nvidiaInfo = TargetNvidiaInfoAttr::get(context, computeCapability);
-        mod->setAttr(getTargetNvidiaInfoAttrName(), nvidiaInfo);
-    } else {
-      return signalPassFailure();
-    }
     // update layouts
     //  broadcast src => multicast, dst => broadcasted
     // if (failed(target.refineLayouts(mod, numWarps)))

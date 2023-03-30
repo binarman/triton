@@ -493,10 +493,11 @@ struct MakeRangeOpConversion
 
   MakeRangeOpConversion(
       TritonGPUToLLVMTypeConverter &converter,
+      int warpSize,
       ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo &indexCacheInfo,
       PatternBenefit benefit)
       : ConvertTritonGPUOpToLLVMPattern<triton::MakeRangeOp>(
-            converter, /*Allocation*/ nullptr, Value{}, indexCacheInfo,
+            converter, warpSize, /*Allocation*/ nullptr, Value{}, indexCacheInfo,
             benefit) {}
 
   LogicalResult
@@ -764,23 +765,23 @@ void vprintf_array(Value thread, ArrayRef<Value> arr, std::string info,
 
 void populateTritonGPUToLLVMPatterns(
     TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    int numWarps, AxisInfoAnalysis &axisInfoAnalysis,
+    int numWarps, int warpSize, AxisInfoAnalysis &axisInfoAnalysis,
     const Allocation *allocation, Value smem,
     ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo &indexCacheInfo,
     PatternBenefit benefit) {
-  patterns.add<AddPtrOpConversion>(typeConverter, benefit);
-  patterns.add<AllocTensorOpConversion>(typeConverter, allocation, smem,
+  patterns.add<AddPtrOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<AllocTensorOpConversion>(typeConverter, warpSize, allocation, smem,
                                         benefit);
-  patterns.add<AsyncCommitGroupOpConversion>(typeConverter, benefit);
-  patterns.add<AsyncWaitOpConversion>(typeConverter, benefit);
-  patterns.add<BroadcastOpConversion>(typeConverter, benefit);
+  patterns.add<AsyncCommitGroupOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<AsyncWaitOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<BroadcastOpConversion>(typeConverter, warpSize, benefit);
 
-  patterns.add<ExtractSliceOpConversion>(typeConverter, allocation, smem,
+  patterns.add<ExtractSliceOpConversion>(typeConverter, warpSize, allocation, smem,
                                          benefit);
-  patterns.add<GetProgramIdOpConversion>(typeConverter, benefit);
-  patterns.add<GetNumProgramsOpConversion>(typeConverter, benefit);
-  patterns.add<MakeRangeOpConversion>(typeConverter, indexCacheInfo, benefit);
-  patterns.add<ReturnOpConversion>(typeConverter, benefit);
-  patterns.add<PrintOpConversion>(typeConverter, benefit);
-  patterns.add<AssertOpConversion>(typeConverter, benefit);
+  patterns.add<GetProgramIdOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<GetNumProgramsOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<MakeRangeOpConversion>(typeConverter, warpSize, indexCacheInfo, benefit);
+  patterns.add<ReturnOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<PrintOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<AssertOpConversion>(typeConverter, warpSize, benefit);
 }

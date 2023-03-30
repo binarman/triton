@@ -269,20 +269,16 @@ for
     // }]>,
     // Custom builder initializes sizePerWarp and sizePerCTA automatically
     // Default builder takes sizePerThread, order and numWarps, and tries to
-    // pack numWarps*32 threads in the provided order for use in a type
+    // pack numWarps*warpSize threads in the provided order for use in a type
     // of the given shape.
     AttrBuilder<(ins "ArrayRef<int64_t>":$shape,
                      "ArrayRef<unsigned>":$sizePerThread,
                      "ArrayRef<unsigned>":$order,
-                     "unsigned":$numWarps), [{
+                     "unsigned":$numWarps,
+                     "unsigned":$warpSize), [{
       int rank = sizePerThread.size();
-#ifdef USE_ROCM
-      unsigned remainingLanes = 64;
-      unsigned remainingThreads = numWarps*64;
-#else
-      unsigned remainingLanes = 32;
-      unsigned remainingThreads = numWarps*32;
-#endif
+      unsigned remainingLanes = warpSize;
+      unsigned remainingThreads = numWarps*warpSize;
       unsigned remainingWarps = numWarps;
       unsigned prevLanes = 1;
       unsigned prevWarps = 1;
@@ -300,11 +296,7 @@ for
         prevWarps *= warpsPerCTA[i];
       }
       // Expand the last dimension to fill the remaining lanes and warps
-#ifdef USE_ROCM
-      threadsPerWarp[order[rank-1]] = 64 / prevLanes;
-#else
-      threadsPerWarp[order[rank-1]] = 32 / prevLanes;
-#endif
+      threadsPerWarp[order[rank-1]] = warpSize / prevLanes;
       warpsPerCTA[order[rank-1]] = numWarps / prevWarps;
       return $_get(context, sizePerThread, threadsPerWarp, warpsPerCTA, order);
 

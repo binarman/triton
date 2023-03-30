@@ -8,7 +8,7 @@ using namespace mlir::triton;
 
 void populateLoadStoreOpToLLVMPatterns(
     TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    int numWarps, AxisInfoAnalysis &axisInfoAnalysis,
+    int numWarps, int warpSize, AxisInfoAnalysis &axisInfoAnalysis,
     const Allocation *allocation, Value smem,
     ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo &indexCacheInfo,
     PatternBenefit benefit);

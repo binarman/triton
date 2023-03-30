@@ -1,4 +1,4 @@
-// RUN: triton-opt %s -split-input-file -convert-triton-to-tritongpu=num-warps=2 | FileCheck %s
+// RUN: triton-opt %s -split-input-file -convert-triton-to-tritongpu="num-warps=2 warp-size=64" | FileCheck %s
 
 func.func @ops() {
   // CHECK: module attributes {{.*}}"triton_gpu.num-warps" = 2 : i32{{.*}}

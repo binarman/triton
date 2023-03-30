@@ -90,8 +90,9 @@ struct CatOpConversion : public ConvertTritonGPUOpToLLVMPattern<CatOp> {
   using OpAdaptor = typename CatOp::Adaptor;
 
   explicit CatOpConversion(TritonGPUToLLVMTypeConverter &typeConverter,
+                           int warpSize,
                            PatternBenefit benefit = 1)
-      : ConvertTritonGPUOpToLLVMPattern<CatOp>(typeConverter, benefit) {}
+      : ConvertTritonGPUOpToLLVMPattern<CatOp>(typeConverter, warpSize, benefit) {}
 
   LogicalResult
   matchAndRewrite(CatOp op, OpAdaptor adaptor,
@@ -125,8 +126,9 @@ template <typename SourceOp>
 struct ViewLikeOpConversion : public ConvertTritonGPUOpToLLVMPattern<SourceOp> {
   using OpAdaptor = typename SourceOp::Adaptor;
   explicit ViewLikeOpConversion(TritonGPUToLLVMTypeConverter &typeConverter,
+                                int warpSize,
                                 PatternBenefit benefit = 1)
-      : ConvertTritonGPUOpToLLVMPattern<SourceOp>(typeConverter, benefit) {}
+      : ConvertTritonGPUOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit) {}
 
   LogicalResult
   matchAndRewrite(SourceOp op, OpAdaptor adaptor,
@@ -167,14 +169,16 @@ struct TransOpConversion
 
 void populateViewOpToLLVMPatterns(TritonGPUToLLVMTypeConverter &typeConverter,
                                   RewritePatternSet &patterns, int numWarps,
+                                  int warpSize,
                                   AxisInfoAnalysis &axisInfoAnalysis,
                                   const Allocation *allocation, Value smem,
                                   PatternBenefit benefit) {
-  patterns.add<ViewLikeOpConversion<triton::ViewOp>>(typeConverter, benefit);
+  patterns.add<ViewLikeOpConversion<triton::ViewOp>>(typeConverter, warpSize, benefit);
   patterns.add<ViewLikeOpConversion<triton::ExpandDimsOp>>(typeConverter,
+                                                           warpSize,
                                                            benefit);
-  patterns.add<SplatOpConversion>(typeConverter, benefit);
-  patterns.add<ArithConstantSplatOpConversion>(typeConverter, benefit);
-  patterns.add<CatOpConversion>(typeConverter, benefit);
-  patterns.add<TransOpConversion>(typeConverter, benefit);
+  patterns.add<SplatOpConversion>(typeConverter, warpSize,  benefit);
+  patterns.add<ArithConstantSplatOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<CatOpConversion>(typeConverter, warpSize,  benefit);
+  patterns.add<TransOpConversion>(typeConverter, warpSize, benefit);
 }

@@ -23,7 +23,7 @@ typedef DenseMap<Value, std::function<Type(Type)>> LayoutMap;
 
 struct CoalescePass : public TritonGPUCoalesceBase<CoalescePass> {
   Attribute getCoalescedEncoding(AxisInfoAnalysis &axisInfo, Value ptr,
-                                 int numWarps) {
+                                 int numWarps, int warpSize) {
     auto origType = ptr.getType().cast<RankedTensorType>();
     // Get the shape of the tensor.
     size_t rank = origType.getRank();
@@ -49,11 +49,7 @@ struct CoalescePass : public TritonGPUCoalesceBase<CoalescePass> {
         }
       }
     int numElems = product(origType.getShape());
-#ifdef USE_ROCM
-    int numThreads = numWarps * 64;
-#else
-    int numThreads = numWarps * 32;
-#endif
+    int numThreads = numWarps * warpSize;
     int numElemsPerThread = std::max(numElems / numThreads, 1);
     // Thread tile size depends on memory alignment
     SmallVector<unsigned, 4> sizePerThread(rank, 1);
@@ -74,13 +70,13 @@ struct CoalescePass : public TritonGPUCoalesceBase<CoalescePass> {
     std::iota(dims.begin(), dims.end(), 0);
     // create encoding
     Attribute encoding = triton::gpu::BlockedEncodingAttr::get(
-        &getContext(), origType.getShape(), sizePerThread, order, numWarps);
+        &getContext(), origType.getShape(), sizePerThread, order, numWarps, warpSize);
     return encoding;
   }
 
   std::function<Type(Type)> getTypeConverter(AxisInfoAnalysis &axisInfo,
-                                             Value ptr, int numWarps) {
-    Attribute encoding = getCoalescedEncoding(axisInfo, ptr, numWarps);
+                                             Value ptr, int numWarps, int warpSize) {
+    Attribute encoding = getCoalescedEncoding(axisInfo, ptr, numWarps, warpSize);
     return [encoding](Type _type) {
       RankedTensorType type = _type.cast<RankedTensorType>();
       return RankedTensorType::get(type.getShape(), type.getElementType(),
@@ -128,6 +124,8 @@ struct CoalescePass : public TritonGPUCoalesceBase<CoalescePass> {
 
   void runOnOperation() override {
     Operation *op = getOperation();
+    auto targetInfo = mlir::triton::gpu::getTargetCommonInfo(getOperation());
+  
     // Run axis info analysis
     std::unique_ptr<DataFlowSolver> solver = createDataFlowSolver();
     AxisInfoAnalysis *axisInfo = solver->load<AxisInfoAnalysis>();
@@ -157,7 +155,7 @@ struct CoalescePass : public TritonGPUCoalesceBase<CoalescePass> {
       AxisInfo info = axisInfo->getLatticeElement(ptr)->getValue();
       auto mod = curr->getParentOfType<ModuleOp>();
       int numWarps = triton::gpu::TritonGPUDialect::getNumWarps(mod);
-      auto convertType = getTypeConverter(*axisInfo, ptr, numWarps);
+      auto convertType = getTypeConverter(*axisInfo, ptr, numWarps, targetInfo.getWarpSize());
       layoutMap[ptr] = convertType;
     });
 

@@ -1311,7 +1311,7 @@ def binary_name_to_header_name(name):
     return f"{name}.h"
 
 
-def generate_launcher(constants, signature):
+def generate_launcher(constants, signature, warp_size):
     arg_decls = ', '.join(f"{ty_to_cpp(ty)} arg{i}" for i, ty in signature.items())
 
     def _extracted_type(ty):
@@ -1366,7 +1366,7 @@ def generate_launcher(constants, signature):
     static void _launch(int gridX, int gridY, int gridZ, int num_warps, int shared_memory, hipStream_t stream, hipFunction_t function, {arg_decls}) {{
       void *params[] = {{ {', '.join(f"&arg{i}" for i in signature.keys() if i not in constants)} }};
       if(gridX*gridY*gridZ > 0){{
-          HIP_CHECK(hipModuleLaunchKernel(function, gridX, gridY, gridZ, 64*num_warps, 1, 1, shared_memory, stream, params, 0));
+          HIP_CHECK(hipModuleLaunchKernel(function, gridX, gridY, gridZ, {warp_size}*num_warps, 1, 1, shared_memory, stream, params, 0));
       }}
     }}
     typedef struct _DevicePtrInfo {{
@@ -1724,10 +1724,10 @@ def _build(name, src, srcdir):
     return so
 
 
-def make_so_cache_key(version_hash, signature, constants):
+def make_so_cache_key(version_hash, signature, constants, warp_size):
     # Get unique key for the compiled code
     signature = {k: 'ptr' if v[0] == '*' else v for k, v in signature.items()}
-    key = f"{version_hash}-{''.join(signature.values())}{constants}"
+    key = f"{version_hash}-{''.join(signature.values())}{constants}warp{warp_size}"
     key = hashlib.md5(key.encode("utf-8")).hexdigest()
     return key
 
@@ -1780,15 +1780,15 @@ def get_amdgpu_arch_fulldetails():
     except:
         return None
 
-def make_stub(name, signature, constants):
+def make_stub(name, signature, constants, warp_size):
     # name of files that are cached
-    so_cache_key = make_so_cache_key(triton.runtime.jit.version_key(), signature, constants)
+    so_cache_key = make_so_cache_key(triton.runtime.jit.version_key(), signature, constants, warp_size)
     so_cache_manager = CacheManager(so_cache_key)
     so_name = f"{name}.so"
     # retrieve stub from cache if it exists
     if not so_cache_manager.has_file(so_name):
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = generate_launcher(constants, signature)
+            src = generate_launcher(constants, signature, warp_size)
             src_path = os.path.join(tmpdir, "main.c")
             with open(src_path, "w") as f:
                 f.write(src)
@@ -1895,8 +1895,8 @@ def compile(fn, **kwargs):
             raise RuntimeError('gfx_arch is None (not specified)')
         gfx_triple = gfx_arch_full_details[0]
         gfx_features = gfx_arch_full_details[2]
-        ws = gfx_arch_full_details[3]
-        compilation_target = CompilationTarget(gfx_triple, warp_size = ws, gfx_arch=gfx_arch, features = gfx_features)
+        warp_size = gfx_arch_full_details[3]
+        compilation_target = CompilationTarget(gfx_triple, warp_size = warp_size, gfx_arch=gfx_arch, features = gfx_features)
         stages = {
             "ast": (lambda path: fn, None),
             "ttir": (lambda path: parse_mlir_module(path, context),
@@ -1910,6 +1910,7 @@ def compile(fn, **kwargs):
                        lambda src: llir_to_amdgcn_and_hsaco(src)),
         }
     else:
+        warp_size = 32
         compilation_target = CompilationTarget("nvptx64-nvidia-cuda", warp_size=32, compute_capability=capability)
         stages = {
             "ast": (lambda path: fn, None),
@@ -1953,7 +1954,7 @@ def compile(fn, **kwargs):
         first_stage = list(stages.keys()).index(ir)
 
     # cache manager
-    so_path = make_stub(name, signature, constants)
+    so_path = make_stub(name, signature, constants, warp_size)
     # create cache manager
     fn_cache_manager = CacheManager(make_hash(fn, **kwargs))
     # determine name and extension type of provided function

@@ -689,8 +689,8 @@ public:
   using OpAdaptor = typename SourceOp::Adaptor;
 
   explicit ElementwiseOpConversionBase(
-      TritonGPUToLLVMTypeConverter &typeConverter, PatternBenefit benefit = 1)
-      : ConvertTritonGPUOpToLLVMPattern<SourceOp>(typeConverter, benefit) {}
+      TritonGPUToLLVMTypeConverter &typeConverter, int warpSize, PatternBenefit benefit = 1)
+      : ConvertTritonGPUOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit) {}
 
   LogicalResult
   matchAndRewrite(SourceOp op, OpAdaptor adaptor,
@@ -747,9 +747,10 @@ struct ElementwiseOpConversion
   using OpAdaptor = typename Base::OpAdaptor;
 
   explicit ElementwiseOpConversion(LLVMTypeConverter &typeConverter,
+                                   int warpSize,
                                    PatternBenefit benefit = 1)
       : ElementwiseOpConversionBase<SourceOp, ElementwiseOpConversion>(
-            typeConverter, benefit) {}
+            typeConverter, warpSize, benefit) {}
 
   // An interface to support variant DestOp builder.
   DestOp createDestOp(SourceOp op, OpAdaptor adaptor,
@@ -1150,16 +1151,16 @@ struct ExpOpConversionApprox
 
 void populateElementwiseOpToLLVMPatterns(
     TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    int numWarps, AxisInfoAnalysis &axisInfoAnalysis,
+    int numWarps, int warpSize, AxisInfoAnalysis &axisInfoAnalysis,
     const Allocation *allocation, Value smem, PatternBenefit benefit) {
 #define POPULATE_TERNARY_OP(SRC_OP, DST_OP)                                    \
-  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP>>(typeConverter, benefit);
+  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP>>(typeConverter, warpSize, benefit);
   POPULATE_TERNARY_OP(triton::gpu::SelectOp, LLVM::SelectOp)
   POPULATE_TERNARY_OP(arith::SelectOp, LLVM::SelectOp)
 #undef POPULATE_TERNARY_OP
 
 #define POPULATE_BINARY_OP(SRC_OP, DST_OP)                                     \
-  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP>>(typeConverter, benefit);
+  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP>>(typeConverter, warpSize, benefit);
   POPULATE_BINARY_OP(arith::SubIOp, LLVM::SubOp) // -
   POPULATE_BINARY_OP(arith::AddIOp, LLVM::AddOp) // +
   POPULATE_BINARY_OP(arith::MulIOp, LLVM::MulOp) // *
@@ -1177,7 +1178,7 @@ void populateElementwiseOpToLLVMPatterns(
 #undef POPULATE_BINARY_OP
 
 #define POPULATE_UNARY_OP(SRC_OP, DST_OP)                                      \
-  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP>>(typeConverter, benefit);
+  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP>>(typeConverter, warpSize, benefit);
   POPULATE_UNARY_OP(arith::TruncIOp, LLVM::TruncOp)
   POPULATE_UNARY_OP(arith::ExtSIOp, LLVM::SExtOp)
   POPULATE_UNARY_OP(arith::ExtUIOp, LLVM::ZExtOp)
@@ -1193,27 +1194,27 @@ void populateElementwiseOpToLLVMPatterns(
   POPULATE_UNARY_OP(triton::PtrToIntOp, LLVM::PtrToIntOp)
 #undef POPULATE_UNARY_OP
 
-  patterns.add<CmpIOpConversion>(typeConverter, benefit);
-  patterns.add<CmpFOpConversion>(typeConverter, benefit);
+  patterns.add<CmpIOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<CmpFOpConversion>(typeConverter, warpSize, benefit);
 
-  patterns.add<FDivOpConversion>(typeConverter, benefit);
-  patterns.add<FSubOpConversion>(typeConverter, benefit);
-  patterns.add<FAddOpConversion>(typeConverter, benefit);
-  patterns.add<FMulOpConversion>(typeConverter, benefit);
+  patterns.add<FDivOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<FSubOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<FAddOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<FMulOpConversion>(typeConverter, warpSize, benefit);
 
-  patterns.add<ExtFOpConversion>(typeConverter, benefit);
-  patterns.add<TruncFOpConversion>(typeConverter, benefit);
-  patterns.add<FPToSIOpConversion>(typeConverter, benefit);
-  patterns.add<SIToFPOpConversion>(typeConverter, benefit);
+  patterns.add<ExtFOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<TruncFOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<FPToSIOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<SIToFPOpConversion>(typeConverter, warpSize, benefit);
 
-  patterns.add<FpToFpOpConversion>(typeConverter, benefit);
+  patterns.add<FpToFpOpConversion>(typeConverter, warpSize, benefit);
 
-  patterns.add<ExtElemwiseOpConversion>(typeConverter, benefit);
+  patterns.add<ExtElemwiseOpConversion>(typeConverter, warpSize, benefit);
   // ExpOpConversionApprox will try using ex2.approx if the input type is
   // FP32. For FP64 input type, ExpOpConversionApprox will return failure and
   // ElementwiseOpConversion<math::ExpOp, math::ExpOp> defined below will call
   // __nv_expf for higher-precision calculation
-  patterns.add<ExpOpConversionApprox>(typeConverter, benefit);
+  patterns.add<ExpOpConversionApprox>(typeConverter, warpSize, benefit);
 }
 
 struct FPExtOpConversion
@@ -1358,11 +1359,11 @@ bool isLegalElementwiseOp(Operation *op) {
 }
 
 void populateElementwiseOpToPTXPatterns(
-    TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    PatternBenefit benefit) {
-  patterns.add<FPExtOpConversion>(typeConverter, benefit);
-  patterns.add<FPTruncOpConversion>(typeConverter, benefit);
-  patterns.add<TruncOpConversion>(typeConverter, benefit);
-  patterns.add<SExtOpConversion>(typeConverter, benefit);
-  patterns.add<ZExtOpConversion>(typeConverter, benefit);
+    TritonGPUToLLVMTypeConverter &typeConverter, int warpSize,
+    RewritePatternSet &patterns, PatternBenefit benefit) {
+  patterns.add<FPExtOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<FPTruncOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<TruncOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<SExtOpConversion>(typeConverter, warpSize, benefit);
+  patterns.add<ZExtOpConversion>(typeConverter, warpSize, benefit);
 }

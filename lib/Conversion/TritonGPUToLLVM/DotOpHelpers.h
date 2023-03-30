@@ -40,12 +40,13 @@ using ::mlir::triton::gpu::SharedEncodingAttr;
 struct DotOpMmaV1ConversionHelper {
   MmaEncodingAttr mmaLayout;
   ArrayRef<unsigned> wpt;
+  int warpSize;
   static constexpr std::array<int, 3> fpw{{2, 2, 1}};
 
   using ValueTable = std::map<std::pair<int, int>, std::pair<Value, Value>>;
 
-  explicit DotOpMmaV1ConversionHelper(MmaEncodingAttr mmaLayout)
-      : mmaLayout(mmaLayout), wpt(mmaLayout.getWarpsPerCTA()) {}
+  explicit DotOpMmaV1ConversionHelper(MmaEncodingAttr mmaLayout, int warpSize)
+      : mmaLayout(mmaLayout), wpt(mmaLayout.getWarpsPerCTA()), warpSize(warpSize) {}
 
   static ArrayRef<unsigned> getMmaInstrShape() { return instrShape; }
 
@@ -83,8 +84,8 @@ struct DotOpMmaV1ConversionHelper {
   // composed result. In this way we want to retain the original code
   // structure in convert_mma884 method for easier debugging.
   std::tuple<Value, Value, Value, Value>
-  computeOffsets(Value threadId, bool isARow, bool isBRow, ArrayRef<int> fpw,
-                 ArrayRef<int> spw, ArrayRef<int> rep,
+  computeOffsets(Value threadId, bool isARow, bool isBRow,
+                 ArrayRef<int> fpw, ArrayRef<int> spw, ArrayRef<int> rep,
                  ConversionPatternRewriter &rewriter, Location loc) const;
 
   // Extract values belong to $a or $b from a LLVMStruct, the shape is n0xn1.
@@ -95,7 +96,7 @@ struct DotOpMmaV1ConversionHelper {
   using CoordTy = SmallVector<Value>;
   // Get the coordinates(m,n) of the elements emit by a thread in accumulator.
   static SmallVector<CoordTy>
-  getMNCoords(Value thread, ConversionPatternRewriter &rewriter,
+  getMNCoords(Value thread, int warpSize, ConversionPatternRewriter &rewriter,
               ArrayRef<unsigned> wpt, const MmaEncodingAttr &mmaLayout,
               ArrayRef<int64_t> shape, bool isARow, bool isBRow, bool isAVec4,
               bool isBVec4);
@@ -356,18 +357,14 @@ struct MMA16816ConversionHelper {
   MMA16816ConversionHelper(Type dotOperand, MmaEncodingAttr mmaLayout,
                            Value thread, ConversionPatternRewriter &rewriter,
                            TritonGPUToLLVMTypeConverter *typeConverter,
-                           Location loc)
+                           Location loc, int warpSize)
       : mmaLayout(mmaLayout), wpt(mmaLayout.getWarpsPerCTA()), thread(thread),
         helper(mmaLayout), rewriter(rewriter), typeConverter(typeConverter),
         loc(loc), ctx(mmaLayout.getContext()) {
     helper.deduceMmaType(dotOperand);
-#ifdef USE_ROCM
-    Value warpSize = i32_val(64);
-#else
-    Value warpSize = i32_val(32);
-#endif
-    lane = urem(thread, warpSize);
-    warp = udiv(thread, warpSize);
+    Value warpSizeValue = i32_val(warpSize);
+    lane = urem(thread, warpSizeValue);
+    warp = udiv(thread, warpSizeValue);
   }
 
   // Get a warpId for M axis.

@@ -67,9 +67,12 @@ private:
     Value B = op.getB();
     Value C = op.getC();
 
+    auto mod = op->getParentOfType<ModuleOp>();
+    auto warpSize = mlir::triton::gpu::getTargetCommonInfo(mod).getWarpSize();
+
     MMA16816ConversionHelper mmaHelper(A.getType(), mmaLayout,
                                        getThreadId(rewriter, loc), rewriter,
-                                       getTypeConverter(), loc);
+                                       getTypeConverter(), loc, warpSize);
 
     auto ATensorTy = A.getType().cast<RankedTensorType>();
     auto BTensorTy = B.getType().cast<RankedTensorType>();
@@ -121,7 +124,10 @@ private:
     assert(isARow == isARow_);
     assert(isBRow == isBRow_);
 
-    DotOpMmaV1ConversionHelper helper(mmaLayout);
+    auto mod = op->getParentOfType<ModuleOp>();
+    auto warpSize = mlir::triton::gpu::getTargetCommonInfo(mod).getWarpSize();
+
+    DotOpMmaV1ConversionHelper helper(mmaLayout, warpSize);
 
     unsigned numM = ALayout.getMMAv1NumOuter(AShape);
     unsigned numN = BLayout.getMMAv1NumOuter(BShape);
@@ -293,8 +299,9 @@ private:
 
 void populateDotOpToLLVMPatterns(TritonGPUToLLVMTypeConverter &typeConverter,
                                  RewritePatternSet &patterns, int numWarps,
+                                 int warpSize,
                                  AxisInfoAnalysis &axisInfoAnalysis,
                                  const Allocation *allocation, Value smem,
                                  PatternBenefit benefit) {
-  patterns.add<DotOpConversion>(typeConverter, allocation, smem, benefit);
+  patterns.add<DotOpConversion>(typeConverter, warpSize, allocation, smem, benefit);
 }

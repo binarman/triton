@@ -182,18 +182,18 @@ public:
   };
 
   explicit ConvertTritonGPUOpToLLVMPatternBase(
-      TritonGPUToLLVMTypeConverter &typeConverter)
-      : converter(&typeConverter) {}
+      TritonGPUToLLVMTypeConverter &typeConverter, int warpSize)
+      : converter(&typeConverter), warpSize(warpSize) {}
 
   explicit ConvertTritonGPUOpToLLVMPatternBase(
-      TritonGPUToLLVMTypeConverter &typeConverter, const Allocation *allocation,
+      TritonGPUToLLVMTypeConverter &typeConverter, int warpSize, const Allocation *allocation,
       Value smem)
-      : converter(&typeConverter), allocation(allocation), smem(smem) {}
+      : converter(&typeConverter), warpSize(warpSize), allocation(allocation), smem(smem) {}
 
   explicit ConvertTritonGPUOpToLLVMPatternBase(
-      TritonGPUToLLVMTypeConverter &typeConverter, const Allocation *allocation,
+      TritonGPUToLLVMTypeConverter &typeConverter, int warpSize, const Allocation *allocation,
       Value smem, IndexCacheInfo indexCacheInfo)
-      : converter(&typeConverter), allocation(allocation), smem(smem),
+      : converter(&typeConverter), warpSize(warpSize), allocation(allocation), smem(smem),
         indexCacheInfo(indexCacheInfo) {}
 
   TritonGPUToLLVMTypeConverter *getTypeConverter() const { return converter; }
@@ -601,13 +601,9 @@ private:
       const BlockedEncodingAttr &blocked_layout, RankedTensorType type) const {
     auto shape = type.getShape();
     Value threadId = getThreadId(rewriter, loc);
-#ifdef USE_ROCM
-    Value warpSize = i32_val(64);
-#else
-    Value warpSize = i32_val(32);
-#endif
-    Value laneId = urem(threadId, warpSize);
-    Value warpId = udiv(threadId, warpSize);
+    Value warpSizeValue = i32_val(warpSize);
+    Value laneId = urem(threadId, warpSizeValue);
+    Value warpId = udiv(threadId, warpSizeValue);
     auto sizePerThread = blocked_layout.getSizePerThread();
     auto threadsPerWarp = blocked_layout.getThreadsPerWarp();
     auto warpsPerCTA = blocked_layout.getWarpsPerCTA();
@@ -715,11 +711,7 @@ private:
     Value _2 = i32_val(2);
     Value _4 = i32_val(4);
     Value _16 = i32_val(16);
-#ifdef USE_ROCM
-    Value warpSize = i32_val(64);
-#else
-    Value warpSize = i32_val(32);
-#endif
+    Value warpSizeValue = i32_val(warpSize);
     Value _fpw0 = i32_val(fpw[0]);
     Value _fpw1 = i32_val(fpw[1]);
 
@@ -736,8 +728,8 @@ private:
     SmallVector<int, 2> spw({aSpw[0], bSpw[1]});
     SmallVector<unsigned, 2> shapePerCTA({spw[0] * wpt[0], spw[1] * wpt[1]});
 
-    Value lane = urem(thread, warpSize);
-    Value warp = udiv(thread, warpSize);
+    Value lane = urem(thread, warpSizeValue);
+    Value warp = udiv(thread, warpSizeValue);
 
     Value warp0 = urem(warp, i32_val(wpt[0]));
     Value warp12 = udiv(warp, i32_val(wpt[0]));
@@ -835,13 +827,9 @@ private:
     SmallVector<Value> warpsPerCTA = {i32_val(_warpsPerCTA[0]),
                                       i32_val(_warpsPerCTA[1])};
     Value threadId = getThreadId(rewriter, loc);
-#ifdef USE_ROCM
-    Value warpSize = i32_val(64);
-#else
-    Value warpSize = i32_val(32);
-#endif
-    Value laneId = urem(threadId, warpSize);
-    Value warpId = udiv(threadId, warpSize);
+    Value warpSizeValue = i32_val(warpSize);
+    Value laneId = urem(threadId, warpSizeValue);
+    Value warpId = udiv(threadId, warpSizeValue);
     Value warpId0 = urem(urem(warpId, warpsPerCTA[0]), i32_val(shape[0] / 16));
     Value warpId1 = urem(urem(udiv(warpId, warpsPerCTA[0]), warpsPerCTA[1]),
                          i32_val(shape[1] / 8));
@@ -915,6 +903,7 @@ private:
 
 protected:
   TritonGPUToLLVMTypeConverter *converter;
+  int warpSize;
   const Allocation *allocation;
   Value smem;
   IndexCacheInfo indexCacheInfo;
@@ -928,21 +917,24 @@ public:
   using OpAdaptor = typename SourceOp::Adaptor;
 
   explicit ConvertTritonGPUOpToLLVMPattern(
-      TritonGPUToLLVMTypeConverter &typeConverter, PatternBenefit benefit = 1)
-      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, benefit),
-        ConvertTritonGPUOpToLLVMPatternBase(typeConverter) {}
+      TritonGPUToLLVMTypeConverter &typeConverter, int warpSize,
+      PatternBenefit benefit = 1)
+      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit),
+        ConvertTritonGPUOpToLLVMPatternBase(typeConverter, warpSize) {}
 
   explicit ConvertTritonGPUOpToLLVMPattern(
-      TritonGPUToLLVMTypeConverter &typeConverter, const Allocation *allocation,
+      TritonGPUToLLVMTypeConverter &typeConverter, int warpSize,
+      const Allocation *allocation,
       Value smem, PatternBenefit benefit = 1)
-      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, benefit),
-        ConvertTritonGPUOpToLLVMPatternBase(typeConverter, allocation, smem) {}
+      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit),
+        ConvertTritonGPUOpToLLVMPatternBase(typeConverter, warpSize, allocation, smem) {}
 
   explicit ConvertTritonGPUOpToLLVMPattern(
-      TritonGPUToLLVMTypeConverter &typeConverter, const Allocation *allocation,
+      TritonGPUToLLVMTypeConverter &typeConverter, int warpSize, 
+      const Allocation *allocation,
       Value smem, IndexCacheInfo indexCacheInfo, PatternBenefit benefit = 1)
-      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, benefit),
-        ConvertTritonGPUOpToLLVMPatternBase(typeConverter, allocation, smem,
+      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit),
+        ConvertTritonGPUOpToLLVMPatternBase(typeConverter, warpSize, allocation, smem,
                                             indexCacheInfo) {}
 
 protected:

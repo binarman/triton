@@ -6,7 +6,7 @@
 #slice1dim1 = #triton_gpu.slice<{dim = 1, parent = #blocked1}>
 #slice2dim0 = #triton_gpu.slice<{dim = 0, parent = #blocked2}>
 
-module attributes {"triton_gpu.num-warps" = 4 : i32} {
+module attributes {"triton_gpu.nvidia-target" = #triton_gpu.targetNvidiaInfo<computeCapability = 80>, "triton_gpu.common-target" = #triton_gpu.targetCommonInfo<triple = "nvptx64-nvidia-cuda",warpSize = 64>, "triton_gpu.num-warps" = 4 : i32} {
 
 
 // CHECK: [[row_layout:#.*]] = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [4, 16], warpsPerCTA = [4, 1], order = [1, 0]}>

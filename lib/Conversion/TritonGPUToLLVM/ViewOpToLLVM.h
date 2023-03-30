@@ -8,6 +8,7 @@ using namespace mlir::triton;
 
 void populateViewOpToLLVMPatterns(TritonGPUToLLVMTypeConverter &typeConverter,
                                   RewritePatternSet &patterns, int numWarps,
+                                  int warpSize,
                                   AxisInfoAnalysis &axisInfoAnalysis,
                                   const Allocation *allocation, Value smem,
                                   PatternBenefit benefit);

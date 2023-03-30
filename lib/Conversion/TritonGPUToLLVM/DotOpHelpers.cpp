@@ -149,7 +149,8 @@ Value DotOpMmaV1ConversionHelper::loadB(
   int strideRepK = 1;
 
   auto [_3, _4, offsetBN, offsetBK] = computeOffsets(
-      thread, false, isBRow, fpw, resultEncoding.getMMAv1ShapePerWarp(),
+      thread, false, isBRow, fpw,
+      resultEncoding.getMMAv1ShapePerWarp(),
       resultEncoding.getMMAv1Rep(), rewriter, loc);
 
   // swizzling
@@ -247,14 +248,10 @@ DotOpMmaV1ConversionHelper::computeOffsets(Value threadId, bool isARow,
   Value _3 = i32_val(3);
   Value _4 = i32_val(4);
   Value _16 = i32_val(16);
-#ifdef USE_ROCM
-  Value warpSize = i32_val(64);
-#else
-  Value warpSize = i32_val(32);
-#endif
+  Value warpSizeValue = i32_val(warpSize);
 
-  Value lane = urem(threadId, warpSize);
-  Value warp = udiv(threadId, warpSize);
+  Value lane = urem(threadId, warpSizeValue);
+  Value warp = udiv(threadId, warpSizeValue);
   // warp offset
   Value warp0 = urem(warp, i32_val(wpt[0]));
   Value warp12 = udiv(warp, i32_val(wpt[0]));
@@ -321,7 +318,7 @@ DotOpMmaV1ConversionHelper::extractLoadedOperand(
 
 // TODO: Mostly a duplicate of TritonGPUToLLVMBase::emitBaseIndexforMMaLayoutV1
 SmallVector<DotOpMmaV1ConversionHelper::CoordTy>
-DotOpMmaV1ConversionHelper::getMNCoords(Value thread,
+DotOpMmaV1ConversionHelper::getMNCoords(Value thread, int warpSize,
                                         ConversionPatternRewriter &rewriter,
                                         ArrayRef<unsigned int> wpt,
                                         const MmaEncodingAttr &mmaLayout,
@@ -335,11 +332,7 @@ DotOpMmaV1ConversionHelper::getMNCoords(Value thread,
   Value _2 = i32_val(2);
   Value _4 = i32_val(4);
   Value _16 = i32_val(16);
-#ifdef USE_ROCM
-  Value warpSize = i32_val(64);
-#else
-  Value warpSize = i32_val(32);
-#endif
+  Value warpSizeValue = i32_val(warpSize);
   Value _fpw0 = i32_val(fpw[0]);
   Value _fpw1 = i32_val(fpw[1]);
 
@@ -356,8 +349,8 @@ DotOpMmaV1ConversionHelper::getMNCoords(Value thread,
   SmallVector<int, 2> spw({aSpw[0], bSpw[1]});
   SmallVector<unsigned, 2> shapePerCTA({spw[0] * wpt[0], spw[1] * wpt[1]});
 
-  Value lane = urem(thread, warpSize);
-  Value warp = udiv(thread, warpSize);
+  Value lane = urem(thread, warpSizeValue);
+  Value warp = udiv(thread, warpSizeValue);
 
   Value warp0 = urem(warp, i32_val(wpt[0]));
   Value warp12 = udiv(warp, i32_val(wpt[0]));

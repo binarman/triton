@@ -48,8 +48,8 @@ struct LoadOpConversion
       triton::LoadOp>::ConvertTritonGPUOpToLLVMPattern;
 
   LoadOpConversion(TritonGPUToLLVMTypeConverter &converter,
-                   AxisInfoAnalysis &axisAnalysisPass, PatternBenefit benefit)
-      : ConvertTritonGPUOpToLLVMPattern<triton::LoadOp>(converter, benefit),
+                   AxisInfoAnalysis &axisAnalysisPass, int warpSize, PatternBenefit benefit)
+      : ConvertTritonGPUOpToLLVMPattern<triton::LoadOp>(converter, warpSize, benefit),
         LoadStoreConversionBase(axisAnalysisPass) {}
 
   LogicalResult
@@ -288,8 +288,8 @@ struct StoreOpConversion
       triton::StoreOp>::ConvertTritonGPUOpToLLVMPattern;
 
   StoreOpConversion(TritonGPUToLLVMTypeConverter &converter,
-                    AxisInfoAnalysis &axisAnalysisPass, PatternBenefit benefit)
-      : ConvertTritonGPUOpToLLVMPattern<triton::StoreOp>(converter, benefit),
+                    AxisInfoAnalysis &axisAnalysisPass, int warpSize, PatternBenefit benefit)
+      : ConvertTritonGPUOpToLLVMPattern<triton::StoreOp>(converter, warpSize, benefit),
         LoadStoreConversionBase(axisAnalysisPass) {}
 
   LogicalResult
@@ -425,11 +425,12 @@ struct AtomicCASOpConversion
       triton::AtomicCASOp>::ConvertTritonGPUOpToLLVMPattern;
 
   AtomicCASOpConversion(TritonGPUToLLVMTypeConverter &converter,
+                        int warpSize, 
                         const Allocation *allocation, Value smem,
                         AxisInfoAnalysis &axisAnalysisPass,
                         PatternBenefit benefit)
       : ConvertTritonGPUOpToLLVMPattern<triton::AtomicCASOp>(
-            converter, allocation, smem, benefit),
+            converter, warpSize, allocation, smem, benefit),
         LoadStoreConversionBase(axisAnalysisPass) {}
 
 #ifdef USE_ROCM
@@ -574,11 +575,12 @@ struct AtomicRMWOpConversion
       triton::AtomicRMWOp>::ConvertTritonGPUOpToLLVMPattern;
 
   AtomicRMWOpConversion(TritonGPUToLLVMTypeConverter &converter,
+                        int warpSize,
                         const Allocation *allocation, Value smem,
                         AxisInfoAnalysis &axisAnalysisPass,
                         PatternBenefit benefit)
       : ConvertTritonGPUOpToLLVMPattern<triton::AtomicRMWOp>(
-            converter, allocation, smem, benefit),
+            converter, warpSize, allocation, smem, benefit),
         LoadStoreConversionBase(axisAnalysisPass) {}
 
 #ifdef USE_ROCM
@@ -936,12 +938,12 @@ struct InsertSliceAsyncOpConversion
       triton::gpu::InsertSliceAsyncOp>::ConvertTritonGPUOpToLLVMPattern;
 
   InsertSliceAsyncOpConversion(
-      TritonGPUToLLVMTypeConverter &converter, const Allocation *allocation,
+      TritonGPUToLLVMTypeConverter &converter, int warpSize, const Allocation *allocation,
       Value smem,
       ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo &indexCacheInfo,
       AxisInfoAnalysis &axisAnalysisPass, PatternBenefit benefit)
       : ConvertTritonGPUOpToLLVMPattern<triton::gpu::InsertSliceAsyncOp>(
-            converter, allocation, smem, indexCacheInfo, benefit),
+            converter, warpSize, allocation, smem, indexCacheInfo, benefit),
         LoadStoreConversionBase(axisAnalysisPass) {}
 
   LogicalResult
@@ -1094,19 +1096,19 @@ struct InsertSliceAsyncOpConversion
 
 void populateLoadStoreOpToLLVMPatterns(
     TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    int numWarps, AxisInfoAnalysis &axisInfoAnalysis,
+    int numWarps, int warpSize, AxisInfoAnalysis &axisInfoAnalysis,
     const Allocation *allocation, Value smem,
     ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo &indexCacheInfo,
     PatternBenefit benefit) {
-  patterns.add<LoadOpConversion>(typeConverter, axisInfoAnalysis, benefit);
-  patterns.add<StoreOpConversion>(typeConverter, axisInfoAnalysis, benefit);
-  patterns.add<AtomicCASOpConversion>(typeConverter, allocation, smem,
+  patterns.add<LoadOpConversion>(typeConverter, axisInfoAnalysis, warpSize, benefit);
+  patterns.add<StoreOpConversion>(typeConverter, axisInfoAnalysis, warpSize, benefit);
+  patterns.add<AtomicCASOpConversion>(typeConverter, warpSize, allocation, smem,
                                       axisInfoAnalysis, benefit);
-  patterns.add<AtomicRMWOpConversion>(typeConverter, allocation, smem,
+  patterns.add<AtomicRMWOpConversion>(typeConverter, warpSize, allocation, smem,
                                       axisInfoAnalysis, benefit);
-  patterns.add<InsertSliceOpConversion>(typeConverter, allocation, smem,
+  patterns.add<InsertSliceOpConversion>(typeConverter, warpSize, allocation, smem,
                                         indexCacheInfo, benefit);
-  patterns.add<InsertSliceAsyncOpConversion>(typeConverter, allocation, smem,
+  patterns.add<InsertSliceAsyncOpConversion>(typeConverter, warpSize, allocation, smem,
                                              indexCacheInfo, axisInfoAnalysis,
                                              benefit);
 }

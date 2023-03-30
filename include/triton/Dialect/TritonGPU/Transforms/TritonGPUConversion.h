@@ -13,12 +13,14 @@ namespace mlir {
 
 class TritonGPUTypeConverter : public TypeConverter {
 public:
-  TritonGPUTypeConverter(MLIRContext *context, int numWarps);
+  TritonGPUTypeConverter(MLIRContext *context, int numWarps, int warpSize);
   int getNumWarps() const { return numWarps; }
+  int getWarpSize() const { return warpSize; }
 
 private:
   MLIRContext *context;
   int numWarps;
+  int warpSize;
 };
 
 class TritonGPUConversionTarget : public ConversionTarget {
