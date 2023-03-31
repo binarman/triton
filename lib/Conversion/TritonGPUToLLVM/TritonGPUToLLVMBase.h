@@ -919,21 +919,21 @@ public:
   explicit ConvertTritonGPUOpToLLVMPattern(
       TritonGPUToLLVMTypeConverter &typeConverter, int warpSize,
       PatternBenefit benefit = 1)
-      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit),
+      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, benefit),
         ConvertTritonGPUOpToLLVMPatternBase(typeConverter, warpSize) {}
 
   explicit ConvertTritonGPUOpToLLVMPattern(
       TritonGPUToLLVMTypeConverter &typeConverter, int warpSize,
       const Allocation *allocation,
       Value smem, PatternBenefit benefit = 1)
-      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit),
+      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, benefit),
         ConvertTritonGPUOpToLLVMPatternBase(typeConverter, warpSize, allocation, smem) {}
 
   explicit ConvertTritonGPUOpToLLVMPattern(
       TritonGPUToLLVMTypeConverter &typeConverter, int warpSize, 
       const Allocation *allocation,
       Value smem, IndexCacheInfo indexCacheInfo, PatternBenefit benefit = 1)
-      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, warpSize, benefit),
+      : ConvertOpToLLVMPattern<SourceOp>(typeConverter, benefit),
         ConvertTritonGPUOpToLLVMPatternBase(typeConverter, warpSize, allocation, smem,
                                             indexCacheInfo) {}
 

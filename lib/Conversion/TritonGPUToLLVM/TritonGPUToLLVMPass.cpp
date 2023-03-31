@@ -97,7 +97,7 @@ struct ReturnOpConversion : public ConvertOpToLLVMPattern<func::ReturnOp> {
 struct FuncOpConversion : public FuncOpConversionBase {
   FuncOpConversion(LLVMTypeConverter &converter, int numWarps,
                    PatternBenefit benefit)
-      : FuncOpConversionBase(converter, numWarps, benefit), numWarps(numWarps) {}
+      : FuncOpConversionBase(converter, benefit), numWarps(numWarps) {}
 
   LogicalResult
   matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,

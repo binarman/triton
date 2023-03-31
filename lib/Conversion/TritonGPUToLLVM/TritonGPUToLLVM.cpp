@@ -11,7 +11,12 @@ using ::mlir::triton::gpu::getElemsPerThread;
 using ::mlir::triton::gpu::SharedEncodingAttr;
 
 struct ReturnOpConversion : public ConvertOpToLLVMPattern<func::ReturnOp> {
-  using ConvertOpToLLVMPattern<func::ReturnOp>::ConvertOpToLLVMPattern;
+  // using ConvertOpToLLVMPattern<func::ReturnOp>::ConvertOpToLLVMPattern;
+
+  explicit ReturnOpConversion(LLVMTypeConverter &typeConverter,
+                              int warpSize,
+                              PatternBenefit benefit = 1)
+     : ConvertOpToLLVMPattern<func::ReturnOp>(typeConverter, benefit) {}
 
   LogicalResult
   matchAndRewrite(func::ReturnOp op, OpAdaptor adaptor,
