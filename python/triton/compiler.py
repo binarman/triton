@@ -1116,7 +1116,7 @@ class CompilationTarget:
                  compute_capability = None,
                  features = None):
         self.triple = triple
-        self.warp_size = 32
+        self.warp_size = warp_size
         self.arch, self.vendor, self.platform = triple.split("-")
         if self.vendor == "amd":
             self.gfx_arch = gfx_arch if gfx_arch is not None else "gfx90a"
