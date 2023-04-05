@@ -1772,9 +1772,8 @@ def get_amdgpu_arch_fulldetails():
         if (len(arch_name_features) == 3):
             arch_features = "+" + re.search('\\w+', arch_name_features[1]).group(0) + ","\
                             "-" + re.search('\\w+', arch_name_features[2]).group(0)
-        wavefront_size = int(re.search("Wavefront Size: *([\\d]*)", rocminfo).group(1))
 
-        return [arch_triple, arch_name, arch_features, wavefront_size]
+        return [arch_triple, arch_name, arch_features, warpsize]
     except:
         return None
 
