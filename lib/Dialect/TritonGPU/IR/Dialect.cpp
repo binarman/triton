@@ -166,14 +166,12 @@ SmallVector<unsigned> getThreadsPerCTA(const Attribute &layout) {
     if (mmaLayout.getVersionMajor() == 2) {
       threads = {8 * mmaLayout.getWarpsPerCTA()[0],
                  4 * mmaLayout.getWarpsPerCTA()[1]};
-    }
 #ifdef USE_ROCM
-    else if (mmaLayout.getVersionMajor() == 3) {
+    } else if (mmaLayout.getVersionMajor() == 3) {
       threads = {32 * mmaLayout.getWarpsPerCTA()[0],
                  2 * mmaLayout.getWarpsPerCTA()[1]};
-    }
 #endif
-    else
+    } else
       assert(0 && "Unimplemented usage of MmaEncodingAttr");
   } else {
     assert(0 && "Unimplemented usage of getShapePerCTA");
@@ -409,6 +407,7 @@ unsigned MmaEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape,
 #else
   assert((isVolta() || isAmpere()) && "Only version 1 and 2 is supported");
 #endif
+
   int res = 0;
   if (isVolta()) {
     auto [isARow, isBRow, isAVec4, isBVec4, id] = decodeVoltaLayoutStates();
@@ -428,15 +427,13 @@ unsigned MmaEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape,
     unsigned elemsCol = ceil<unsigned>(shape[0], 16 * getWarpsPerCTA()[0]) * 2;
     unsigned elemsRow = ceil<unsigned>(shape[1], 8 * getWarpsPerCTA()[1]) * 2;
     res = elemsCol * elemsRow;
-  }
 #ifdef USE_ROCM
-  else if (isMI200()) {
+  } else if (isMI200()) {
     unsigned elemsCol = ceil<unsigned>(shape[0], 32 * getWarpsPerCTA()[0]);
     unsigned elemsRow = ceil<unsigned>(shape[1], 32 * getWarpsPerCTA()[1]);
     res = elemsCol * elemsRow * 16;
-  }
 #endif
-  else {
+  } else {
     llvm_unreachable("Unexpected mma version");
   }
 
