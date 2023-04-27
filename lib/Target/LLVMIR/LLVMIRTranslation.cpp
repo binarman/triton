@@ -299,6 +299,7 @@ std::unique_ptr<llvm::Module>
 translateTritonGPUToLLVMIR(llvm::LLVMContext *llvmContext,
                            mlir::ModuleOp module, int computeCapability,
                            bool isROCM) {
+  llvm::outs() << "before transformation:\n" << module << "\n";
   mlir::PassManager pm(module->getContext());
   applyPassManagerCLOptions(pm);
   auto printingFlags = mlir::OpPrintingFlags();
@@ -330,6 +331,7 @@ translateTritonGPUToLLVMIR(llvm::LLVMContext *llvmContext,
     llvm::errs() << "Pass execution failed";
     return nullptr;
   }
+llvm::outs() << "after transformation:\n" << module << "\n";
 #ifdef USE_ROCM
   auto llvmIR = translateLLVMToLLVMIR(llvmContext, module, true);
 #else

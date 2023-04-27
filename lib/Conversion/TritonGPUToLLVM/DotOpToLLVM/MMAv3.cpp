@@ -194,6 +194,7 @@ struct DotOpMFMAConversionHelper {
 LogicalResult convertMFMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
                           TritonGPUToLLVMTypeConverter *typeConverter,
                           ConversionPatternRewriter &rewriter) {
+  //llvm::outs() << "dot op converted operand: " << adaptor.getA() << "\n";
   auto rankedTType =
       [](Value tensor) { return tensor.getType().cast<RankedTensorType>(); };
 

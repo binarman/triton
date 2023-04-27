@@ -123,8 +123,7 @@ Type TritonGPUToLLVMTypeConverter::getElementTypeForStruct(
         {8, IntegerType::get(ctx, 32)},
     };
     Type targetTy = targetTyMap.lookup(elemTy.getIntOrFloatBitWidth());
-    auto elems = getMFMAOperandNumElemsPerThread(type);
-    return struct_ty(SmallVector<Type>(elems, targetTy));
+    return targetTy;
 #endif
   } else {
     assert(mmaParent.isVolta());
@@ -150,10 +149,14 @@ Type TritonGPUToLLVMTypeConverter::convertTritonTensorType(
     for (auto i = 0; i < rank * 2; i++) {
       types.push_back(IntegerType::get(ctx, 32));
     }
-    return LLVM::LLVMStructType::getLiteral(ctx, types);
+    auto tmp = LLVM::LLVMStructType::getLiteral(ctx, types);
+    // llvm::outs() << "generated type1: " << tmp << "\n";
+    return tmp;
   }
 
   unsigned numElementsPerThread = getElemsPerThread(type);
   SmallVector<Type, 4> types(numElementsPerThread, eltType);
-  return LLVM::LLVMStructType::getLiteral(ctx, types);
+  auto tmp = LLVM::LLVMStructType::getLiteral(ctx, types);
+  //llvm::outs() << "generated type2: " << tmp << "\n   from: " << type << "\n";
+  return tmp;
 }

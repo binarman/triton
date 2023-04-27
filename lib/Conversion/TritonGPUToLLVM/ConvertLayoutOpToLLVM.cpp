@@ -600,6 +600,8 @@ private:
     }
 
     rewriter.replaceOp(op, res);
+    //llvm::outs() << "REPLACE OP:\n" << "   " << op << "\nTO:\n" << "  " << res << "\n";
+    //llvm::outs() << op->getParentOfType<ModuleOp>() << "\n";
     return success();
   }
 
