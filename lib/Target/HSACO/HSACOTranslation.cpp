@@ -168,6 +168,8 @@ llir_to_amdgcn_and_hsaco(llvm::Module *module, std::string gfx_arch,
 
   // verify and store llvm
   auto module_obj = llvm::CloneModule(*module);
+  llvm::outs() << "Compile llvm module\n" << *module << "\n";
+  llvm::outs() << "with parameters: " << gfx_arch << " " << gfx_triple << " " << gfx_features << "\n";
   auto amdgcn =
       generate_amdgcn_assembly(module, gfx_triple, gfx_arch, gfx_features);
   auto hsaco_path =
