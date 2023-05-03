@@ -151,8 +151,10 @@ public:
     decomposeBlockedToDotOperand(mod);
     if (failed(decomposeInsertSliceAsyncOp(mod)))
       return signalPassFailure();
+    decomposeMmaToMmaOperand(mod, numWarps);
 
     /* allocate shared memory and set barrier */
+    llvm::outs() << "module before allocation\n" << mod << "\n";
     Allocation allocation(mod);
     MembarAnalysis membarPass(&allocation);
     membarPass.run();
@@ -305,6 +307,33 @@ private:
         auto newConvert = builder.create<triton::gpu::ConvertLayoutOp>(
             cvtOp.getLoc(), dstType, tmp);
         cvtOp.replaceAllUsesWith(newConvert.getResult());
+        cvtOp.erase();
+      }
+    });
+  }
+
+    void decomposeMmaToMmaOperand(ModuleOp mod, int numWarps) const {
+    // Replace `mma -> mma` with `mma -> blocked -> mma`
+    // unless certain conditions are met
+    mod.walk([&](triton::gpu::ConvertLayoutOp cvtOp) -> void {
+      OpBuilder builder(cvtOp);
+      auto srcType = cvtOp.getOperand().getType().cast<RankedTensorType>();
+      auto dstType = cvtOp.getType().cast<RankedTensorType>();
+      auto srcMma =
+          srcType.getEncoding().dyn_cast<triton::gpu::MmaEncodingAttr>();
+      auto dstMma =
+          dstType.getEncoding().dyn_cast<triton::gpu::MmaEncodingAttr>();
+      if (srcMma && dstMma) {
+        auto tmpType = RankedTensorType::get(
+            dstType.getShape(), dstType.getElementType(),
+            triton::gpu::BlockedEncodingAttr::get(
+                mod.getContext(), srcType.getShape(), getSizePerThread(srcMma),
+                getOrder(srcMma), numWarps));
+        auto toBlock = builder.create<triton::gpu::ConvertLayoutOp>(
+            cvtOp.getLoc(), tmpType, cvtOp.getOperand());
+        auto toMma  = builder.create<triton::gpu::ConvertLayoutOp>(
+            cvtOp.getLoc(), dstType, toBlock);
+        cvtOp.replaceAllUsesWith(toMma.getResult());
         cvtOp.erase();
       }
     });

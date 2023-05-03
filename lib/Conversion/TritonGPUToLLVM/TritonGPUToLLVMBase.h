@@ -523,8 +523,9 @@ public:
         if (mmaLayout.isAmpere())
           result = emitBaseIndexForMmaLayoutV2(loc, rewriter, mmaLayout, type);
 #ifdef USE_ROCM
-        if (mmaLayout.isMI200())
-          llvm_unreachable("if (mmaLayout.isMI200()) not implemented");
+        if (mmaLayout.isMI200()) {
+          result = emitBaseIndexForMmaLayoutV3(loc, rewriter, mmaLayout, type);
+        }
 #endif
       } else {
         llvm_unreachable("unsupported emitBaseIndexForLayout");
@@ -546,7 +547,7 @@ public:
         return emitOffsetForMmaLayoutV2(mmaLayout, type);
 #ifdef USE_ROCM
       if (mmaLayout.isMI200())
-        llvm_unreachable("if (mmaLayout.isMI200()) not implemented");
+        return emitOffsetForMmaLayoutV3(mmaLayout, type);
 #endif
     }
     llvm_unreachable("unsupported emitOffsetForLayout");
@@ -877,6 +878,64 @@ private:
     }
     return ret;
   }
+
+#ifdef USE_ROCM
+  SmallVector<Value>
+  emitBaseIndexForMmaLayoutV3(Location loc, ConversionPatternRewriter &rewriter,
+                              const MmaEncodingAttr &mmaLayout,
+                              RankedTensorType type) const {
+    auto shape = type.getShape();
+    auto _warpsPerCTA = mmaLayout.getWarpsPerCTA();
+    assert(_warpsPerCTA.size() == 2);
+    SmallVector<Value> warpsPerCTA = {i32_val(_warpsPerCTA[0]),
+                                      i32_val(_warpsPerCTA[1])};
+    Value threadId = getThreadId(rewriter, loc);
+
+    constexpr int32_t warpSizeInt = 64;
+    Value warpSize = i32_val(warpSizeInt);
+    Value laneId = urem(threadId, warpSize);
+    Value warpId = udiv(threadId, warpSize);
+    int64_t tileSize = -1;
+    auto elemTy = type.getElementType();
+    if (elemTy.isF32() || elemTy.isInteger(32))
+      tileSize = 32;
+    else if (elemTy.isF64())
+      tileSize = 16;
+    else
+      assert(false && "unsupported element type in mma v3 layout");
+
+    Value warpId0 = urem(urem(warpId, warpsPerCTA[0]), i32_val(shape[0] / tileSize));
+    Value warpId1 = urem(urem(udiv(warpId, warpsPerCTA[0]), warpsPerCTA[1]),
+                         i32_val(shape[1] / tileSize));
+    Value offWarp0 = mul(warpId0, i32_val(tileSize));
+    Value offWarp1 = mul(warpId1, i32_val(tileSize));
+
+    SmallVector<Value> multiDimBase(2);
+    multiDimBase[0] = add(urem(laneId, i32_val(warpSizeInt/2)), offWarp0);
+    multiDimBase[1] = add(mul(i32_val(4), udiv(laneId, i32_val(warpSizeInt/2))), offWarp1);
+    return multiDimBase;
+  }
+
+  SmallVector<SmallVector<unsigned>>
+  emitOffsetForMmaLayoutV3(const MmaEncodingAttr &mmaLayout,
+                           RankedTensorType type) const {
+    auto shape = type.getShape();
+    SmallVector<SmallVector<unsigned>> ret;
+    auto shapePerCTA = getShapePerCTA(mmaLayout);
+
+    for (unsigned i = 0; i < shape[0]; i += shapePerCTA[0]) {
+      for (unsigned j = 0; j < shape[1]; j += shapePerCTA[1]) {
+        for (unsigned k = 0; k < 4; ++k) {
+          ret.push_back({i, j + k * 4});
+          ret.push_back({i, j + k * 4 + 1});
+          ret.push_back({i, j + k * 4 + 2});
+          ret.push_back({i, j + k * 4 + 3});
+        }
+      }
+    }
+    return ret;
+  }
+#endif
 
   // Emit indices calculation within each ConversionPattern, and returns a
   // [elemsPerThread X rank] index matrix.

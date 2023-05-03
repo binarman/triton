@@ -66,6 +66,8 @@ getScratchConfigForCvtLayout(triton::gpu::ConvertLayoutOp op, unsigned &inVec,
 
   assert(srcLayout && dstLayout &&
          "Unexpected layout in getScratchConfigForCvtLayout()");
+  llvm::outs() << "scratch config of operation: " << op << "\n";
+  llvm::outs().flush();
   auto [inOrd, outOrd] = getCvtOrder(srcLayout, dstLayout);
   unsigned srcContigPerThread = getContigPerThread(srcLayout)[inOrd[0]];
   unsigned dstContigPerThread = getContigPerThread(dstLayout)[outOrd[0]];
