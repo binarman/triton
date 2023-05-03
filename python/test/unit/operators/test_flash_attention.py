@@ -44,3 +44,5 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype):
     torch.testing.assert_allclose(ref_dv, tri_dv, atol=atol, rtol=0)
     torch.testing.assert_allclose(ref_dk, tri_dk, atol=atol, rtol=0)
     torch.testing.assert_allclose(ref_dq, tri_dq, atol=atol, rtol=0)
+
+test_op(4, 48, 1024, 64, torch.float16)

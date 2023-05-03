@@ -216,6 +216,7 @@ def get_amdgpu_arch_fulldetails():
         if (len(arch_name_features) == 3):
             arch_features = "+" + re.search('\\w+', arch_name_features[1]).group(0) + ","\
                             "-" + re.search('\\w+', arch_name_features[2]).group(0)
+        arch_name = "gfx908"
         return [arch_triple, arch_name, arch_features]
     except BaseException:
         return None
