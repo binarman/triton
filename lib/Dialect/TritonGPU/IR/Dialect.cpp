@@ -12,6 +12,8 @@
 using namespace mlir;
 using namespace mlir::triton::gpu;
 
+#include "triton/Dialect/TritonGPU/IR/TritonGPUAttrEnumDefs.cpp.inc"
+
 // Utility
 namespace mlir {
 namespace triton {
@@ -528,7 +530,7 @@ static SmallVector<int64_t> getMFMAInstrShape(Type abElemType) {
 }
 
 SmallVector<int64_t>
-DotOperandEncodingAttr::getMMAv3ElemsPerThread(Type elemType) const {
+DotOperandEncodingAttr::getMFMAElemsPerThread(Type elemType) const {
   auto instrSize = getMFMAInstrShape(elemType);
   if (getOpIdx() == 0)
     return {instrSize[0], instrSize[2]};
@@ -537,7 +539,7 @@ DotOperandEncodingAttr::getMMAv3ElemsPerThread(Type elemType) const {
 }
 
 SmallVector<int64_t>
-DotOperandEncodingAttr::getMMAv3Rep(ArrayRef<int64_t> operandShape,
+DotOperandEncodingAttr::getMFMARep(ArrayRef<int64_t> operandShape,
                                     Type elemType) const {
   auto instrSize = getMFMAInstrShape(elemType);
   auto mmaParent = getParent().cast<MmaEncodingAttr>();
@@ -571,8 +573,8 @@ unsigned DotOperandEncodingAttr::getTotalElemsPerThread(ArrayRef<int64_t> shape,
 #ifdef USE_ROCM
     if (mmaParent.isMI200()) {
       constexpr int waveSize = 64;
-      auto tileSize = getMMAv3ElemsPerThread(eltTy);
-      auto rep = getMMAv3Rep(shape, eltTy);
+      auto tileSize = getMFMAElemsPerThread(eltTy);
+      auto rep = getMFMARep(shape, eltTy);
       return rep[0] * rep[1];
     }
 #endif
@@ -745,11 +747,19 @@ Attribute MmaEncodingAttr::parse(AsmParser &parser, Type type) {
   if (parser.parseGreater().failed())
     return {};
 
+  MMAFamily mmaFamily;
   unsigned versionMajor = 0;
   unsigned versionMinor = 0;
   SmallVector<unsigned, 2> warpsPerCTA;
 
   for (const NamedAttribute &attr : dict) {
+    if (attr.getName() == "mmafamily") {
+      auto result = mlir::FieldParser<MMAFamily, MMAFamily>::parse(parser);
+      if (static_cast<LogicalResult>(result).succeeded())
+        mmaFamily = result.value();
+      else
+        return {};
+    }
     if (attr.getName() == "versionMajor") {
       if (parseUInt(parser, attr, versionMajor, "versionMajor").failed())
         return {};
@@ -764,8 +774,9 @@ Attribute MmaEncodingAttr::parse(AsmParser &parser, Type type) {
     }
   }
 
-  return parser.getChecked<MmaEncodingAttr>(parser.getContext(), versionMajor,
-                                            versionMinor, warpsPerCTA);
+  return parser.getChecked<MmaEncodingAttr>(parser.getContext(), mmaFamily,
+                                            versionMajor, versionMinor,
+                                            warpsPerCTA);
 }
 
 void MmaEncodingAttr::print(AsmPrinter &printer) const {

@@ -3,6 +3,7 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "triton/Dialect/TritonGPU/IR/TritonGPUDialect.td"
+include "triton/Dialect/TritonGPU/IR/TritonGPUEnumDefs.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -385,6 +386,7 @@ For example, the matrix L corresponding to blockTileSize=[32,16] is:
 
   let parameters = (
     ins
+    MMAFamily:$mmafamily,
     "unsigned":$versionMajor,
     "unsigned":$versionMinor,
     ArrayRefParameter<"unsigned">:$warpsPerCTA
@@ -432,9 +434,14 @@ For example, the matrix L corresponding to blockTileSize=[32,16] is:
           wpt[1] = std::clamp<int>(wpt[1] * 2, 1, shapeC[1] / spw[1]);
       } while (wpt_nm1 != wpt);
 
-      return $_get(context, versionMajor, versionMinor, wpt);
+      return $_get(context, MMAFamily::nvmma, versionMajor, versionMinor, wpt);
     }]>,
 
+    AttrBuilder<(ins "int":$versionMajor,
+                     "int":$versionMinor,
+                     "ArrayRef<unsigned>":$wpt), [{
+      return $_get(context, MMAFamily::nvmma, versionMajor, versionMinor, wpt);
+    }]>,
 
     AttrBuilder<(ins "int":$versionMajor,
                      "int":$numWarps,
@@ -538,9 +545,9 @@ section 9.7.13.4.1 for more details.
     SmallVector<int64_t> getMMAv2Rep(ArrayRef<int64_t> shape,
                                      int bitwidth) const;
 #ifdef USE_ROCM
-    SmallVector<int64_t> getMMAv3ElemsPerThread(Type elemTy) const;
-    SmallVector<int64_t> getMMAv3Rep(ArrayRef<int64_t> operandShape,
-                                     Type elemType) const;
+    SmallVector<int64_t> getMFMAElemsPerThread(Type elemTy) const;
+    SmallVector<int64_t> getMFMARep(ArrayRef<int64_t> operandShape,
+                                    Type elemType) const;
 #endif
   }];
 }
