@@ -41,13 +41,13 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
 }
 
 #ifdef USE_ROCM
-namespace SharedToDotOperandMMAv3 {
+namespace SharedToDotOperandMFMA {
 Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
                     Location loc, Value tensor,
                     DotOperandEncodingAttr bEncoding,
                     const SharedMemoryObject &smemObj,
                     TritonGPUToLLVMTypeConverter *typeConverter, Value thread);
-} // namespace SharedToDotOperandMMAv3
+} // namespace SharedToDotOperandMFMA
 #endif
 
 namespace SharedToDotOperandFMA {
@@ -727,7 +727,7 @@ private:
 #ifdef USE_ROCM
       // AMD MI200 matrix cores
     } else if (!isOuter && mmaLayout.isMI200() && isHMMA) {
-      res = SharedToDotOperandMMAv3::convertLayout(
+      res = SharedToDotOperandMFMA::convertLayout(
           dotOperandLayout.getOpIdx(), rewriter, loc, src, dotOperandLayout,
           smemObj, getTypeConverter(), tid_val());
 #endif
