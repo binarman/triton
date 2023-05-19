@@ -32,7 +32,7 @@ Value getWaveN(ConversionPatternRewriter &rewriter, Location loc, Value wave,
 
 } // namespace
 
-namespace SharedToDotOperandMMAv3 {
+namespace SharedToDotOperandMFMA {
 
 // Computes offsets for operand A or transposed operand B
 // @param rewriter
@@ -137,8 +137,8 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
             DotOperandEncodingAttr encoding,
             TritonGPUToLLVMTypeConverter *typeConverter, Value tensor,
             const SharedMemoryObject &smemObj) {
-  auto mmaLayout = encoding.getParent().cast<MmaEncodingAttr>();
-  auto warpsPerCTA = mmaLayout.getWarpsPerCTA();
+  auto mfmaLayout = encoding.getParent().cast<MfmaEncodingAttr>();
+  auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
   auto aTensorTy = tensor.getType().cast<RankedTensorType>();
   SmallVector<int64_t> shape(aTensorTy.getShape().begin(),
@@ -147,11 +147,11 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   auto order = sharedLayout.getOrder();
 
   auto aElemTy = aTensorTy.getElementType();
-  auto aElemsPerThread = encoding.getMMAv3ElemsPerThread(aElemTy);
+  auto aElemsPerThread = encoding.getMFMAElemsPerThread(aElemTy);
   auto mfmaInstrM = aElemsPerThread[0];
   auto mfmaInstrK = aElemsPerThread[1];
 
-  auto numReps = encoding.getMMAv3Rep(shape, aElemTy);
+  auto numReps = encoding.getMFMARep(shape, aElemTy);
   auto numRepM = numReps[0];
   auto numRepK = numReps[1];
 
@@ -165,18 +165,18 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   Value cSwizzleOffset = smemObj.getCSwizzleOffset(order[0]);
   // TODO make macro tile size granilarity configurable
   int macroTileM =
-      std::max<int>(shape[0] / (mmaLayout.getWarpsPerCTA()[0] * 32), 1);
-  int wptM = std::min<int>(mmaLayout.getWarpsPerCTA()[0], macroTileM);
+      std::max<int>(shape[0] / (mfmaLayout.getWarpsPerCTA()[0] * 32), 1);
+  int wptM = std::min<int>(mfmaLayout.getWarpsPerCTA()[0], macroTileM);
   int macroTileN =
-      std::max<int>(shape[1] / (mmaLayout.getWarpsPerCTA()[1] * 32), 1);
-  int wptN = std::min<int>(mmaLayout.getWarpsPerCTA()[1], macroTileN);
+      std::max<int>(shape[1] / (mfmaLayout.getWarpsPerCTA()[1] * 32), 1);
+  int wptN = std::min<int>(mfmaLayout.getWarpsPerCTA()[1], macroTileN);
   int wpt = std::max<int>(wptM, wptN);
 
   SmallVector<Value> offsets;
   if (isTransposed(order)) {
     SmallVector<int64_t> elemsPerThread{aElemsPerThread[1], aElemsPerThread[0]};
     SmallVector<int64_t> reps{numReps[1], numReps[0]};
-    int warpsPerGroupM = mmaLayout.getWarpsPerCTA()[0];
+    int warpsPerGroupM = mfmaLayout.getWarpsPerCTA()[0];
     offsets =
         computeOffsetsTy2(rewriter, loc, elemsPerThread, warpsPerGroupM, waveM,
                           lane, wpt, numOfElems, reps, cSwizzleOffset);
@@ -209,7 +209,7 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
     }
   }
 
-  MLIRContext *ctx = mmaLayout.getContext();
+  MLIRContext *ctx = mfmaLayout.getContext();
   Type structTy = LLVM::LLVMStructType::getLiteral(
       ctx, SmallVector<Type>(ha.size(), ha[0].getType()));
   auto result = typeConverter->packLLElements(loc, ha, rewriter, structTy);
@@ -220,8 +220,8 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
             DotOperandEncodingAttr encoding,
             TritonGPUToLLVMTypeConverter *typeConverter, Value tensor,
             const SharedMemoryObject &smemObj) {
-  auto mmaLayout = encoding.getParent().cast<MmaEncodingAttr>();
-  auto warpsPerCTA = mmaLayout.getWarpsPerCTA();
+  auto mfmaLayout = encoding.getParent().cast<MfmaEncodingAttr>();
+  auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
   auto bTensorTy = tensor.getType().cast<RankedTensorType>();
   ArrayRef<int64_t> shape = bTensorTy.getShape();
@@ -229,11 +229,11 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   auto order = sharedLayout.getOrder();
 
   auto bElemTy = bTensorTy.getElementType();
-  auto bElemsPerThread = encoding.getMMAv3ElemsPerThread(bElemTy);
+  auto bElemsPerThread = encoding.getMFMAElemsPerThread(bElemTy);
   auto mfmaInstrK = bElemsPerThread[0];
   auto mfmaInstrN = bElemsPerThread[1];
 
-  auto numReps = encoding.getMMAv3Rep(shape, bElemTy);
+  auto numReps = encoding.getMFMARep(shape, bElemTy);
   auto numRepK = numReps[0];
   auto numRepN = numReps[1];
 
@@ -241,17 +241,17 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   Value wave = udiv(thread, waveSize);
   Value lane = urem(thread, waveSize);
 
-  Value waveN = getWaveN(rewriter, loc, wave, mmaLayout.getWarpsPerCTA(),
+  Value waveN = getWaveN(rewriter, loc, wave, mfmaLayout.getWarpsPerCTA(),
                          mfmaInstrN, shape[1]);
   int numOfElems = std::max<int>(mfmaInstrK * mfmaInstrN / 64 /*wave size*/, 1);
   Value cSwizzleOffset = smemObj.getCSwizzleOffset(order[0]);
 
   int macroTileM =
-      std::max<int>(shape[0] / (mmaLayout.getWarpsPerCTA()[0] * 32), 1);
-  int wptM = std::min<int>(mmaLayout.getWarpsPerCTA()[0], macroTileM);
+      std::max<int>(shape[0] / (mfmaLayout.getWarpsPerCTA()[0] * 32), 1);
+  int wptM = std::min<int>(mfmaLayout.getWarpsPerCTA()[0], macroTileM);
   int macroTileN =
-      std::max<int>(shape[1] / (mmaLayout.getWarpsPerCTA()[1] * 32), 1);
-  int wptN = std::min<int>(mmaLayout.getWarpsPerCTA()[1], macroTileN);
+      std::max<int>(shape[1] / (mfmaLayout.getWarpsPerCTA()[1] * 32), 1);
+  int wptN = std::min<int>(mfmaLayout.getWarpsPerCTA()[1], macroTileN);
   int wpt = std::max<int>(wptM, wptN);
 
   llvm::SmallVector<Value> offsets;
@@ -262,7 +262,7 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
         computeOffsetsTy1(rewriter, loc, elemsPerThread, waveN,
                         lane, wpt, numOfElems, reps, cSwizzleOffset);
   } else {
-    int warpsPerGroupN = mmaLayout.getWarpsPerCTA()[1];
+    int warpsPerGroupN = mfmaLayout.getWarpsPerCTA()[1];
     offsets =
         computeOffsetsTy2(rewriter, loc, bElemsPerThread, warpsPerGroupN, waveN,
                         lane, wpt, numOfElems, numReps, cSwizzleOffset);
@@ -292,7 +292,7 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
     }
   }
 
-  MLIRContext *ctx = mmaLayout.getContext();
+  MLIRContext *ctx = mfmaLayout.getContext();
   Type structTy = LLVM::LLVMStructType::getLiteral(
       ctx, SmallVector<Type>(hb.size(), hb[0].getType()));
   auto result = typeConverter->packLLElements(loc, hb, rewriter, structTy);
@@ -318,6 +318,6 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   }
 }
 
-} // namespace SharedToDotOperandMMAv3
+} // namespace SharedToDotOperandMFMA
 
 #endif // ifdef USE_ROCM
