@@ -32,7 +32,7 @@ Value getWaveN(ConversionPatternRewriter &rewriter, Location loc, Value wave,
 
 } // namespace
 
-namespace SharedToDotOperandMMAv3 {
+namespace SharedToDotOperandMFMA {
 
 // Computes offsets for operand A or transposed operand B
 // @param rewriter
@@ -147,11 +147,11 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   auto order = sharedLayout.getOrder();
 
   auto aElemTy = aTensorTy.getElementType();
-  auto aElemsPerThread = encoding.getMMAv3ElemsPerThread(aElemTy);
+  auto aElemsPerThread = encoding.getMFMAElemsPerThread(aElemTy);
   auto mfmaInstrM = aElemsPerThread[0];
   auto mfmaInstrK = aElemsPerThread[1];
 
-  auto numReps = encoding.getMMAv3Rep(shape, aElemTy);
+  auto numReps = encoding.getMFMARep(shape, aElemTy);
   auto numRepM = numReps[0];
   auto numRepK = numReps[1];
 
@@ -229,11 +229,11 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   auto order = sharedLayout.getOrder();
 
   auto bElemTy = bTensorTy.getElementType();
-  auto bElemsPerThread = encoding.getMMAv3ElemsPerThread(bElemTy);
+  auto bElemsPerThread = encoding.getMFMAElemsPerThread(bElemTy);
   auto mfmaInstrK = bElemsPerThread[0];
   auto mfmaInstrN = bElemsPerThread[1];
 
-  auto numReps = encoding.getMMAv3Rep(shape, bElemTy);
+  auto numReps = encoding.getMFMARep(shape, bElemTy);
   auto numRepK = numReps[0];
   auto numRepN = numReps[1];
 
@@ -318,6 +318,6 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   }
 }
 
-} // namespace SharedToDotOperandMMAv3
+} // namespace SharedToDotOperandMFMA
 
 #endif // ifdef USE_ROCM

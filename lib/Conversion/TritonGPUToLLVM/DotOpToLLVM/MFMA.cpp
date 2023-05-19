@@ -110,8 +110,8 @@ struct DotOpMFMAConversionHelper {
     auto aEncoding = aTensorTy.getEncoding().cast<DotOperandEncodingAttr>();
     auto bEncoding = bTensorTy.getEncoding().cast<DotOperandEncodingAttr>();
 
-    auto repA = aEncoding.getMMAv3Rep(aTensorTy.getShape(), elemTy);
-    auto repB = bEncoding.getMMAv3Rep(bTensorTy.getShape(), elemTy);
+    auto repA = aEncoding.getMFMARep(aTensorTy.getShape(), elemTy);
+    auto repB = bEncoding.getMFMARep(bTensorTy.getShape(), elemTy);
 
     assert(repA[1] == repB[0]);
 
