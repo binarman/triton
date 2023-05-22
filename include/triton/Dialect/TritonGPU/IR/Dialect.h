@@ -11,8 +11,6 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h.inc"
 #include "triton/Dialect/TritonGPU/IR/Traits.h"
 
-#include "triton/Dialect/TritonGPU/IR/TritonGPUAttrEnumDefs.h.inc"
-
 #define GET_ATTRDEF_CLASSES
 #include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.h.inc"
 

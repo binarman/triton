@@ -12,8 +12,6 @@
 using namespace mlir;
 using namespace mlir::triton::gpu;
 
-#include "triton/Dialect/TritonGPU/IR/TritonGPUAttrEnumDefs.cpp.inc"
-
 // Utility
 namespace mlir {
 namespace triton {
@@ -32,6 +30,10 @@ unsigned getTotalElemsPerThread(Attribute layout, ArrayRef<int64_t> shape,
     return sliceLayout.getTotalElemsPerThread(shape, eltTy);
   } else if (auto mmaLayout = layout.dyn_cast<MmaEncodingAttr>()) {
     return mmaLayout.getTotalElemsPerThread(shape, eltTy);
+#ifdef USE_ROCM
+  } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
+    return mfmaLayout.getTotalElemsPerThread(shape, eltTy);
+#endif
   } else if (auto sharedLayout = layout.dyn_cast<SharedEncodingAttr>()) {
     return sharedLayout.getTotalElemsPerThread(shape, eltTy);
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
@@ -282,6 +284,10 @@ SmallVector<unsigned> getOrder(Attribute layout) {
                                  blockedLayout.getOrder().end());
   } else if (auto mmaLayout = layout.dyn_cast<MmaEncodingAttr>()) {
     return {1, 0};
+#ifdef USE_ROCM
+  } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
+    return {1, 0};
+#endif
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
     return {1, 0};
   } else if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
@@ -308,7 +314,7 @@ SmallVector<unsigned> getOrder(Attribute layout) {
 
 bool isaDistributedLayout(Attribute layout) {
   return layout.isa<BlockedEncodingAttr>() || layout.isa<MmaEncodingAttr>() ||
-         layout.isa<SliceEncodingAttr>();
+         layout.isa<MfmaEncodingAttr>() || layout.isa<SliceEncodingAttr>();
 }
 
 } // namespace gpu
@@ -479,6 +485,11 @@ MmaEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape, Type eltTy) const {
   }
 
   return elemsPerThread;
+}
+
+unsigned MfmaEncodingAttr::getTotalElemsPerThread(ArrayRef<int64_t> shape,
+                                                  Type eltTy) const {
+  return product<unsigned>(getElemsPerThread(shape, eltTy));
 }
 
 unsigned MmaEncodingAttr::getTotalElemsPerThread(ArrayRef<int64_t> shape,

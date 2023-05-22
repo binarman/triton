@@ -496,6 +496,9 @@ private:
         barrier();
       if (srcLayout.isa<BlockedEncodingAttr>() ||
           srcLayout.isa<SliceEncodingAttr>() ||
+#ifdef USE_ROCM
+          srcLayout.isa<MfmaEncodingAttr>() ||
+#endif
           srcLayout.isa<MmaEncodingAttr>()) {
         if (isSrcMmaV1)
           processReplicaForMMAV1(loc, rewriter, /*stNotRd*/ true, srcTy,
@@ -513,6 +516,9 @@ private:
       barrier();
       if (dstLayout.isa<BlockedEncodingAttr>() ||
           dstLayout.isa<SliceEncodingAttr>() ||
+#ifdef USE_ROCM
+          dstLayout.isa<MfmaEncodingAttr>() ||
+#endif
           dstLayout.isa<MmaEncodingAttr>()) {
         if (isDstMmaV1)
           processReplicaForMMAV1(loc, rewriter, /*stNotRd*/ false, dstTy,

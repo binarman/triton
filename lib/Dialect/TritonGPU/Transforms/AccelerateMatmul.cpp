@@ -133,7 +133,7 @@ public:
     auto dotOp = cast<triton::DotOp>(op);
 
     auto oldRetType = dotOp.getResult().getType().cast<RankedTensorType>();
-    if (!oldRetType.getEncoding() &&
+    if (!oldRetType.getEncoding() ||
         !oldRetType.getEncoding().isa<triton::gpu::BlockedEncodingAttr>())
       return failure();
 
@@ -265,7 +265,6 @@ public:
           oldBType.getShape(), retShape, isARow, isBRow, mmaV1Counter++);
     } else if (versionMajor == 2) {
       auto warpsPerTile = warpsPerTileV2(dotOp, retShape, numWarps);
-      const auto family = triton::gpu::MMAFamily::nvmma;
       mmaEnc = triton::gpu::MmaEncodingAttr::get(
           oldRetType.getContext(), versionMajor, 0 /*versionMinor*/,
           warpsPerTile);
