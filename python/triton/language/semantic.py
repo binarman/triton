@@ -1189,6 +1189,8 @@ def atomic_xchg(ptr: tl.tensor,
 
 
 def gpu_has_mfma() -> bool:
+    if torch.version.hip is None:
+        return False
     arch_info = _triton.get_arch_info()
     gfx_arch_details = re.search('amd.*', arch_info).group(0).strip().split('--')
     return gfx_arch_details[1] in ['gfx908', 'gfx90a']
