@@ -476,9 +476,7 @@ def MfmaEncodingAttr : DistributedEncoding<"MfmaEncoding"> {
     ArrayRefParameter<"unsigned">:$warpsPerCTA
   );
 
-  let assemblyFormat = [{
-    `[` $warpsPerCTA `]`
-  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def SliceEncodingAttr : DistributedEncoding<"SliceEncoding"> {
