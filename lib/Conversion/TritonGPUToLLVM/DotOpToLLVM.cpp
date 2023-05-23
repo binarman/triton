@@ -36,6 +36,8 @@ struct DotOpConversion : public ConvertTritonGPUOpToLLVMPattern<triton::DotOp> {
     unsigned K = AShape[reduceAxis];
     bool isOuter = K == 1;
 
+    assert(true);
+
     MmaEncodingAttr mmaLayout = D.getType()
                                     .cast<RankedTensorType>()
                                     .getEncoding()
