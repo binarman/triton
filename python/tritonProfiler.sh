@@ -19,29 +19,13 @@ N=$3
 K=$4
 reduceSpace=$5
 
-if [[ $reduceSpace -eq 0 ]];then
-    ## Tuning space for Triton
-#    BLOCK_RANGE=(16 32 64 128)
-#    SPLIT_K_RANGE=(2 4 5 6 8 10 12 14 16 18 20 22 24)
-#    NUM_WARPS_RANGE=(1 2 4 8)
-#    GROUP_M_RANGE=(2 4 6 8 10 12)
-    ## Tuning space for rocMLIR
-else ## Reduced tuning space
-    ## Tuning space for Triton
-#    BLOCK_RANGE=(16 32 64 128)
-#    SPLIT_K_RANGE=(1 2 5 8 10 12 18 24)
-#    NUM_WARPS_RANGE=(1 2 4 8)
-#    GROUP_M_RANGE=(4 8 12)
-    ## Tuning space for rocMLIR
-fi
-
 BLOCK_RANGE=(32 64 128)
 SPLIT_K_RANGE=(1)
 NUM_WARPS_RANGE=(1)
 GROUP_M_RANGE=(1 2)
 
 SMALL_M=0
-if [[ $M -le 16 ]];then
+if [[ $M -le 32 ]];then
     GROUP_M_RANGE=(1)
     SMALL_M=1
 fi
@@ -55,7 +39,7 @@ minTime=""
 for BLOCK_M in ${BLOCK_RANGE[@]}
 do
     ## Skip BLOCK_M if it is too large for M
-    if [[ $M -le 16 ]] && [[ $BLOCK_M -ne 16 ]]; then
+    if [[ $M -le 32 ]] && [[ $BLOCK_M -ne 32 ]]; then
         continue
     fi
     ##################################
@@ -76,7 +60,7 @@ do
         for BLOCK_N in ${BLOCK_RANGE[@]}
         do
             ## Skip BLOCK_N if it is too large for N
-            if [[ $N -le 16 ]] && [[ $BLOCK_N -ne 16 ]]; then
+            if [[ $N -le 32 ]] && [[ $BLOCK_N -ne 32 ]]; then
                 continue
             fi
             ##################################
