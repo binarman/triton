@@ -19,14 +19,12 @@ N=$3
 K=$4
 reduceSpace=$5
 
-BLOCK_RANGE=(32 64 128)
-SPLIT_K_RANGE=(1 2 4 8)
-NUM_WARPS_RANGE=(1 2 4 8)
-GROUP_M_RANGE=(1 2 4 6)
+BLOCK_RANGE=(32 64)
+SPLIT_K_RANGE=(1 8)
+NUM_WARPS_RANGE=(1 2)
 
 SMALL_M=0
 if [[ $M -le 32 ]];then
-    GROUP_M_RANGE=(1)
     SMALL_M=1
 fi
 
@@ -43,72 +41,56 @@ do
         continue
     fi
     ##################################
-    ## Looping GROUP_M              ##
+    ## Looping BLOCK_N              ##
     ##################################
-    for GROUP_M in ${GROUP_M_RANGE[@]}
+    for BLOCK_N in ${BLOCK_RANGE[@]}
     do
-        if [[ ${SMALL_M} -eq 0 ]]; then
-            num_block_m=$((M/BLOCK_M))
-            ## Skip GROUP_M if it it too large
-            if [[ $num_block_m -lt $GROUP_M ]];then
-                continue
-            fi
+        ## Skip BLOCK_N if it is too large for N
+        if [[ $N -le 32 ]] && [[ $BLOCK_N -ne 32 ]]; then
+            continue
         fi
         ##################################
-        ## Looping BLOCK_N              ##
+        ## Looping BLOCK_K              ##
         ##################################
-        for BLOCK_N in ${BLOCK_RANGE[@]}
+        for BLOCK_K in ${BLOCK_RANGE[@]}
         do
-            ## Skip BLOCK_N if it is too large for N
-            if [[ $N -le 32 ]] && [[ $BLOCK_N -ne 32 ]]; then
-                continue
-            fi
             ##################################
-            ## Looping BLOCK_K              ##
+            ## Looping SPLIT_K              ##
             ##################################
-            for BLOCK_K in ${BLOCK_RANGE[@]}
+            for SPLIT_K in ${SPLIT_K_RANGE[@]}
             do
+                ## Skip SPLIT_K if K % (SPLIT_K * BLOCK_K) != 0
+                leap=$((SPLIT_K * BLOCK_K))
+                mod=$((K%leap))
+                if [[ $mod -ne 0 ]]; then
+                    continue
+                fi
                 ##################################
-                ## Looping SPLIT_K              ##
+                ## Looping num_warps            ##
                 ##################################
-                for SPLIT_K in ${SPLIT_K_RANGE[@]}
+                for num_warps in ${NUM_WARPS_RANGE[@]}
                 do
-                    ## Skip SPLIT_K if K % (SPLIT_K * BLOCK_K) != 0
-                    leap=$((SPLIT_K * BLOCK_K))
-                    mod=$((K%leap))
-                    if [[ $mod -ne 0 ]]; then
-                        continue
+                    perfConfig="$BLOCK_M,$BLOCK_N,$BLOCK_K,$SPLIT_K,$GROUP_M,$num_warps"
+                    echo "rocprof --stats python $DRIVER -m $M -n $N -k $K -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} -num_warps ${num_warps} -splitK ${SPLIT_K}"
+                    Msg=$(rocprof --stats python $DRIVER -m $M -n $N -k $K \
+                                  -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} \
+                                  -num_warps ${num_warps} -splitK ${SPLIT_K})
+
+                    time=$(sed -n '/matmul_kernel/p' ${PROF_RESULT_FILE} \
+                               | awk -F ',' '{print $4}')
+		    # rm stat file to prevent it spoiling next runs in case they crash
+		    rm ${PROF_RESULT_FILE}
+                    if [[ $minTime == "" ]] || [[ $time -lt $minTime ]];then
+                        minTime=$time
+                        bestPerfConfig=$perfConfig
                     fi
-                    ##################################
-                    ## Looping num_warps            ##
-                    ##################################
-                    for num_warps in ${NUM_WARPS_RANGE[@]}
-                    do
-                        perfConfig="$BLOCK_M,$BLOCK_N,$BLOCK_K,$SPLIT_K,$GROUP_M,$num_warps"
-                        if [[ ${SMALL_M} -eq 0 ]]; then
-                            Msg=$(rocprof --stats python $DRIVER -m $M -n $N -k $K \
-                                          -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} \
-                                          -num_warps ${num_warps} -splitK ${SPLIT_K} \
-                                          -groupM ${GROUP_M})
-                        else
-                            Msg=$(rocprof --stats python $DRIVER -m $M -n $N -k $K \
-                                          -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} \
-                                          -num_warps ${num_warps} -splitK ${SPLIT_K})
-                        fi
+                    echo "Checked $perfConfig time: $time best parameters: $bestPerfConfig --> $minTime"
 
-                        time=$(sed -n '/matmul_kernel/p' ${PROF_RESULT_FILE} \
-                                   | awk -F ',' '{print $4}')
-                        if [[ $minTime == "" ]] || [[ $time -lt $minTime ]];then
-                            minTime=$time
-                            bestPerfConfig=$perfConfig
-                        fi
-                        echo "Checked $perfConfig  best parameters: $bestPerfConfig --> $minTime"
-
-                    done
                 done
             done
         done
     done
+    
 done
 
 echo "Best Result: $M,$N,$K  best parameters: $bestPerfConfig --> $minTime"
