@@ -19,9 +19,9 @@ N=$3
 K=$4
 reduceSpace=$5
 
-BLOCK_RANGE=(32 64)
-SPLIT_K_RANGE=(1 8)
-NUM_WARPS_RANGE=(1 2)
+BLOCK_RANGE=(32 64 128)
+SPLIT_K_RANGE=(1 2 4 5 8 10)
+NUM_WARPS_RANGE=(1 2 4 8 16)
 
 SMALL_M=0
 if [[ $M -le 32 ]];then
@@ -70,7 +70,7 @@ do
                 ##################################
                 for num_warps in ${NUM_WARPS_RANGE[@]}
                 do
-                    perfConfig="$BLOCK_M,$BLOCK_N,$BLOCK_K,$SPLIT_K,$GROUP_M,$num_warps"
+                    perfConfig="$BLOCK_M,$BLOCK_N,$BLOCK_K,$SPLIT_K,$num_warps"
                     echo "rocprof --stats python $DRIVER -m $M -n $N -k $K -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} -num_warps ${num_warps} -splitK ${SPLIT_K}"
                     Msg=$(rocprof --stats python $DRIVER -m $M -n $N -k $K \
                                   -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} \
@@ -78,13 +78,16 @@ do
 
                     time=$(sed -n '/matmul_kernel/p' ${PROF_RESULT_FILE} \
                                | awk -F ',' '{print $4}')
-		    # rm stat file to prevent it spoiling next runs in case they crash
-		    rm ${PROF_RESULT_FILE}
-                    if [[ $minTime == "" ]] || [[ $time -lt $minTime ]];then
+                    # rm stat file to prevent it spoiling next runs in case they crash
+                    rm ${PROF_RESULT_FILE}
+                    if [[ $minTime == "" ]] || ([[ $time != "" ]] && [[ $time -lt $minTime ]]);then
                         minTime=$time
                         bestPerfConfig=$perfConfig
                     fi
-                    echo "Checked $perfConfig time: $time best parameters: $bestPerfConfig --> $minTime"
+                    if [[ $time == "" ]];then
+                        time="N/A"
+                    fi
+                    echo "Checked $perfConfig --> $time best parameters: $bestPerfConfig --> $minTime"
 
                 done
             done
