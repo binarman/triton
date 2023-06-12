@@ -124,6 +124,8 @@ def main(args=None):
     parser.add_argument("-num_warps", type=int, default=argparse.SUPPRESS)
     parser.add_argument("-kpack", type=int, default=argparse.SUPPRESS)
     parser.add_argument("-mPerWave", type=int, default=argparse.SUPPRESS)
+    # Ignored groupM, it is not used for GEMM kernel
+    parser.add_argument("-groupM", type=int, default=argparse.SUPPRESS)
 
     parsed_args = parser.parse_args(args)
 
