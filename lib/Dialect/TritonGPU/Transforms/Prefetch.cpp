@@ -216,6 +216,11 @@ LogicalResult Prefetcher::initialize() {
     else
       prefetchWidth = 8 * aKWidth;
 
+#ifdef USE_ROCM
+    if (llvm::isa<triton::gpu::MfmaEncodingAttr>(aEnc.getParent()))
+      prefetchWidth = std::max(256ul / elementWidth, 32ul);
+#endif
+
     // Skip prefetching if kSize is less than prefetchWidth
     if (kSize < prefetchWidth)
       continue;
