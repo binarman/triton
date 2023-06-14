@@ -49,27 +49,54 @@ computeOffsetsTy1(ConversionPatternRewriter &rewriter, Location loc,
                   const ArrayRef<int64_t> &elemsPerInstr, Value waveId,
                   Value laneId, int warpsPerGroup, int numOfElems,
                   ArrayRef<int64_t> reps, SharedMemoryObject smemObj) {
+  // This function is for loading matrix of size MxK stored row-wise (same as KxM stored colum-wise)
+  // Whole tensor is broken into "blocks" of waves along M axis.
+  // Block is processed by multiple waves.
+  // One wave works on a piece of tensor size elemsPerInstr[0] x K.
+  // Each of these pieces is broken into "tiles" of size elemsPerInstr[0] x elemsPerInstr[1].
+  //
+  // overall offset is a sum of following values:
+  // 1) Offset of wave block in tensor
+  // 2) Offset of wave inside one wave block
+  // 3) Offset of tile in one wave
+  // 4) Offset of one lane data in a tile
+  // 5) Offset of particular element of tensor processed by one lane
+  // 
+  // This function computes these offsets for axies independently,
+  // then applies offsets and strides from smemObj.
   auto numM = reps[0];
   auto numK = reps[1];
   SmallVector<Value> offsets(numM * numK * numOfElems);
   int lineSize = elemsPerInstr[1] * numK;
-  int blockSize = elemsPerInstr[0] * warpsPerGroup * lineSize;
+  int blockHeight = elemsPerInstr[0] * warpsPerGroup;
   Value _0 = i32_val(0);
   Value _32 = i32_val(32);
 
-  Value waveOffset = mul(waveId, i32_val(elemsPerInstr[0] * lineSize));
-  Value colOffset = select(icmp_uge(laneId, _32), i32_val(numOfElems), _0);
-
   for (int block = 0; block < numM; ++block) {
-    Value blockOffset = i32_val(block * blockSize);
+    Value blockVOffset = i32_val(block * elemsPerInstr[0] * warpsPerGroup);
+    Value blockHOffset = _0;
+    Value waveVOffset = mul(waveId, i32_val(elemsPerInstr[0]));
+    Value waveHOffset = _0;
     for (int tile = 0; tile < numK; ++tile) {
-      Value tileOffset = i32_val(tile * elemsPerInstr[1]);
+      Value tileVOffset = _0;
+      Value tileHOffset = i32_val(tile * elemsPerInstr[1]);
+
+      Value laneVOffset = urem(laneId, _32);
+      Value laneHOffset = mul(udiv(laneId, _32), i32_val(numOfElems));
       for (int elem = 0; elem < numOfElems; ++elem) {
-        Value rowOffset =
-            add(mul(urem(laneId, _32), i32_val(lineSize)), i32_val(elem));
-        Value elemOffset = add(rowOffset, colOffset);
-        Value offset =
-            add(add(add(waveOffset, blockOffset), tileOffset), elemOffset);
+        Value elemVOffset = i32_val(elem);
+        Value elemHOffset = _0;
+
+        Value sliceVOffset = add(add(add(add(blockVOffset, waveVOffset), tileVOffset), laneVOffset), elemVOffset);
+        Value sliceHOffset = add(add(add(add(blockHOffset, waveHOffset), tileHOffset), laneHOffset), elemHOffset);
+
+        Value vOffset = mul(add(sliceVOffset, smemObj.offsets[0]), smemObj.strides[0]);
+        Value hOffset = mul(add(sliceHOffset, smemObj.offsets[1]), smemObj.strides[1]);
+        //Value vOffset = mul(add(sliceVOffset, _0), i32_val(lineSize));
+        //Value hOffset = mul(add(sliceHOffset, _0), i32_val(1));
+
+        Value offset = add(vOffset, hOffset);
+
         offsets[numK * numOfElems * block + numOfElems * tile + elem] = offset;
       }
     }

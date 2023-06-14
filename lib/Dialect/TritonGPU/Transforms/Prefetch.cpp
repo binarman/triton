@@ -370,7 +370,7 @@ scf::ForOp Prefetcher::createNewForOp() {
 }
 
 mlir::Type eraseMfmaType(mlir::MLIRContext *ctx, mlir::Type oldType) {
-  // return oldType;
+  return oldType;
   if (auto tensorType = llvm::dyn_cast<RankedTensorType>(oldType)) {
     auto encoding = tensorType.getEncoding();
     if (auto mfmaEnc =
