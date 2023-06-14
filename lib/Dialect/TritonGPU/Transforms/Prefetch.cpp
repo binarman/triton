@@ -30,6 +30,10 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 
+void dump(mlir::Value val) { llvm::outs() << val << "\n"; }
+
+void dump(mlir::Operation op) { llvm::outs() << op << "\n"; }
+
 using namespace mlir;
 
 #define GEN_PASS_CLASSES
@@ -365,8 +369,39 @@ scf::ForOp Prefetcher::createNewForOp() {
   return newForOp;
 }
 
+mlir::Type eraseMfmaType(mlir::MLIRContext *ctx, mlir::Type oldType) {
+  // return oldType;
+  if (auto tensorType = llvm::dyn_cast<RankedTensorType>(oldType)) {
+    auto encoding = tensorType.getEncoding();
+    if (auto mfmaEnc =
+            llvm::dyn_cast<triton::gpu::MfmaEncodingAttr>(encoding)) {
+      auto blockEncoding = mlir::triton::gpu::BlockedEncodingAttr::get(
+          ctx, {4, 4}, {8, 8}, {1, 1}, {1, 0});
+      auto newTensorType = RankedTensorType::get(
+          tensorType.getShape(), tensorType.getElementType(), blockEncoding);
+      return newTensorType;
+    }
+    if (auto dotOpEnc =
+            llvm::dyn_cast<triton::gpu::DotOperandEncodingAttr>(encoding)) {
+      if (auto mfmaEnc = llvm::dyn_cast<triton::gpu::MfmaEncodingAttr>(
+              dotOpEnc.getParent())) {
+        auto blockEncoding = mlir::triton::gpu::BlockedEncodingAttr::get(
+            ctx, {4, 4}, {8, 8}, {1, 1}, {1, 0});
+        auto newDotOpEnc = triton::gpu::DotOperandEncodingAttr::get(
+            ctx, dotOpEnc.getOpIdx(), blockEncoding, 0);
+        auto newTensorType = RankedTensorType::get(
+            tensorType.getShape(), tensorType.getElementType(), newDotOpEnc);
+        return newTensorType;
+      }
+    }
+  }
+  return oldType;
+}
+
 struct PrefetchPass : public TritonGPUPrefetchBase<PrefetchPass> {
   void runOnOperation() override {
+    llvm::outs() << "\n\n\nfor loop before prefetch:\n"
+                 << getOperation() << "\n\n\n";
     getOperation()->walk([&](scf::ForOp forOp) {
       Prefetcher prefetcher(forOp);
 
@@ -382,6 +417,44 @@ struct PrefetchPass : public TritonGPUPrefetchBase<PrefetchPass> {
         forOp->getResult(i).replaceAllUsesWith(newForOp->getResult(i));
       forOp->erase();
     });
+    llvm::outs() << "\n\n\nfor loop after prefetch:\n"
+                 << getOperation() << "\n\n\n";
+    getOperation()->walk([&](mlir::Operation *op) {
+      auto ctx = op->getContext();
+
+      if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
+        auto operands = forOp.getBody()->getArguments();
+        for (auto &operand : operands)
+          operand.setType(eraseMfmaType(ctx, operand.getType()));
+        auto results = op->getResults();
+        for (auto res : results)
+          res.setType(eraseMfmaType(ctx, res.getType()));
+        return WalkResult::advance();
+      }
+      if (auto yield = llvm::dyn_cast<scf::YieldOp>(op)) {
+        for (auto res : yield.getResults()) {
+          res.setType(eraseMfmaType(ctx, res.getType()));
+        }
+        return WalkResult::advance();
+      }
+      if (auto cst = llvm::dyn_cast<arith::ConstantOp>(op)) {
+        auto newType = eraseMfmaType(ctx, cst.getType());
+        if (newType != cst.getType()) {
+          OpBuilder builder(op->getParentOfType<mlir::ModuleOp>());
+          builder.setInsertionPoint(cst);
+          TypedAttr attr = builder.getZeroAttr(newType);
+          auto newCst =
+              builder.create<arith::ConstantOp>(cst.getLoc(), newType, attr);
+          cst.getResult().replaceAllUsesWith(newCst.getResult());
+        }
+        return WalkResult::advance();
+      }
+      auto results = op->getResults();
+      for (auto res : results)
+        res.setType(eraseMfmaType(ctx, res.getType()));
+      return WalkResult::advance();
+    });
+    llvm::outs() << "\n\n\nAfter mfma replacement:\n" << getOperation() << "\n";
   }
 };
 
