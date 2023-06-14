@@ -48,7 +48,7 @@ llvm::SmallVector<Value>
 computeOffsetsTy1(ConversionPatternRewriter &rewriter, Location loc,
                   const ArrayRef<int64_t> &elemsPerInstr, Value waveId,
                   Value laneId, int warpsPerGroup, int numOfElems,
-                  ArrayRef<int64_t> reps, Value cSwizzleOffset) {
+                  ArrayRef<int64_t> reps, SharedMemoryObject smemObj) {
   auto numM = reps[0];
   auto numK = reps[1];
   SmallVector<Value> offsets(numM * numK * numOfElems);
@@ -56,7 +56,6 @@ computeOffsetsTy1(ConversionPatternRewriter &rewriter, Location loc,
   int blockSize = elemsPerInstr[0] * warpsPerGroup * lineSize;
   Value _0 = i32_val(0);
   Value _32 = i32_val(32);
-  Value waveHalf = udiv(laneId, _32);
 
   Value waveOffset = mul(waveId, i32_val(elemsPerInstr[0] * lineSize));
   Value colOffset = select(icmp_uge(laneId, _32), i32_val(numOfElems), _0);
@@ -92,7 +91,7 @@ llvm::SmallVector<Value>
 computeOffsetsTy2(ConversionPatternRewriter &rewriter, Location loc,
                   const ArrayRef<int64_t> &elemsPerInstr, Value waveId,
                   Value laneId, int warpsPerGroup, int numOfElems,
-                  ArrayRef<int64_t> reps, Value cSwizzleOffset) {
+                  ArrayRef<int64_t> reps, SharedMemoryObject smemObj) {
   auto numK = reps[0];
   auto numN = reps[1];
   SmallVector<Value> offsets(numK * numN * numOfElems);
@@ -156,20 +155,17 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   Value waveM =
       getWaveM(rewriter, loc, wave, warpsPerCTA, mfmaInstrM, shape[0]);
   int numOfElems = std::max<int>(mfmaInstrM * mfmaInstrK / 64 /*wave size*/, 1);
-  Value cSwizzleOffset = smemObj.getCSwizzleOffset(order[0]);
   unsigned int maxNumWarps = shape[0] / mfmaInstrM;
   int warpsPerGroupM = std::min(warpsPerCTA[0], maxNumWarps);
   SmallVector<Value> offsets;
   if (isTransposed(order)) {
     SmallVector<int64_t> elemsPerInstr{mfmaInstrK, mfmaInstrM};
     SmallVector<int64_t> reps{numReps[1], numReps[0]};
-    offsets =
-        computeOffsetsTy2(rewriter, loc, elemsPerInstr, waveM, lane,
-                          warpsPerGroupM, numOfElems, reps, cSwizzleOffset);
+    offsets = computeOffsetsTy2(rewriter, loc, elemsPerInstr, waveM, lane,
+                                warpsPerGroupM, numOfElems, reps, smemObj);
   } else {
-    offsets =
-        computeOffsetsTy1(rewriter, loc, aElemsPerInstr, waveM, lane,
-                          warpsPerGroupM, numOfElems, numReps, cSwizzleOffset);
+    offsets = computeOffsetsTy1(rewriter, loc, aElemsPerInstr, waveM, lane,
+                                warpsPerGroupM, numOfElems, numReps, smemObj);
   }
 
   Value smemBase = smemObj.getBaseBeforeSwizzle(order[0], loc, rewriter);
@@ -228,16 +224,13 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   Value wave = udiv(thread, waveSize);
   Value lane = urem(thread, waveSize);
 
-  Value waveN = getWaveN(rewriter, loc, wave, warpsPerCTA,
-                         mfmaInstrN, shape[1]);
+  Value waveN =
+      getWaveN(rewriter, loc, wave, warpsPerCTA, mfmaInstrN, shape[1]);
   int numOfElems = std::max<int>(mfmaInstrK * mfmaInstrN / 64 /*wave size*/, 1);
-  Value cSwizzleOffset = smemObj.getCSwizzleOffset(order[0]);
 
-  int macroTileM =
-      std::max<int>(shape[0] / (warpsPerCTA[0] * 32), 1);
+  int macroTileM = std::max<int>(shape[0] / (warpsPerCTA[0] * 32), 1);
   int wptM = std::min<int>(warpsPerCTA[0], macroTileM);
-  int macroTileN =
-      std::max<int>(shape[1] / (warpsPerCTA[1] * 32), 1);
+  int macroTileN = std::max<int>(shape[1] / (warpsPerCTA[1] * 32), 1);
   int wptN = std::min<int>(warpsPerCTA[1], macroTileN);
   int wpt = std::max<int>(wptM, wptN);
 
@@ -247,13 +240,11 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   if (isTransposed(order)) {
     SmallVector<int64_t> elemsPerInstr{mfmaInstrN, mfmaInstrK};
     SmallVector<int64_t> reps{numReps[1], numReps[0]};
-    offsets =
-        computeOffsetsTy1(rewriter, loc, elemsPerInstr, waveN, lane,
-                          warpsPerGroupN, numOfElems, reps, cSwizzleOffset);
+    offsets = computeOffsetsTy1(rewriter, loc, elemsPerInstr, waveN, lane,
+                                warpsPerGroupN, numOfElems, reps, smemObj);
   } else {
-    offsets =
-        computeOffsetsTy2(rewriter, loc, bElemsPerInstr, waveN, lane,
-                          warpsPerGroupN, numOfElems, numReps, cSwizzleOffset);
+    offsets = computeOffsetsTy2(rewriter, loc, bElemsPerInstr, waveN, lane,
+                                warpsPerGroupN, numOfElems, numReps, smemObj);
   }
 
   Value smemBase = smemObj.getBaseBeforeSwizzle(order[0], loc, rewriter);
