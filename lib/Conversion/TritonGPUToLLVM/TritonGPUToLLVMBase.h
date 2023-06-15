@@ -402,11 +402,11 @@ public:
       // additional sync
       barrier();
       GCNBuilder gcnBuilder;
-      gcnBuilder.create<>("s_waitcnt vmcnt(0); mark shared to dist")->operator()();
+      gcnBuilder.create<>("s_waitcnt vmcnt(0); mark1 shared to dist")->operator()();
       gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
       Value valVec = load(smemAddr);
       // additional sync
-      // gcnBuilder.create<>("s_waitcnt vmcnt(0); mark")->operator()();
+      gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 shared to dist")->operator()();
       gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
       barrier();
       for (unsigned v = 0; v < minVec; ++v) {

@@ -136,11 +136,11 @@ struct LoadOpConversion
                                     // additional sync
                                      barrier();
                                      GCNBuilder gcnBuilder;
-                                     gcnBuilder.create<>("s_waitcnt vmcnt(0); mark load op")->operator()();
+                                     gcnBuilder.create<>("s_waitcnt vmcnt(0); mark1 load op")->operator()();
                                      gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                      auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr);
                                      // additional sync
-                                    //  gcnBuilder.create<>("s_waitcnt vmcnt(0); mark")->operator()();
+                                     gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 load op")->operator()();
                                      gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                      barrier();
                                      builder.create<mlir::scf::YieldOp>(loc, ValueRange({loadVal}));
@@ -392,11 +392,11 @@ struct StoreOpConversion
                                        // additional sync
                                        barrier();
                                        GCNBuilder gcnBuilder;
-                                       gcnBuilder.create<>("s_waitcnt vmcnt(0); mark store op")->operator()();
+                                       gcnBuilder.create<>("s_waitcnt vmcnt(0); mark1 store op")->operator()();
                                        gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                        auto storeOp = builder.create<LLVM::StoreOp>(loc, llWord, ptrElems[vecStart + wordIdx * wordNElems]);
                                        // additional sync
-                                      //  gcnBuilder.create<>("s_waitcnt vmcnt(0); mark")->operator()();
+                                       gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 store op")->operator()();
                                        gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                        barrier();
 
