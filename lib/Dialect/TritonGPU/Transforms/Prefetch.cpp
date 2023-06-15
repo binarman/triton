@@ -400,8 +400,8 @@ mlir::Type eraseMfmaType(mlir::MLIRContext *ctx, mlir::Type oldType) {
 
 struct PrefetchPass : public TritonGPUPrefetchBase<PrefetchPass> {
   void runOnOperation() override {
-    llvm::outs() << "\n\n\nfor loop before prefetch:\n"
-                 << getOperation() << "\n\n\n";
+//    llvm::outs() << "\n\n\nfor loop before prefetch:\n"
+//                 << getOperation() << "\n\n\n";
     getOperation()->walk([&](scf::ForOp forOp) {
       Prefetcher prefetcher(forOp);
 
@@ -417,8 +417,8 @@ struct PrefetchPass : public TritonGPUPrefetchBase<PrefetchPass> {
         forOp->getResult(i).replaceAllUsesWith(newForOp->getResult(i));
       forOp->erase();
     });
-    llvm::outs() << "\n\n\nfor loop after prefetch:\n"
-                 << getOperation() << "\n\n\n";
+//    llvm::outs() << "\n\n\nfor loop after prefetch:\n"
+//                 << getOperation() << "\n\n\n";
     getOperation()->walk([&](mlir::Operation *op) {
       auto ctx = op->getContext();
 
@@ -454,7 +454,7 @@ struct PrefetchPass : public TritonGPUPrefetchBase<PrefetchPass> {
         res.setType(eraseMfmaType(ctx, res.getType()));
       return WalkResult::advance();
     });
-    llvm::outs() << "\n\n\nAfter mfma replacement:\n" << getOperation() << "\n";
+//    llvm::outs() << "\n\n\nAfter mfma replacement:\n" << getOperation() << "\n";
   }
 };
 
