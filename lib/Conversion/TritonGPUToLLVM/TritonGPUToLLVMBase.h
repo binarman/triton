@@ -400,10 +400,15 @@ public:
       Value smemAddr = sharedPtrs[i * minVec];
       smemAddr = bitcast(smemAddr, ptr_ty(wordTy, 3));
       // additional sync
+      barrier();
       GCNBuilder gcnBuilder;
-      gcnBuilder.create<>("s_waitcnt vmcnt(0)")->operator()();
+      gcnBuilder.create<>("s_waitcnt vmcnt(0); mark shared to dist")->operator()();
       gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
       Value valVec = load(smemAddr);
+      // additional sync
+      // gcnBuilder.create<>("s_waitcnt vmcnt(0); mark")->operator()();
+      gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
+      barrier();
       for (unsigned v = 0; v < minVec; ++v) {
         Value currVal = extract_element(dstElemTy, valVec, i32_val(v));
         outVals[i * minVec + v] = currVal;

@@ -133,11 +133,16 @@ struct LoadOpConversion
         Value ptr = addrspacecast(ptrElems[elemOffset], ptr_ty(IntegerType::get(getContext(), width)));
         auto loaded = rewriter.create<scf::IfOp>(loc, pred,
                                    [&](OpBuilder &builder, Location loc){
-                                     // additional sync
+                                    // additional sync
+                                     barrier();
                                      GCNBuilder gcnBuilder;
-                                     gcnBuilder.create<>("s_waitcnt vmcnt(0)")->operator()();
+                                     gcnBuilder.create<>("s_waitcnt vmcnt(0); mark load op")->operator()();
                                      gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                      auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr);
+                                     // additional sync
+                                    //  gcnBuilder.create<>("s_waitcnt vmcnt(0); mark")->operator()();
+                                     gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
+                                     barrier();
                                      builder.create<mlir::scf::YieldOp>(loc, ValueRange({loadVal}));
                                    },
                                    [&](OpBuilder &builder, Location loc){
@@ -385,10 +390,16 @@ struct StoreOpConversion
         rewriter.create<scf::IfOp>(loc, maskVal,
                                      [&](OpBuilder &builder, Location loc){
                                        // additional sync
+                                       barrier();
                                        GCNBuilder gcnBuilder;
-                                       gcnBuilder.create<>("s_waitcnt vmcnt(0)")->operator()();
+                                       gcnBuilder.create<>("s_waitcnt vmcnt(0); mark store op")->operator()();
                                        gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                        auto storeOp = builder.create<LLVM::StoreOp>(loc, llWord, ptrElems[vecStart + wordIdx * wordNElems]);
+                                       // additional sync
+                                      //  gcnBuilder.create<>("s_waitcnt vmcnt(0); mark")->operator()();
+                                       gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
+                                       barrier();
+
                                        builder.create<scf::YieldOp>(loc);
                                      },
                                      nullptr);
@@ -1123,12 +1134,12 @@ void populateLoadStoreOpToLLVMPatterns(
     PatternBenefit benefit) {
   patterns.add<LoadOpConversion>(typeConverter, axisInfoAnalysis, benefit);
   patterns.add<StoreOpConversion>(typeConverter, axisInfoAnalysis, benefit);
-  patterns.add<AtomicCASOpConversion>(typeConverter, allocation,
-                                      axisInfoAnalysis, benefit);
-  patterns.add<AtomicRMWOpConversion>(typeConverter, allocation,
-                                      axisInfoAnalysis, benefit);
+//  patterns.add<AtomicCASOpConversion>(typeConverter, allocation,
+//                                      axisInfoAnalysis, benefit);
+//  patterns.add<AtomicRMWOpConversion>(typeConverter, allocation,
+//                                      axisInfoAnalysis, benefit);
   patterns.add<InsertSliceOpConversion>(typeConverter, allocation,
                                         indexCacheInfo, benefit);
-  patterns.add<InsertSliceAsyncOpConversion>(
-      typeConverter, allocation, indexCacheInfo, axisInfoAnalysis, benefit);
+//  patterns.add<InsertSliceAsyncOpConversion>(
+//      typeConverter, allocation, indexCacheInfo, axisInfoAnalysis, benefit);
 }
