@@ -133,6 +133,10 @@ struct LoadOpConversion
         Value ptr = addrspacecast(ptrElems[elemOffset], ptr_ty(IntegerType::get(getContext(), width)));
         auto loaded = rewriter.create<scf::IfOp>(loc, pred,
                                    [&](OpBuilder &builder, Location loc){
+                                     // additional sync
+                                     GCNBuilder gcnBuilder;
+                                     gcnBuilder.create<>("s_waitcnt vmcnt(0)")->operator()();
+                                     gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                      auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr);
                                      builder.create<mlir::scf::YieldOp>(loc, ValueRange({loadVal}));
                                    },
@@ -380,6 +384,10 @@ struct StoreOpConversion
         Value maskVal = llMask ? and_(mask, maskElems[vecStart]) : mask;
         rewriter.create<scf::IfOp>(loc, maskVal,
                                      [&](OpBuilder &builder, Location loc){
+                                       // additional sync
+                                       GCNBuilder gcnBuilder;
+                                       gcnBuilder.create<>("s_waitcnt vmcnt(0)")->operator()();
+                                       gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
                                        auto storeOp = builder.create<LLVM::StoreOp>(loc, llWord, ptrElems[vecStart + wordIdx * wordNElems]);
                                        builder.create<scf::YieldOp>(loc);
                                      },

@@ -399,6 +399,10 @@ public:
     for (unsigned i = 0; i < numVecs; ++i) {
       Value smemAddr = sharedPtrs[i * minVec];
       smemAddr = bitcast(smemAddr, ptr_ty(wordTy, 3));
+      // additional sync
+      GCNBuilder gcnBuilder;
+      gcnBuilder.create<>("s_waitcnt vmcnt(0)")->operator()();
+      gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
       Value valVec = load(smemAddr);
       for (unsigned v = 0; v < minVec; ++v) {
         Value currVal = extract_element(dstElemTy, valVec, i32_val(v));
@@ -457,6 +461,10 @@ public:
       if (i % minVec == minVec - 1) {
         Value smemAddr = sharedPtrs[i / minVec * minVec];
         smemAddr = bitcast(smemAddr, ptr_ty(wordTy, 3));
+        // additional sync
+        GCNBuilder gcnBuilder;
+        gcnBuilder.create<>("s_waitcnt vmcnt(0)")->operator()();
+        gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
         store(word, smemAddr);
       }
     }
