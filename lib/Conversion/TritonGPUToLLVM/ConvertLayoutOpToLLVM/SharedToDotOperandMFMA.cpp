@@ -174,11 +174,9 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
         auto attrs = ArrayAttr::get(ctx, {});
         auto outTy = void_ty(ctx);
         SmallVector<mlir::Value> operands;
-        rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 load A", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
-
+        // rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 load A", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
         Value elemValue = load(gep(smemPtrTy, smemBase, elemOffset), 0, true);
-
-        rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 load A", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+        // rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 load A", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
         if (numOfElems > 1)
           valVec = insert_element(vecTy, valVec, elemValue, i32_val(elem));
         else
@@ -255,9 +253,9 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
         auto attrs = ArrayAttr::get(ctx, {});
         auto outTy = void_ty(ctx);
         SmallVector<mlir::Value> operands;
-        rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 load B", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+        // rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 load B", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
         Value elemValue = load(gep(smemPtrTy, smemBase, elemOffset), 0, true);
-        rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 load B", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+        // rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 load B", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
         if (numOfElems > 1)
           valVec = insert_element(vecTy, valVec, elemValue, i32_val(elem));
         else

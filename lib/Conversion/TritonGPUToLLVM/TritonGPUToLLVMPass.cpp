@@ -388,7 +388,6 @@ public:
                                                           patterns);
     if (failed(applyPartialConversion(mod, target, std::move(patterns))))
       return signalPassFailure();
-    llvm::outs() << "llbm module:\n" << mod << "\n\n";
   }
 
 private:

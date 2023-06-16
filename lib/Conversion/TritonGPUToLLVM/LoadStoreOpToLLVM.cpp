@@ -142,10 +142,10 @@ struct LoadOpConversion
                                      auto attrs = ArrayAttr::get(ctx, {});
                                      auto outTy = void_ty(ctx);
                                      SmallVector<mlir::Value> operands;
-                                     builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 load op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+                                    //  builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 load op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
                                     //  builder.setInsertionPoint(rewriter.getBlock(), rewriter.getInsertionPoint());
                                      auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr, 0, true);
-                                     builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 load op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+                                    //  builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 load op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
                                      // additional sync
                                     //  GCNBuilder gcnBuilder2;
                                     //  gcnBuilder2.create<>("s_waitcnt vmcnt(0); mark2 load op")->operator()();
@@ -407,9 +407,9 @@ struct StoreOpConversion
                                        auto attrs = ArrayAttr::get(ctx, {});
                                        auto outTy = void_ty(ctx);
                                        SmallVector<mlir::Value> operands;
-                                       builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 store op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+                                      //  builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 store op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
                                        auto storeOp = builder.create<LLVM::StoreOp>(loc, llWord, ptrElems[vecStart + wordIdx * wordNElems], 0, true);
-                                       builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 store op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+                                      //  builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 store op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
                                        // additional sync
                                       //  gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 store op")->operator()();
                                       //  gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));

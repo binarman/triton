@@ -408,9 +408,9 @@ public:
       auto attrs = ArrayAttr::get(ctx, {});
       auto outTy = void_ty(ctx);
       SmallVector<mlir::Value> operands;
-      rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 shared to dist", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+      // rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 shared to dist", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
       Value valVec = load(smemAddr);
-      rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 shared to dist", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+      // rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 shared to dist", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
       // additional sync
       // GCNBuilder gcnBuilder2;
       // gcnBuilder2.create<>("s_waitcnt vmcnt(0); mark2 shared to dist")->operator()();
