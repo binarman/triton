@@ -56,22 +56,26 @@ def matmul(a, b, activation=""):
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         c.stride(0), c.stride(1),
-        BLOCK_SIZE_M=32, BLOCK_SIZE_N=32, BLOCK_SIZE_K=64, num_stages=2, num_warps=1
+        BLOCK_SIZE_M=32, BLOCK_SIZE_N=32, BLOCK_SIZE_K=16, num_stages=2, num_warps=1
     )
     return c
 
 torch.manual_seed(0)
-#a = torch.randn((32, 128), device='cuda', dtype=torch.float32)
-a = torch.zeros((32, 128), device='cuda', dtype=torch.float32)
+M=32
+N=32
+K=16
+a = torch.randn((M, K), device='cuda', dtype=torch.float32)
+#a = torch.zeros((M, K), device='cuda', dtype=torch.float32)
 #a[0,31] = 1.0
-a[1,0] = 1.0
-#a[1,1] = 1.0
-b = torch.randn((128, 32), device='cuda', dtype=torch.float32)
-b = torch.zeros((128, 32), device='cuda', dtype=torch.float32)
+#a[1,0] = 1.0
+#a[1,0] = 1.0
+#a[2,1] = 1.0
+#b = torch.randn((K, N), device='cuda', dtype=torch.float32)
+b = torch.zeros((K, N), device='cuda', dtype=torch.float32)
 #b[31,0] = 1.0
-for n in range(32):
-  for k in range(128):
-    b[k, n] = n+1.0
+for n in range(N):
+  for k in range(K):
+    b[k, n] = (n+1)*100.0 + k+1.0
 triton_output = matmul(a, b)
 torch_output = torch.matmul(a, b)
 print(f"triton_output={triton_output}")
