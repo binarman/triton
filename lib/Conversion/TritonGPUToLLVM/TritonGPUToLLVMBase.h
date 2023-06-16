@@ -400,15 +400,21 @@ public:
       Value smemAddr = sharedPtrs[i * minVec];
       smemAddr = bitcast(smemAddr, ptr_ty(wordTy, 3));
       // additional sync
-      barrier();
-      GCNBuilder gcnBuilder;
-      gcnBuilder.create<>("s_waitcnt vmcnt(0); mark1 shared to dist")->operator()();
-      gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
+      // GCNBuilder gcnBuilder1;
+      // gcnBuilder1.create<>("s_waitcnt vmcnt(0); mark1 shared to dist")->operator()();
+      // gcnBuilder1.launch(rewriter, loc, void_ty(loc.getContext()));
+      auto ctx = rewriter.getContext();
+      auto asmDialect = LLVM::AsmDialectAttr::get(ctx,LLVM::AsmDialect::AD_ATT);
+      auto attrs = ArrayAttr::get(ctx, {});
+      auto outTy = void_ty(ctx);
+      SmallVector<mlir::Value> operands;
+      rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 shared to dist", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
       Value valVec = load(smemAddr);
+      rewriter.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 shared to dist", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
       // additional sync
-      gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 shared to dist")->operator()();
-      gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
-      barrier();
+      // GCNBuilder gcnBuilder2;
+      // gcnBuilder2.create<>("s_waitcnt vmcnt(0); mark2 shared to dist")->operator()();
+      // gcnBuilder2.launch(rewriter, loc, void_ty(loc.getContext()));
       for (unsigned v = 0; v < minVec; ++v) {
         Value currVal = extract_element(dstElemTy, valVec, i32_val(v));
         outVals[i * minVec + v] = currVal;

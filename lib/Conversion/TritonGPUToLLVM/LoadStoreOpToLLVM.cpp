@@ -134,15 +134,22 @@ struct LoadOpConversion
         auto loaded = rewriter.create<scf::IfOp>(loc, pred,
                                    [&](OpBuilder &builder, Location loc){
                                     // additional sync
-                                     barrier();
-                                     GCNBuilder gcnBuilder;
-                                     gcnBuilder.create<>("s_waitcnt vmcnt(0); mark1 load op")->operator()();
-                                     gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
-                                     auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr);
+                                    //  GCNBuilder gcnBuilder1;
+                                    //  gcnBuilder1.create<>("s_waitcnt vmcnt(0); mark1 load op")->operator()();
+                                    //  gcnBuilder1.launch(rewriter, loc, void_ty(loc.getContext()));
+                                     auto ctx = rewriter.getContext();
+                                     auto asmDialect = LLVM::AsmDialectAttr::get(ctx,LLVM::AsmDialect::AD_ATT);
+                                     auto attrs = ArrayAttr::get(ctx, {});
+                                     auto outTy = void_ty(ctx);
+                                     SmallVector<mlir::Value> operands;
+                                     builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 load op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+                                    //  builder.setInsertionPoint(rewriter.getBlock(), rewriter.getInsertionPoint());
+                                     auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr, 0, true);
+                                     builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 load op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
                                      // additional sync
-                                     gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 load op")->operator()();
-                                     gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
-                                     barrier();
+                                    //  GCNBuilder gcnBuilder2;
+                                    //  gcnBuilder2.create<>("s_waitcnt vmcnt(0); mark2 load op")->operator()();
+                                    //  gcnBuilder2.launch(rewriter, loc, void_ty(loc.getContext()));
                                      builder.create<mlir::scf::YieldOp>(loc, ValueRange({loadVal}));
                                    },
                                    [&](OpBuilder &builder, Location loc){
@@ -390,15 +397,23 @@ struct StoreOpConversion
         rewriter.create<scf::IfOp>(loc, maskVal,
                                      [&](OpBuilder &builder, Location loc){
                                        // additional sync
-                                       barrier();
-                                       GCNBuilder gcnBuilder;
-                                       gcnBuilder.create<>("s_waitcnt vmcnt(0); mark1 store op")->operator()();
-                                       gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
-                                       auto storeOp = builder.create<LLVM::StoreOp>(loc, llWord, ptrElems[vecStart + wordIdx * wordNElems]);
+                                      //  barrier();
+                                      //  GCNBuilder gcnBuilder;
+                                      //  gcnBuilder.create<>("s_waitcnt vmcnt(0); mark1 store op")->operator()();
+                                      //  gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
+                                      //  builder.setInsertionPoint(rewriter.getBlock(), rewriter.getInsertionPoint());
+                                       auto ctx = rewriter.getContext();
+                                       auto asmDialect = LLVM::AsmDialectAttr::get(ctx,LLVM::AsmDialect::AD_ATT);
+                                       auto attrs = ArrayAttr::get(ctx, {});
+                                       auto outTy = void_ty(ctx);
+                                       SmallVector<mlir::Value> operands;
+                                       builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark1 store op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
+                                       auto storeOp = builder.create<LLVM::StoreOp>(loc, llWord, ptrElems[vecStart + wordIdx * wordNElems], 0, true);
+                                       builder.create<LLVM::InlineAsmOp>(loc, outTy, operands, "s_waitcnt vmcnt(0); mark2 store op", ""/*constraints*/, true /*side effect*/, false/*align stack*/, asmDialect, attrs);
                                        // additional sync
-                                       gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 store op")->operator()();
-                                       gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
-                                       barrier();
+                                      //  gcnBuilder.create<>("s_waitcnt vmcnt(0); mark2 store op")->operator()();
+                                      //  gcnBuilder.launch(rewriter, loc, void_ty(loc.getContext()));
+                                      //  barrier();
 
                                        builder.create<scf::YieldOp>(loc);
                                      },
