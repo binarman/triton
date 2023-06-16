@@ -158,6 +158,11 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
 
   Value smemBase = smemObj.base;
 
+  auto ctx = loc.getContext();
+  auto smemBaseCast = rewriter.create<mlir::LLVM::PtrToIntOp>(loc, mlir::IntegerType::get(ctx, 32), smemBase);
+  std::vector<mlir::Value> valuesToPrint{lane, dyn_cast<mlir::Value>(smemBaseCast.getResult()), smemObj.strides[0], smemObj.strides[1], smemObj.offsets[0], smemObj.offsets[1]};
+  rewriter.create<mlir::triton::PrintOp>(loc, mlir::StringAttr::get(ctx, llvm::StringRef("MemBase for load A: ")), valuesToPrint);
+
   Type smemPtrTy = getShemPtrTy(aElemTy);
 
   SmallVector<Value> ha;
@@ -188,7 +193,7 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
     }
   }
 
-  MLIRContext *ctx = mfmaLayout.getContext();
+  // MLIRContext *ctx = mfmaLayout.getContext();
   Type structTy = LLVM::LLVMStructType::getLiteral(
       ctx, SmallVector<Type>(ha.size(), ha[0].getType()));
   auto result = typeConverter->packLLElements(loc, ha, rewriter, structTy);
@@ -236,6 +241,10 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
                                      warpsPerGroupN, numOfElems, numReps, smemObj);
 
   Value smemBase = smemObj.base;
+  auto ctx = loc.getContext();
+  auto smemBaseCast = rewriter.create<mlir::LLVM::PtrToIntOp>(loc, mlir::IntegerType::get(ctx, 32), smemBase);
+  std::vector<mlir::Value> valuesToPrint{lane, dyn_cast<mlir::Value>(smemBaseCast.getResult()), smemObj.strides[0], smemObj.strides[1], smemObj.offsets[0], smemObj.offsets[1]};
+  rewriter.create<mlir::triton::PrintOp>(loc, mlir::StringAttr::get(ctx, llvm::StringRef("MemBase for load B: ")), valuesToPrint);
 
   Type smemPtrTy = getShemPtrTy(bElemTy);
 
@@ -267,7 +276,7 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
     }
   }
 
-  MLIRContext *ctx = mfmaLayout.getContext();
+  // MLIRContext *ctx = mfmaLayout.getContext();
   Type structTy = LLVM::LLVMStructType::getLiteral(
       ctx, SmallVector<Type>(hb.size(), hb[0].getType()));
   auto result = typeConverter->packLLElements(loc, hb, rewriter, structTy);
