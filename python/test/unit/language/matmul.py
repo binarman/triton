@@ -68,7 +68,7 @@ def get_variant_golden(a, b):
     return c_padded[:SIZE_M, :SIZE_N]
 
 
-def test_gemm(SIZE_M, SIZE_N, SIZE_K, num_warps, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, SPLIT_K):
+def test_gemm(SIZE_M, SIZE_N, SIZE_K, num_warps, num_stages, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, SPLIT_K):
     a = torch.randn((SIZE_M, SIZE_K), device='cuda', dtype=torch.float16)
     b = torch.randn((SIZE_K, SIZE_N), device='cuda', dtype=torch.float16)
     c = torch.zeros((SIZE_M, SIZE_N), device=a.device, dtype=torch.float32)
@@ -87,6 +87,7 @@ def test_gemm(SIZE_M, SIZE_N, SIZE_K, num_warps, BLOCK_SIZE_M, BLOCK_SIZE_N, BLO
                         BLOCK_SIZE_K=BLOCK_SIZE_K,
                         SPLIT_K=SPLIT_K,
                         num_warps=num_warps,
+                        num_stages=num_stages
                         )
     golden = torch.matmul(a, b)
 
@@ -121,6 +122,7 @@ def main(args=None):
     parser.add_argument("-blockK", type=int, default=argparse.SUPPRESS)
     parser.add_argument("-splitK", type=int, default=argparse.SUPPRESS)
     parser.add_argument("-num_warps", type=int, default=argparse.SUPPRESS)
+    parser.add_argument("-num_stages", type=int, default=argparse.SUPPRESS)
 
     parsed_args = parser.parse_args(args)
 
@@ -128,11 +130,12 @@ def main(args=None):
     N = parsed_args.n
     K = parsed_args.k
     num_warps = parsed_args.num_warps
+    num_stages = parsed_args.num_stages
     BLOCK_M = parsed_args.blockM
     BLOCK_N = parsed_args.blockN
     BLOCK_K = parsed_args.blockK
     SPLIT_K = parsed_args.splitK
-    test_gemm(M, N, K, num_warps, BLOCK_M, BLOCK_N, BLOCK_K, SPLIT_K)
+    test_gemm(M, N, K, num_warps, num_stages, BLOCK_M, BLOCK_N, BLOCK_K, SPLIT_K)
 
 
 if __name__ == '__main__':

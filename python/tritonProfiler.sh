@@ -22,6 +22,7 @@ reduceSpace=$5
 BLOCK_RANGE=(32 64 128)
 SPLIT_K_RANGE=(1 2 4 5 8 10)
 NUM_WARPS_RANGE=(1 2 4 8 16)
+NUM_STAGES_RANGE=(1 2 3)
 
 SMALL_M=0
 if [[ $M -le 32 ]];then
@@ -70,25 +71,30 @@ do
                 ##################################
                 for num_warps in ${NUM_WARPS_RANGE[@]}
                 do
-                    perfConfig="$BLOCK_M,$BLOCK_N,$BLOCK_K,$SPLIT_K,$num_warps"
-                    echo "rocprof --stats python $DRIVER -m $M -n $N -k $K -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} -num_warps ${num_warps} -splitK ${SPLIT_K}"
-                    Msg=$(rocprof --stats python $DRIVER -m $M -n $N -k $K \
-                                  -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} \
-                                  -num_warps ${num_warps} -splitK ${SPLIT_K})
+                    ##################################
+                    ## Looping num_stages           ##
+                    ##################################
+                    for num_stages in ${NUM_STAGES_RANGE[@]}
+                    do
+                        perfConfig="$BLOCK_M,$BLOCK_N,$BLOCK_K,$SPLIT_K,$num_warps,$num_stages"
+                        echo "rocprof --stats python $DRIVER -m $M -n $N -k $K -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} -num_warps ${num_warps} -num_stages ${num_stages} -splitK ${SPLIT_K}"
+                        Msg=$(rocprof --stats python $DRIVER -m $M -n $N -k $K \
+                                      -blockM ${BLOCK_M} -blockN ${BLOCK_N} -blockK ${BLOCK_K} \
+                                      -num_warps ${num_warps} -num_stages ${num_stages} -splitK ${SPLIT_K})
 
-                    time=$(sed -n '/matmul_kernel/p' ${PROF_RESULT_FILE} \
-                               | awk -F ',' '{print $4}')
-                    # rm stat file to prevent it spoiling next runs in case they crash
-                    rm ${PROF_RESULT_FILE}
-                    if [[ $minTime == "" ]] || ([[ $time != "" ]] && [[ $time -lt $minTime ]]);then
-                        minTime=$time
-                        bestPerfConfig=$perfConfig
-                    fi
-                    if [[ $time == "" ]];then
-                        time="N/A"
-                    fi
-                    echo "Checked $perfConfig --> $time best parameters: $bestPerfConfig --> $minTime"
-
+                        time=$(sed -n '/matmul_kernel/p' ${PROF_RESULT_FILE} \
+                                   | awk -F ',' '{print $4}')
+                        # rm stat file to prevent it spoiling next runs in case they crash
+                        rm ${PROF_RESULT_FILE}
+                        if [[ $minTime == "" ]] || ([[ $time != "" ]] && [[ $time -lt $minTime ]]);then
+                            minTime=$time
+                            bestPerfConfig=$perfConfig
+                        fi
+                        if [[ $time == "" ]];then
+                            time="N/A"
+                        fi
+                        echo "Checked $perfConfig --> $time best parameters: $bestPerfConfig --> $minTime"
+                    done
                 done
             done
         done
