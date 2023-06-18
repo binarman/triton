@@ -42,7 +42,7 @@ jobs:
         run: |
           cd python
           # Install in system, because need to override system triton. Otherwise lit tests will use wrong version
-          DEBUG=TRUE TRITON_USE_ROCM=TRUE TRITON_USE_ASSERT_ENABLED_LLVM=TRUE python3 -m pip install --no-build-isolation -vvv .
+          DEBUG=TRUE TRITON_USE_ROCM=TRUE TRITON_USE_ASSERT_ENABLED_LLVM=TRUE python3 -m pip install --no-build-isolation -vvv -e .
 
       - name: Run lit tests
         run: |
