@@ -35,7 +35,8 @@ Value getWaveN(ConversionPatternRewriter &rewriter, Location loc, Value wave,
 namespace SharedToDotOperandMFMA {
 
 /**
- * @brief This function computes offsets for dot operand elements in LDS
+ * @brief This function maps tensor element indexes(row, col) to particular mfma
+ * instrucions
  *
  * Whole tensor is broken into "blocks" of waves along "non-K" axis.
  * One block could be processed by multiple waves.
@@ -50,8 +51,7 @@ namespace SharedToDotOperandMFMA {
  * 4. Offset of one lane data in a tile
  * 5. Offset of particular element of tensor processed by one lane
  *
- * This function computes these offsets for axies independently, then applies
- * offsets and strides from shared memory object.
+ * This function computes these offsets for axies independently
  *
  * @param rewriter
  * @param loc
@@ -62,15 +62,17 @@ namespace SharedToDotOperandMFMA {
  * @param numOfElems number of elements accessed by thread per repetition
  * @param reps number of instructions repretition to fully cover dot operand
  * @param smemStrides strides in LDS tensor
+ * @return vector (i-th element corresponds to i-th MFMA instruction) of
+ * 2-element vectors(tensor row and col).
  */
-llvm::SmallVector<Value>
-computeOffsets(ConversionPatternRewriter &rewriter, Location loc,
-               const ArrayRef<int64_t> &elemsPerInstr, Value waveId,
-               Value laneId, int warpsPerGroup, int numOfElems,
-               ArrayRef<int64_t> reps, ArrayRef<Value> smemStrides) {
+llvm::SmallVector<llvm::SmallVector<Value>>
+computeTensorElemMapping(ConversionPatternRewriter &rewriter, Location loc,
+                         const ArrayRef<int64_t> &elemsPerInstr, Value waveId,
+                         Value laneId, int warpsPerGroup, int numOfElems,
+                         ArrayRef<int64_t> reps, ArrayRef<Value> smemOffsets) {
   auto numM = reps[0];
   auto numK = reps[1];
-  SmallVector<Value> offsets(numM * numK * numOfElems);
+  SmallVector<llvm::SmallVector<Value>> mapping(numM * numK * numOfElems);
 
   Value _0 = i32_val(0);
   Value _32 = i32_val(32);
@@ -97,38 +99,80 @@ computeOffsets(ConversionPatternRewriter &rewriter, Location loc,
             add(add(add(blockHOffset, waveHOffset), tileHOffset), laneHOffset),
             elemHOffset);
 
-        Value vOffset = mul(sliceVOffset, smemStrides[0]);
-        Value hOffset = mul(sliceHOffset, smemStrides[1]);
+        Value row = add(sliceVOffset, smemOffsets[0]);
+        Value col = add(sliceHOffset, smemOffsets[1]);
 
-        Value offset = add(vOffset, hOffset);
-
-        offsets[numK * numOfElems * block + numOfElems * tile + elem] = offset;
+        mapping[numK * numOfElems * block + numOfElems * tile + elem] = {row,
+                                                                         col};
       }
     }
   }
-  return offsets;
+  return mapping;
+}
+
+Value computeOffset(ConversionPatternRewriter &rewriter, Location loc,
+                    Value row, Value col, SharedMemoryObject smemObj,
+                    SharedEncodingAttr srcLayout) {
+  auto &strides = smemObj.strides;
+  Value rowOffset = mul(row, strides[0]);
+  Value colOffset = mul(col, strides[1]);
+  return add(rowOffset, colOffset);
 }
 
 llvm::SmallVector<Value>
 computeOffsetsAType(ConversionPatternRewriter &rewriter, Location loc,
                     const ArrayRef<int64_t> &elemsPerInstr, Value waveId,
                     Value laneId, int warpsPerGroup, int numOfElems,
-                    ArrayRef<int64_t> reps, SharedMemoryObject smemObj) {
+                    ArrayRef<int64_t> reps, SharedMemoryObject smemObj,
+                    SharedEncodingAttr srcLayout) {
   SmallVector<Value> strides{smemObj.strides[0], smemObj.strides[1]};
-  return computeOffsets(rewriter, loc, elemsPerInstr, waveId, laneId,
-                        warpsPerGroup, numOfElems, reps, strides);
+  SmallVector<Value> offsets{smemObj.offsets[0], smemObj.offsets[1]};
+  auto mapping =
+      computeTensorElemMapping(rewriter, loc, elemsPerInstr, waveId, laneId,
+                               warpsPerGroup, numOfElems, reps, offsets);
+  llvm::SmallVector<Value> aOffsets(mapping.size());
+  for (int i = 0; i < mapping.size(); ++i) {
+    Value row = mapping[i][0];
+    Value col = mapping[i][1];
+    aOffsets[i] = computeOffset(rewriter, loc, row, col, smemObj, srcLayout);
+  }
+  return aOffsets;
 }
 
 llvm::SmallVector<Value>
 computeOffsetsBType(ConversionPatternRewriter &rewriter, Location loc,
                     const ArrayRef<int64_t> &elemsPerInstr, Value waveId,
                     Value laneId, int warpsPerGroup, int numOfElems,
-                    ArrayRef<int64_t> reps, SharedMemoryObject smemObj) {
+                    ArrayRef<int64_t> reps, SharedMemoryObject smemObj,
+                    SharedEncodingAttr srcLayout) {
+  // transpose reps and offsets, because operand B has layout equal to
+  // transposed operand A layout
   SmallVector<int64_t> tElemsPerInstr{elemsPerInstr[1], elemsPerInstr[0]};
   SmallVector<int64_t> tReps{reps[1], reps[0]};
-  SmallVector<Value> tstrides{smemObj.strides[1], smemObj.strides[0]};
-  return computeOffsets(rewriter, loc, tElemsPerInstr, waveId, laneId,
-                        warpsPerGroup, numOfElems, tReps, tstrides);
+  SmallVector<Value> toffsets{smemObj.offsets[1], smemObj.offsets[0]};
+  auto mapping =
+      computeTensorElemMapping(rewriter, loc, tElemsPerInstr, waveId, laneId,
+                               warpsPerGroup, numOfElems, tReps, toffsets);
+  llvm::SmallVector<Value> bOffsets(mapping.size());
+  for (int i = 0; i < mapping.size(); ++i) {
+    // swap row and col, because operand B layout is a transposed operand A
+    // layout
+    Value row = mapping[i][1];
+    Value col = mapping[i][0];
+    bOffsets[i] = computeOffset(rewriter, loc, row, col, smemObj, srcLayout);
+  }
+  return bOffsets;
+}
+
+Value computeBasePtr(ConversionPatternRewriter &rewriter, Location loc,
+                     const SharedMemoryObject &smemObj) {
+  Value base = smemObj.base;
+  Type type = base.getType();
+  for (int i = 0; i < smemObj.strides.size(); ++i) {
+    Value offset = sub(i32_val(0), mul(smemObj.offsets[i], smemObj.strides[i]));
+    base = gep(type, base, offset);
+  }
+  return base;
 }
 
 Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
@@ -162,11 +206,11 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
   int numOfElems = std::max<int>(mfmaInstrM * mfmaInstrK / 64 /*wave size*/, 1);
   unsigned int maxNumWarps = shape[0] / mfmaInstrM;
   int warpsPerGroupM = std::min(warpsPerCTA[0], maxNumWarps);
-  SmallVector<Value> offsets =
-      computeOffsetsAType(rewriter, loc, aElemsPerInstr, waveM, lane,
-                          warpsPerGroupM, numOfElems, numReps, smemObj);
+  SmallVector<Value> offsets = computeOffsetsAType(
+      rewriter, loc, aElemsPerInstr, waveM, lane, warpsPerGroupM, numOfElems,
+      numReps, smemObj, sharedLayout);
 
-  Value smemBase = smemObj.base;
+  Value smemBase = computeBasePtr(rewriter, loc, smemObj);
 
   Type smemPtrTy = getShemPtrTy(aElemTy);
 
@@ -234,11 +278,11 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
 
   unsigned int maxNumWarps = shape[1] / mfmaInstrN;
   int warpsPerGroupN = std::min(warpsPerCTA[1], maxNumWarps);
-  llvm::SmallVector<Value> offsets =
-      computeOffsetsBType(rewriter, loc, bElemsPerInstr, waveN, lane,
-                          warpsPerGroupN, numOfElems, numReps, smemObj);
+  llvm::SmallVector<Value> offsets = computeOffsetsBType(
+      rewriter, loc, bElemsPerInstr, waveN, lane, warpsPerGroupN, numOfElems,
+      numReps, smemObj, sharedLayout);
 
-  Value smemBase = smemObj.base;
+  Value smemBase = computeBasePtr(rewriter, loc, smemObj);
 
   Type smemPtrTy = getShemPtrTy(bElemTy);
 
