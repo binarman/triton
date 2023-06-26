@@ -35,8 +35,8 @@ Value getWaveN(ConversionPatternRewriter &rewriter, Location loc, Value wave,
 namespace SharedToDotOperandMFMA {
 
 /**
- * @brief This function maps tensor element indexes(row, col) to particular mfma
- * instrucions
+ * @brief This function maps particular load of mfma dot operand to element
+ * indexes(row, col)
  *
  * Whole tensor is broken into "blocks" of waves along "non-K" axis.
  * One block could be processed by multiple waves.
@@ -62,7 +62,7 @@ namespace SharedToDotOperandMFMA {
  * @param numOfElems number of elements accessed by thread per repetition
  * @param reps number of instructions repretition to fully cover dot operand
  * @param smemStrides strides in LDS tensor
- * @return vector (i-th element corresponds to i-th MFMA instruction) of
+ * @return vector (i-th element corresponds to i-th load instruction) of
  * 2-element vectors(tensor row and col).
  */
 llvm::SmallVector<llvm::SmallVector<Value>>
