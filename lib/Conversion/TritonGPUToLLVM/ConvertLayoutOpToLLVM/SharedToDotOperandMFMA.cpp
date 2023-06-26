@@ -180,6 +180,7 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
             TritonGPUToLLVMTypeConverter *typeConverter, Value tensor,
             const SharedMemoryObject &smemObj) {
   auto mfmaLayout = encoding.getParent().cast<MfmaEncodingAttr>();
+  assert(mfmaLayout.getNonKDim() == 32);
   auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
   auto aTensorTy = tensor.getType().cast<RankedTensorType>();
@@ -199,6 +200,8 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
 
   unsigned iWaveSize = triton::gpu::getWarpSize(mfmaLayout);
   Value waveSize = i32_val(iWaveSize);
+  assert(mfmaLayout.getXdlopsPerWarp()[0] == numRepM);
+
   Value wave = udiv(thread, waveSize);
   Value lane = urem(thread, waveSize);
 
@@ -247,6 +250,7 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
             TritonGPUToLLVMTypeConverter *typeConverter, Value tensor,
             const SharedMemoryObject &smemObj) {
   auto mfmaLayout = encoding.getParent().cast<MfmaEncodingAttr>();
+  assert(mfmaLayout.getNonKDim() == 32);
   auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
   auto bTensorTy = tensor.getType().cast<RankedTensorType>();
@@ -265,6 +269,8 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
 
   unsigned iWaveSize = triton::gpu::getWarpSize(mfmaLayout);
   Value waveSize = i32_val(iWaveSize);
+  assert(mfmaLayout.getXdlopsPerWarp()[1] == numRepN);
+
   Value wave = udiv(thread, waveSize);
   Value lane = urem(thread, waveSize);
 

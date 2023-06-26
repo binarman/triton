@@ -507,7 +507,9 @@ The data will be distributed between threads as follows:
 
   let parameters = (
     ins
-    ArrayRefParameter<"unsigned">:$warpsPerCTA
+    "unsigned":$nonKDim,
+    ArrayRefParameter<"unsigned">:$warpsPerCTA,
+    ArrayRefParameter<"unsigned">:$xdlopsPerWarp
   );
 
   let hasCustomAssemblyFormat = 1;
