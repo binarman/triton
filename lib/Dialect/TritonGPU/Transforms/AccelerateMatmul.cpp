@@ -73,9 +73,22 @@ SmallVector<unsigned, 2> warpsPerTileV2(triton::DotOp dotOp,
 }
 
 #ifdef USE_ROCM
+
+unsigned nonKDimMFMA(triton::DotOp dotOp,
+                     const ArrayRef<int64_t> shape,
+                     int numWarps) {
+  auto max32MFMAWarps = (shape[0]/32)*(shape[1]/32);
+  if (max32MFMAWarps < numWarps)
+    return 16;
+  if (shape[0] < 32 || shape[1] < 32)
+    return 16;
+  return 32;
+}
+
 SmallVector<unsigned, 2> warpsPerTileMI200(triton::DotOp dotOp,
                                            const ArrayRef<int64_t> shape,
-                                           int numWarps) {
+                                           int numWarps,
+                                           int nonKDim) {
   // TODO: needs to be updated with appropriate shapePerWarp etc.
   auto filter = [&dotOp](Operation *op) {
     return op->getParentRegion() == dotOp->getParentRegion();
@@ -87,7 +100,7 @@ SmallVector<unsigned, 2> warpsPerTileMI200(triton::DotOp dotOp,
 
   SmallVector<int64_t, 2> tensorShape = {shape[0], shape[1]};
   SmallVector<unsigned, 2> ret = {1, 1};
-  SmallVector<int64_t, 2> shapePerWarp = {32, 32};
+  SmallVector<int64_t, 2> shapePerWarp = {nonKDim, nonKDim};
   bool changed = false;
   // TODO (@daadaada): double-check.
   // original logic in
@@ -153,9 +166,9 @@ public:
 
     triton::gpu::MfmaEncodingAttr mfmaEnc;
 
-    int64_t nonKDim = 32;
+    unsigned nonKDim = nonKDimMFMA(dotOp, retShape, numWarps);
 
-    auto warpsPerTile = warpsPerTileMI200(dotOp, retShape, numWarps);
+    auto warpsPerTile = warpsPerTileMI200(dotOp, retShape, numWarps, nonKDim);
 
     mfmaEnc = triton::gpu::MfmaEncodingAttr::get(oldRetType.getContext(),
                                                  nonKDim, warpsPerTile);

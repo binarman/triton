@@ -1212,6 +1212,8 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                            [128, 128, 64, 2],
                                            [128, 32, 32, 2],
                                            [128, 32, 64, 2],
+                                           [16, 16, 16, 1],
+                                           [16, 128, 32, 2],
                                            [32, 32, 32, 4],
                                            [32, 32, 64, 4],
                                            [32, 32, 128, 4],
@@ -1227,6 +1229,7 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                            [32, 256, 32, 8],
                                            [32, 256, 32, 2],
                                            [64, 32, 32, 2],
+                                           [128, 16, 32, 2],
                                            [256, 32, 32, 2],
                                            [256, 32, 32, 4],
                                            ]
@@ -1436,8 +1439,10 @@ def test_full(dtype_str):
 
 @triton.jit
 def matmul_kernel(a_ptr, b_ptr, c_ptr, stride_am, stride_ak, stride_bk, stride_bn, stride_cm, stride_cn, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr):
-    offs_m = tl.arange(0, BLOCK_SIZE_M)
-    offs_n = tl.arange(0, BLOCK_SIZE_N)
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    offs_m = tl.arange(0, BLOCK_SIZE_M) + pid_m * BLOCK_SIZE_M
+    offs_n = tl.arange(0, BLOCK_SIZE_N) + pid_n * BLOCK_SIZE_N
     offs_k = tl.arange(0, BLOCK_SIZE_K)
     a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
     b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
@@ -1471,12 +1476,14 @@ def get_variant_golden(a, b):
 
 @pytest.mark.parametrize('SIZE_M,SIZE_N,SIZE_K,NUM_WARPS,BLOCK_SIZE_M,BLOCK_SIZE_N,BLOCK_SIZE_K', [
     [64, 32, 128, 4, 64, 32, 64],
+    [32, 64, 128, 4, 32, 16, 64],
+    [32, 32, 128, 8, 16, 32, 64],
 ])
 def test_gemm(SIZE_M, SIZE_N, SIZE_K, NUM_WARPS, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K):
     a = torch.randn((SIZE_M, SIZE_K), device='cuda', dtype=torch.float16)
     b = torch.randn((SIZE_K, SIZE_N), device='cuda', dtype=torch.float16)
     c = torch.empty((SIZE_M, SIZE_N), device=a.device, dtype=torch.float32)
-    grid = lambda META: (1, )
+    grid = lambda META: (triton.cdiv(SIZE_M, META['BLOCK_SIZE_M']), triton.cdiv(SIZE_N, META['BLOCK_SIZE_N']))
     matmul_kernel[grid](a_ptr=a, b_ptr=b, c_ptr=c,
                         stride_am=a.stride(0), stride_ak=a.stride(1),
                         stride_bk=b.stride(0), stride_bn=b.stride(1),
@@ -2240,6 +2247,8 @@ if _get_warp_size() == 64:
     layouts = [
         MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1]),
         MfmaLayout(non_k_dim=32, warps_per_cta=[2, 2]),
+        MfmaLayout(non_k_dim=16, warps_per_cta=[4, 1]),
+        MfmaLayout(non_k_dim=16, warps_per_cta=[2, 2]),
     ]
     shapes = [[128, 32], [128, 128], [32, 128], [64, 64]]
 else:
@@ -2316,9 +2325,17 @@ def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
     np.testing.assert_allclose(z_ref, z_tri.cpu().numpy(), rtol=0.01, atol=1e-3)
 
 
+src_layouts = [
+    MfmaLayout(non_k_dim=32, warps_per_cta=[2, 1]),
+    MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1]),
+    MfmaLayout(non_k_dim=16, warps_per_cta=[2, 1]),
+    MfmaLayout(non_k_dim=16, warps_per_cta=[1, 2])
+]
+
+
 @pytest.mark.parametrize("shape", [(64, 64)])
 @pytest.mark.parametrize("dtype", ['float16'])
-@pytest.mark.parametrize("src_layout", [MfmaLayout(non_k_dim=32, warps_per_cta=[2, 1]), MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1])])
+@pytest.mark.parametrize("src_layout", src_layouts)
 @pytest.mark.parametrize("dst_layout", [BlockedLayout([1, 4], [4, 16], [1, 1], [1, 0])])
 def test_make_range(dtype, shape, src_layout, dst_layout, device='cuda'):
     ir = f"""
