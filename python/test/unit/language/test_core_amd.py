@@ -2128,22 +2128,14 @@ class MmaLayout:
 
 
 class MfmaLayout:
-    def __init__(self, non_k_dim, warps_per_cta, xdlops_per_warp):
+    def __init__(self, non_k_dim, warps_per_cta):
         self.non_k_dim = non_k_dim
         self.warps_per_cta = warps_per_cta
-        self.xdlops_per_warp = xdlops_per_warp
-
-    def recomputeXDlopsPerWarp(self, m, n):
-        m_xdlops = max(1, m // self.non_k_dim // self.warps_per_cta[0])
-        n_xdlops = max(1, n // self.non_k_dim // self.warps_per_cta[1])
-        self.xdlops_per_warp = [m_xdlops, n_xdlops]
 
     def __str__(self):
-        assert self.xdlops_per_warp is not None
         non_k_dim = str(self.non_k_dim)
         warps_per_cta = str(self.warps_per_cta)
-        xdlops_per_warp = str(self.xdlops_per_warp)
-        return f"#triton_gpu.mfma<{{nonKDim = {non_k_dim}, warpsPerCTA = {warps_per_cta}, xdlopsPerWarp = {xdlops_per_warp}}}>"
+        return f"#triton_gpu.mfma<{{nonKDim = {non_k_dim}, warpsPerCTA = {warps_per_cta}}}>"
 
 
 class BlockedLayout:
@@ -2246,8 +2238,8 @@ module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.threads-per-war
 
 if _get_warp_size() == 64:
     layouts = [
-        MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1], xdlops_per_warp=None),
-        MfmaLayout(non_k_dim=32, warps_per_cta=[2, 2], xdlops_per_warp=None),
+        MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1]),
+        MfmaLayout(non_k_dim=32, warps_per_cta=[2, 2]),
     ]
     shapes = [[128, 32], [128, 128], [32, 128], [64, 64]]
 else:
@@ -2266,8 +2258,6 @@ def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
     rdims_2d = f"1x{N}" if axis == 0 else f"{M}x1"
     rdims_1d = f"{N}" if axis == 0 else f"{M}"
     store_range = "%7" if axis == 0 else "%1"
-    if type(src_layout) is MfmaLayout:
-        src_layout.recomputeXDlopsPerWarp(M, N)
     ir = f"""
     #blocked = #triton_gpu.blocked<{{sizePerThread = [1, 1], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}}>
     #src = {src_layout}
@@ -2328,11 +2318,9 @@ def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
 
 @pytest.mark.parametrize("shape", [(64, 64)])
 @pytest.mark.parametrize("dtype", ['float16'])
-@pytest.mark.parametrize("src_layout", [MfmaLayout(non_k_dim=32, warps_per_cta=[2, 1], xdlops_per_warp=None), MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1], xdlops_per_warp=None)])
+@pytest.mark.parametrize("src_layout", [MfmaLayout(non_k_dim=32, warps_per_cta=[2, 1]), MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1])])
 @pytest.mark.parametrize("dst_layout", [BlockedLayout([1, 4], [4, 16], [1, 1], [1, 0])])
 def test_make_range(dtype, shape, src_layout, dst_layout, device='cuda'):
-    if type(src_layout) is MfmaLayout:
-        src_layout.recomputeXDlopsPerWarp(shape[0], shape[1])
     ir = f"""
 #src = {src_layout}
 #dst = {dst_layout}

@@ -907,7 +907,6 @@ Attribute MfmaEncodingAttr::parse(AsmParser &parser, Type type) {
 
   unsigned nonKDim = 0;
   SmallVector<unsigned, 2> warpsPerCTA;
-  SmallVector<unsigned, 2> xdlopsPerWarp;
 
   for (const NamedAttribute &attr : dict) {
     if (attr.getName() == "nonKDim") {
@@ -918,22 +917,16 @@ Attribute MfmaEncodingAttr::parse(AsmParser &parser, Type type) {
       if (parseIntArrayAttr(parser, attr, warpsPerCTA, "warpsPerCTA").failed())
         return {};
     }
-    if (attr.getName() == "xdlopsPerWarp") {
-      if (parseIntArrayAttr(parser, attr, xdlopsPerWarp, "xdlopsPerWarp")
-              .failed())
-        return {};
-    }
   }
 
   return parser.getChecked<MfmaEncodingAttr>(parser.getContext(), nonKDim,
-                                             warpsPerCTA, xdlopsPerWarp);
+                                             warpsPerCTA);
 }
 
 void MfmaEncodingAttr::print(AsmPrinter &printer) const {
   printer << "<{"
           << "nonKDim = " << getNonKDim() << ", "
           << "warpsPerCTA = [" << getWarpsPerCTA() << "], "
-          << "xdlopsPerWarp = [" << getXdlopsPerWarp() << "]"
           << "}>";
 }
 
