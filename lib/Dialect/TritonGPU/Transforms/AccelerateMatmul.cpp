@@ -121,13 +121,6 @@ SmallVector<unsigned, 2> warpsPerTileMI200(triton::DotOp dotOp,
   return ret;
 }
 
-int64_t getElemsRepeats(int64_t elemsPerWave, int64_t mfmaNonKDim) {
-  // mnPerXdl is how many row/columns a single Xdlops instruction will compute
-  int64_t blocksMfma = 1;
-  int64_t mnPerXdl = (mfmaNonKDim * blocksMfma);
-  return std::max(int64_t(1), elemsPerWave / mnPerXdl);
-}
-
 class BlockedToMFMA : public mlir::RewritePattern {
 public:
   BlockedToMFMA(mlir::MLIRContext *context)
@@ -167,12 +160,8 @@ public:
     auto mPerWave = retShape[0] / warpsPerTile[0];
     auto nPerWave = retShape[1] / warpsPerTile[1];
 
-    SmallVector<unsigned> xdlopsPerWarp(2);
-    xdlopsPerWarp[0] = getElemsRepeats(mPerWave, nonKDim);
-    xdlopsPerWarp[1] = getElemsRepeats(nPerWave, nonKDim);
-
-    mfmaEnc = triton::gpu::MfmaEncodingAttr::get(
-        oldRetType.getContext(), nonKDim, warpsPerTile, xdlopsPerWarp);
+    mfmaEnc = triton::gpu::MfmaEncodingAttr::get(oldRetType.getContext(),
+                                                 nonKDim, warpsPerTile);
 
     auto newRetType =
         RankedTensorType::get(retShape, oldRetType.getElementType(), mfmaEnc);
