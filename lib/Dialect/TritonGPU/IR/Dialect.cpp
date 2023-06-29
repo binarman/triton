@@ -199,7 +199,11 @@ SmallVector<unsigned> getSizePerThread(Attribute layout) {
       llvm_unreachable("Unexpected mma version");
     }
   } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
-    return {16, 1};
+    if (mfmaLayout.getNonKDim() == 32)
+      return {16, 1};
+    else if (mfmaLayout.getNonKDim() == 16)
+      return {4, 1};
+    llvm_unreachable("Unexpected mfma non-k dim");
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
     auto parentLayout = dotLayout.getParent();
     assert(parentLayout && "DotOperandEncodingAttr must have a parent");
@@ -631,24 +635,29 @@ DotOperandEncodingAttr::getMMAv2Rep(ArrayRef<int64_t> shape,
   }
 }
 
-static SmallVector<int64_t> getMFMAInstrShape(Type abElemType) {
+static SmallVector<int64_t> getMFMAInstrShape(Type abElemType,
+                                              unsigned nonKDim) {
+  assert(nonKDim == 16 || nonKDim == 32);
   if (abElemType.isF16())
-    return {32l, 32l, 8l}; // FP32_FP16_FP16_FP32
+    return {nonKDim, nonKDim, 256 / nonKDim}; // FP32_FP32_FP32_FP32;
   if (abElemType.isF32())
-    return {32l, 32l, 2l}; // FP32_FP32_FP32_FP32;
+    return {nonKDim, nonKDim, 64 / nonKDim}; // FP32_FP32_FP32_FP32;
   if (abElemType.isBF16())
-    return {32l, 32l, 4l}; // FP32_BF16_BF16_FP32;
+    return {nonKDim, nonKDim, 256 / nonKDim}; // FP32_BF16_BF16_FP32;
   if (abElemType.isInteger(8))
-    return {32l, 32l, 8l}; // INT32_INT8_INT8_INT32;
-  if (abElemType.isF64())
+    return {nonKDim, nonKDim, 256 / nonKDim}; // FP32_BF16_BF16_FP32;
+  if (abElemType.isF64()) {
+    assert(nonKDim == 16);
     return {16l, 16l, 4l}; // FP64_FP64_FP64_FP64;
+  }
   assert(false && "unsupported operand data type");
   return {};
 }
 
 SmallVector<int64_t>
 DotOperandEncodingAttr::getMFMAElemsPerThread(Type elemType) const {
-  auto instrSize = getMFMAInstrShape(elemType);
+  auto mfmaEncoding = getParent().cast<MfmaEncodingAttr>();
+  auto instrSize = getMFMAInstrShape(elemType, mfmaEncoding.getNonKDim());
   if (getOpIdx() == 0)
     return {instrSize[0], instrSize[2]};
   else
@@ -658,8 +667,9 @@ DotOperandEncodingAttr::getMFMAElemsPerThread(Type elemType) const {
 SmallVector<int64_t>
 DotOperandEncodingAttr::getMFMARep(ArrayRef<int64_t> operandShape,
                                    Type elemType) const {
-  auto instrSize = getMFMAInstrShape(elemType);
-  auto warpsPerCTA = getParent().cast<MfmaEncodingAttr>().getWarpsPerCTA();
+  auto mfmaEncoding = getParent().cast<MfmaEncodingAttr>();
+  auto instrSize = getMFMAInstrShape(elemType, mfmaEncoding.getNonKDim());
+  auto warpsPerCTA = mfmaEncoding.getWarpsPerCTA();
   if (getOpIdx() == 0)
     return {
         std::max<int64_t>(1, operandShape[0] / (instrSize[0] * warpsPerCTA[0])),

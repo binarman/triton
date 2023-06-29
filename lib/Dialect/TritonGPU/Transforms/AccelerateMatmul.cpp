@@ -153,7 +153,7 @@ public:
 
     triton::gpu::MfmaEncodingAttr mfmaEnc;
 
-    int64_t nonKDim = 32;
+    int64_t nonKDim = 16;
 
     auto warpsPerTile = warpsPerTileMI200(dotOp, retShape, numWarps);
 
