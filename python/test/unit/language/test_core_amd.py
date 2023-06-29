@@ -2129,13 +2129,11 @@ class MmaLayout:
 
 class MfmaLayout:
     def __init__(self, non_k_dim, warps_per_cta):
-        self.non_k_dim = non_k_dim
-        self.warps_per_cta = warps_per_cta
+        self.non_k_dim = str(non_k_dim)
+        self.warps_per_cta = str(warps_per_cta)
 
     def __str__(self):
-        non_k_dim = str(self.non_k_dim)
-        warps_per_cta = str(self.warps_per_cta)
-        return f"#triton_gpu.mfma<{{nonKDim = {non_k_dim}, warpsPerCTA = {warps_per_cta}}}>"
+        return f"#triton_gpu.mfma<{{nonKDim = {self.non_k_dim}, warpsPerCTA = {self.warps_per_cta}}}>"
 
 
 class BlockedLayout:
@@ -2148,10 +2146,12 @@ class BlockedLayout:
     def __str__(self):
         return f"#triton_gpu.blocked<{{sizePerThread={self.sz_per_thread}, threadsPerWarp={self.threads_per_warp}, warpsPerCTA={self.warps_per_cta}, order={self.order}}}>"
 
+
 def _get_warp_size():
     if torch.version.hip is None:
-        return 32 # CUDA_DEFAULT_WARP_SIZE
+        return 32  # CUDA_DEFAULT_WARP_SIZE
     return _triton.get_warp_size()
+
 
 if _get_warp_size() == 64:
     layouts = [
