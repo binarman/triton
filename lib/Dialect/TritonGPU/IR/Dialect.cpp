@@ -337,8 +337,9 @@ SmallVector<unsigned> getShapePerCTA(Attribute layout,
     }
     assert(0 && "Unexpected MMA layout version found");
   } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
-    return {32 * mfmaLayout.getWarpsPerCTA()[0],
-            32 * mfmaLayout.getWarpsPerCTA()[1]};
+    auto nonKDim = mfmaLayout.getNonKDim();
+    return {nonKDim * mfmaLayout.getWarpsPerCTA()[0],
+            nonKDim * mfmaLayout.getWarpsPerCTA()[1]};
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
     auto parentLayout = dotLayout.getParent();
     assert(parentLayout && "DotOperandEncodingAttr must have a parent");
@@ -554,8 +555,11 @@ MfmaEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape, Type eltTy) const {
   assert(rank == 2 && "Unexpected rank of mma layout");
 
   SmallVector<unsigned> elemsPerThread(rank);
-  unsigned elemsCol = ceil<unsigned>(shape[1], 32 * getWarpsPerCTA()[1]);
-  unsigned elemsRow = ceil<unsigned>(shape[0], 32 * getWarpsPerCTA()[0]) * 16;
+  auto nonKDim = getNonKDim();
+  auto elemsPerThreadPerTile = (nonKDim == 16 ? 4 : 16);
+  unsigned elemsCol = ceil<unsigned>(shape[1], nonKDim * getWarpsPerCTA()[1]);
+  unsigned elemsRow = ceil<unsigned>(shape[0], nonKDim * getWarpsPerCTA()[0]) *
+                      elemsPerThreadPerTile;
   elemsPerThread[0] = elemsRow;
   elemsPerThread[1] = elemsCol;
   return elemsPerThread;
