@@ -86,7 +86,10 @@ SmallVector<unsigned> getThreadsPerWarp(Attribute layout) {
       return {8, 4};
   }
   if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
-    return {2, 32};
+    if (mfmaLayout.getNonKDim() == 32)
+      return {2, 32};
+    else
+      return {4, 16};
   }
   if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
     auto parent = sliceLayout.getParent();
@@ -298,8 +301,13 @@ SmallVector<unsigned> getThreadsPerCTA(Attribute layout) {
     } else
       assert(0 && "Unimplemented usage of MmaEncodingAttr");
   } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
-    threads = {32 * mfmaLayout.getWarpsPerCTA()[0],
-               2 * mfmaLayout.getWarpsPerCTA()[1]};
+    if (mfmaLayout.getNonKDim() == 32) {
+      threads = {32 * mfmaLayout.getWarpsPerCTA()[0],
+                 2 * mfmaLayout.getWarpsPerCTA()[1]};
+    } else {
+      threads = {16 * mfmaLayout.getWarpsPerCTA()[0],
+                 4 * mfmaLayout.getWarpsPerCTA()[1]};
+    }
   } else {
     assert(0 && "Unimplemented usage of getShapePerCTA");
   }
@@ -940,7 +948,7 @@ Attribute MfmaEncodingAttr::parse(AsmParser &parser, Type type) {
 void MfmaEncodingAttr::print(AsmPrinter &printer) const {
   printer << "<{"
           << "nonKDim = " << getNonKDim() << ", "
-          << "warpsPerCTA = [" << getWarpsPerCTA() << "], "
+          << "warpsPerCTA = [" << getWarpsPerCTA() << "]"
           << "}>";
 }
 
