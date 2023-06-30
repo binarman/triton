@@ -926,7 +926,7 @@ Attribute MfmaEncodingAttr::parse(AsmParser &parser, Type type) {
 void MfmaEncodingAttr::print(AsmPrinter &printer) const {
   printer << "<{"
           << "nonKDim = " << getNonKDim() << ", "
-          << "warpsPerCTA = [" << getWarpsPerCTA() << "], "
+          << "warpsPerCTA = [" << getWarpsPerCTA() << "]"
           << "}>";
 }
 
