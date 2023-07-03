@@ -205,54 +205,14 @@ private:
     }
 #ifdef USE_ROCM
     if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
-      unsigned iNonKDim = mfmaLayout.getNonKDim();
-      assert(iNonKDim == 16 || iNonKDim == 32);
-      Value mfmaColIdx;
-      unsigned numOfElemsPerThread = iNonKDim == 16 ? 4 : 16;
-      SmallVector<Value> mfmaRowIdx(numOfElemsPerThread);
-      Value threadId = getThreadId(rewriter, loc);
-      unsigned iWaveSize = triton::gpu::getWarpSize(layout);
-      Value warpSize = i32_val(iWaveSize);
-      Value laneId = urem(threadId, warpSize);
-      Value warpId = udiv(threadId, warpSize);
-      SmallVector<Value> multiDimWarpId(2);
-      multiDimWarpId[0] = urem(warpId, i32_val(mfmaLayout.getWarpsPerCTA()[0]));
-      multiDimWarpId[1] = udiv(warpId, i32_val(mfmaLayout.getWarpsPerCTA()[0]));
-      int elemsPerLanePerBlock = 4;
-      Value nonKDim = i32_val(iNonKDim);
-      multiDimWarpId[0] = urem(multiDimWarpId[0], i32_val(shape[0] / iNonKDim));
-      multiDimWarpId[1] = urem(multiDimWarpId[1], i32_val(shape[1] / iNonKDim));
-      // row offset of lane inside a block
-      Value rowBaseLaneOffset =
-          mul(udiv(laneId, nonKDim), i32_val(elemsPerLanePerBlock));
-      // col offset of lane inside a block
-      Value colLaneOffset = urem(laneId, nonKDim);
-      Value rowWarpOffset = mul(multiDimWarpId[0], nonKDim);
-      // Block is a piece of output elements stored in "B" operand layout
-      // in case nonKDim == 32 block size is 8x32
-      // in case nonKDim == 16 block size is 16x16
-      unsigned numOfBlocks = (iNonKDim == 32 ? 4 : 1);
-      for (unsigned block = 0; block < numOfBlocks; ++block) {
-        Value blockRowOffset = i32_val(block * (iNonKDim == 32 ? 8 : 16));
-        for (int r = 0; r < elemsPerLanePerBlock; ++r) {
-          mfmaRowIdx[elemsPerLanePerBlock * block + r] =
-              add(rowWarpOffset,
-                  add(blockRowOffset, add(rowBaseLaneOffset, i32_val(r))));
-        }
-      }
-      Value colWarpOffset = mul(multiDimWarpId[1], nonKDim);
-      mfmaColIdx = add(colLaneOffset, colWarpOffset);
-
+      auto multiDimBase = emitBaseIndexForLayout(loc, rewriter, layout, type);
+      SmallVector<SmallVector<unsigned>> offsets;
       assert(rank == 2);
       SmallVector<Value> multiDimOffset(rank);
-
-      multiDimOffset[0] = mfmaRowIdx[elemId];
-
-      multiDimOffset[1] = mfmaColIdx;
-      multiDimOffset[0] = add(multiDimOffset[0],
-                              i32_val(multiDimCTAInRepId[0] * shapePerCTA[0]));
-      multiDimOffset[1] = add(multiDimOffset[1],
-                              i32_val(multiDimCTAInRepId[1] * shapePerCTA[1]));
+      emitMfmaOffsetForCTA(mfmaLayout, offsets, multiDimCTAInRepId[0],
+                           multiDimCTAInRepId[1]);
+      multiDimOffset[0] = add(multiDimBase[0], i32_val(offsets[elemId][0]));
+      multiDimOffset[1] = add(multiDimBase[1], i32_val(offsets[elemId][1]));
       return multiDimOffset;
     }
 #endif
