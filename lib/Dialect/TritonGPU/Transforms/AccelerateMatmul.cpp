@@ -157,9 +157,6 @@ public:
 
     auto warpsPerTile = warpsPerTileMI200(dotOp, retShape, numWarps);
 
-    auto mPerWave = retShape[0] / warpsPerTile[0];
-    auto nPerWave = retShape[1] / warpsPerTile[1];
-
     mfmaEnc = triton::gpu::MfmaEncodingAttr::get(oldRetType.getContext(),
                                                  nonKDim, warpsPerTile);
 
