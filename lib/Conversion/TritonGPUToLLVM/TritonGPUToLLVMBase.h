@@ -1042,23 +1042,21 @@ private:
   }
 
   SmallVector<SmallVector<unsigned>>
-  emitOffsetForMfmaLayout(const MfmaEncodingAttr &mmaLayout,
+  emitOffsetForMfmaLayout(const MfmaEncodingAttr &mfmaLayout,
                           RankedTensorType type) const {
-
     auto tensorShape = type.getShape();
     SmallVector<SmallVector<unsigned>> offsets;
-    auto shapePerCta = getShapePerCTA(mmaLayout);
-    const unsigned iterationCount = 4;
+    auto shapePerCta = getShapePerCTA(mfmaLayout);
 
-    for (unsigned i = 0; i < tensorShape[0]; i += shapePerCta[0]) {
-      for (unsigned j = 0; j < tensorShape[1]; j += shapePerCta[1]) {
-        unsigned rowOffset = 0;
-        for (unsigned k = 0; k < iterationCount; k++) {
-          for (unsigned l = 0; l < iterationCount; l++) {
-            offsets.push_back({i + l + rowOffset, j});
-          }
-          rowOffset += iterationCount * 2;
-        }
+    SmallVector<unsigned> numCTAPerDim(2);
+    for (unsigned d = 0; d < 2; ++d) {
+      unsigned inPerCTA = std::min<unsigned>(tensorShape[d], shapePerCta[d]);
+      numCTAPerDim[d] = ceil<unsigned>(tensorShape[d], inPerCTA);
+    }
+
+    for (unsigned i = 0; i < numCTAPerDim[0]; ++i) {
+      for (unsigned j = 0; j < numCTAPerDim[1]; ++j) {
+        emitMfmaOffsetForCTA(mfmaLayout, offsets, i, j);
       }
     }
     return offsets;
