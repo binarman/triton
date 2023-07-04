@@ -1474,6 +1474,8 @@ def get_variant_golden(a, b):
 
 @pytest.mark.parametrize('SIZE_M,SIZE_N,SIZE_K,NUM_WARPS,BLOCK_SIZE_M,BLOCK_SIZE_N,BLOCK_SIZE_K', [
     [64, 32, 128, 4, 64, 32, 64],
+    [32, 64, 128, 4, 32, 16, 64],
+    [32, 32, 128, 8, 16, 32, 64],
 ])
 def test_gemm(SIZE_M, SIZE_N, SIZE_K, NUM_WARPS, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K):
     a = torch.randn((SIZE_M, SIZE_K), device='cuda', dtype=torch.float16)
@@ -2243,6 +2245,8 @@ if _get_warp_size() == 64:
     layouts = [
         MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1]),
         MfmaLayout(non_k_dim=32, warps_per_cta=[2, 2]),
+        MfmaLayout(non_k_dim=16, warps_per_cta=[4, 1]),
+        MfmaLayout(non_k_dim=16, warps_per_cta=[2, 2]),
     ]
     shapes = [[128, 32], [128, 128], [32, 128], [64, 64]]
 else:
@@ -2319,9 +2323,17 @@ def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
     np.testing.assert_allclose(z_ref, z_tri.cpu().numpy(), rtol=0.01, atol=1e-3)
 
 
+src_layouts = [
+    MfmaLayout(non_k_dim=32, warps_per_cta=[2, 1]),
+    MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1]),
+    MfmaLayout(non_k_dim=16, warps_per_cta=[2, 1]),
+    MfmaLayout(non_k_dim=16, warps_per_cta=[4, 1])
+]
+
+
 @pytest.mark.parametrize("shape", [(64, 64)])
 @pytest.mark.parametrize("dtype", ['float16'])
-@pytest.mark.parametrize("src_layout", [MfmaLayout(non_k_dim=32, warps_per_cta=[2, 1]), MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1])])
+@pytest.mark.parametrize("src_layout", src_layouts)
 @pytest.mark.parametrize("dst_layout", [BlockedLayout([1, 4], [4, 16], [1, 1], [1, 0])])
 def test_make_range(dtype, shape, src_layout, dst_layout, device='cuda'):
     ir = f"""
