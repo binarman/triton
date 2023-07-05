@@ -140,6 +140,7 @@ struct LoadOpConversion
                                      std::vector<Value> args = {tid, iptr};
                                      builder.create<triton::PrintOp>(loc, prefix, args);
                                      auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr);
+                                     builder.create<mlir::gpu::BarrierOp>(loc);
 
                                      builder.create<mlir::scf::YieldOp>(loc, ValueRange({loadVal}));
                                    },
