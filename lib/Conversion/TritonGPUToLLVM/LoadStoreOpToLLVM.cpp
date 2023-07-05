@@ -133,7 +133,14 @@ struct LoadOpConversion
         Value ptr = addrspacecast(ptrElems[elemOffset], ptr_ty(IntegerType::get(getContext(), width)));
         auto loaded = rewriter.create<scf::IfOp>(loc, pred,
                                    [&](OpBuilder &builder, Location loc){
+
+                                     auto prefix = mlir::StringAttr::get(builder.getContext(), llvm::StringRef("LOAD "));
+                                     auto tid = builder.create<::mlir::gpu::ThreadIdOp>(loc, builder.getIndexType(), ::mlir::gpu::Dimension::x);
+                                     auto iptr = builder.create<LLVM::PtrToIntOp>(loc, i64_ty, ptr);
+                                     std::vector<Value> args = {tid, iptr};
+                                     builder.create<triton::PrintOp>(loc, prefix, args);
                                      auto loadVal = builder.create<LLVM::LoadOp>(loc, ptr);
+
                                      builder.create<mlir::scf::YieldOp>(loc, ValueRange({loadVal}));
                                    },
                                    [&](OpBuilder &builder, Location loc){
