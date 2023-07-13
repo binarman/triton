@@ -173,11 +173,27 @@ struct DotOpMFMAConversionHelper {
     auto vecTy = vec_ty(dstElemTy, 16);
     for (int m = 0; m < numRepM; ++m) {
       for (int n = 0; n < numRepN; ++n) {
+        // experimental try move mfma op as close as possible to address
+        // calculation
+        // **********
+        std::vector<Value> deps;
+        deps.push_back(fc[m * numRepN * 16 + n * 16]);
+
+        auto oldInsertPoint = rewriter.getInsertionPoint();
+
+        auto &latestDep = findLatestOperation(deps, insertBlock);
+
+        rewriter.setInsertionPointAfter(&latestDep);
+        // **********
+
         Value acc = undef(vecTy);
         for (unsigned v = 0; v < 16; ++v) {
           acc = insert_element(vecTy, acc, fc[m * numRepN * 16 + n * 16 + v],
                                i32_val(v));
         }
+        // **********
+        rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+        // **********
 
         for (size_t k = 0; k < numRepK; k++) {
           // experimental try move mfma op as close as possible to address
@@ -186,7 +202,7 @@ struct DotOpMFMAConversionHelper {
           std::vector<Value> deps;
           deps.push_back(ha[{m, k}]);
           deps.push_back(hb[{n, k}]);
-          deps.push_back(fc[m * numRepN * 16 + n * 16]);
+          deps.push_back(acc);
 
           auto oldInsertPoint = rewriter.getInsertionPoint();
 
