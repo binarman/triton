@@ -221,6 +221,28 @@ Value computeBasePtr(ConversionPatternRewriter &rewriter, Location loc,
   return base;
 }
 
+template <class Container, class Value>
+static bool containsVal(const Container &c, const Value &val) {
+  return std::find(c.begin(), c.end(), val) != c.end();
+}
+
+static Operation &findLatestOperation(const std::vector<Value> &depVals,
+                                      Block *insertBlock) {
+  std::vector<Block::iterator> depIters;
+  for (auto depVal : depVals) {
+    if (depVal.getDefiningOp()->getBlock() != insertBlock) {
+      continue;
+    }
+    depIters.push_back(depVal.getDefiningOp()->getIterator());
+  }
+  Block::iterator lastDepIt = insertBlock->begin();
+  auto &ops = insertBlock->getOperations();
+  for (auto &op : ops)
+    if (containsVal(depIters, op.getIterator()))
+      lastDepIt = op.getIterator();
+  return *lastDepIt;
+}
+
 Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
             DotOperandEncodingAttr encoding,
             TritonGPUToLLVMTypeConverter *typeConverter, Value tensor,
@@ -263,9 +285,25 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
 
   Type smemPtrTy = getShemPtrTy(aElemTy);
 
+  auto insertBlock = rewriter.getBlock();
+
   SmallVector<Value> ha;
   for (int m = 0; m < numRepM; ++m) {
     for (int k = 0; k < numRepK; ++k) {
+
+      // experimental try move mfma op as close as possible to address
+      // calculation
+      // **********
+      std::vector<Value> deps{smemBase};
+      auto &latestDep = findLatestOperation(deps, insertBlock);
+      for (unsigned elem = 0; elem < numOfElems; ++elem) {
+        deps.push_back(
+            offsets[m * numOfElems * numRepK + k * numOfElems + elem]);
+      }
+      auto oldInsertPoint = rewriter.getInsertionPoint();
+      rewriter.setInsertionPointAfter(&latestDep);
+      // **********
+
       auto vecTy = vec_ty(aElemTy, numOfElems);
       Value valVec = undef(vecTy);
       for (unsigned elem = 0; elem < numOfElems; ++elem) {
@@ -280,6 +318,10 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
       if (aElemTy == i8_ty)
         valVec = bitcast(valVec, i32_ty);
       ha.push_back(valVec);
+
+      // **********
+      rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+      // **********
     }
   }
 
@@ -338,10 +380,26 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
 
   Type smemPtrTy = getShemPtrTy(bElemTy);
 
+  auto insertBlock = rewriter.getBlock();
+
   SmallVector<Value> hb;
   for (int n = 0; n < numRepN; ++n) {
     for (int k = 0; k < numRepK; ++k) {
       auto vecTy = vec_ty(bTensorTy.getElementType(), numOfElems);
+
+      // experimental try move mfma op as close as possible to address
+      // calculation
+      // **********
+      std::vector<Value> deps{smemBase};
+      auto &latestDep = findLatestOperation(deps, insertBlock);
+      for (unsigned elem = 0; elem < numOfElems; ++elem) {
+        deps.push_back(
+            offsets[n * numOfElems * numRepK + k * numOfElems + elem]);
+      }
+      auto oldInsertPoint = rewriter.getInsertionPoint();
+      rewriter.setInsertionPointAfter(&latestDep);
+      // **********
+
       Value valVec = undef(vecTy);
       for (unsigned elem = 0; elem < numOfElems; ++elem) {
         Value elemOffset =
@@ -355,6 +413,9 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
       if (bElemTy == i8_ty)
         valVec = bitcast(valVec, i32_ty);
       hb.push_back(valVec);
+      // **********
+      rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+      // **********
     }
   }
 

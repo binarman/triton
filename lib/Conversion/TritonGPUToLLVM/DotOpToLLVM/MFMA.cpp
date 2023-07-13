@@ -113,7 +113,6 @@ struct DotOpMFMAConversionHelper {
     for (auto &op : ops)
       if (containsVal(depIters, op.getIterator()))
         lastDepIt = op.getIterator();
-    assert(containsVal(depIters, lastDepIt));
     return *lastDepIt;
   }
 
@@ -157,11 +156,12 @@ struct DotOpMFMAConversionHelper {
 
     // experimental try move mfma op as close as possible to address
     // calculation
+    // **********
     std::vector<Value> deps{loadedC};
     auto &latestDep = findLatestOperation(deps, insertBlock);
     auto oldInsertPoint = rewriter.getInsertionPoint();
     rewriter.setInsertionPointAfter(&latestDep);
-    // end of experimental feature
+    // **********
 
     auto fc =
         typeConverter->unpackLLElements(loc, loadedC, rewriter, dstElemTy);
@@ -175,6 +175,7 @@ struct DotOpMFMAConversionHelper {
       for (int n = 0; n < numRepN; ++n) {
         // experimental try move mfma op as close as possible to address
         // calculation
+        // **********
         std::vector<Value> deps;
         for (int k = 0; k < numRepK; ++k) {
           deps.push_back(ha[{m, k}]);
@@ -187,7 +188,7 @@ struct DotOpMFMAConversionHelper {
         auto &latestDep = findLatestOperation(deps, insertBlock);
 
         rewriter.setInsertionPointAfter(&latestDep);
-        // end of experimental feature
+        // **********
 
         Value acc = undef(vecTy);
         for (unsigned v = 0; v < 16; ++v) {
