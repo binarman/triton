@@ -141,11 +141,45 @@ struct DotOpMFMAConversionHelper {
                                i32_val(v));
         }
 
+        // experimental try move mfma op as close as possible to address
+        // calculation
+        auto oldInsertPoint = rewriter.getInsertionPoint();
+        bool insertPointChanged = false;
+        auto aOp = ha[{m, numRepK - 1}].getDefiningOp();
+        auto bOp = hb[{n, numRepK - 1}].getDefiningOp();
+        auto aBlock = aOp->getBlock();
+        auto bBlock = bOp->getBlock();
+        auto mfmaBlock = rewriter.getBlock();
+        if (aBlock == bBlock && aBlock == mfmaBlock) {
+          auto &ops = mfmaBlock->getOperations();
+          auto aIt = aOp->getIterator();
+          auto bIt = bOp->getIterator();
+          int pos = 0;
+          int aPos = -1;
+          int bPos = -1;
+          for (auto &op : ops) {
+            if (op.getIterator() == aIt)
+              aPos = pos;
+            if (op.getIterator() == bIt)
+              bPos = pos;
+            pos++;
+          }
+          assert(aPos != -1 && bPos != -1);
+          auto insertionIt = aPos < bPos ? aIt : bIt;
+          insertPointChanged = true;
+          rewriter.setInsertionPoint(mfmaBlock, insertionIt);
+        }
+        // end of experimental feature
+
         for (size_t k = 0; k < numRepK; k++) {
           acc = mfmaLayout.getIsTransposed()
                     ? generateMFMAOp(mfmaTy, hb[{n, k}], ha[{m, k}], acc)
                     : generateMFMAOp(mfmaTy, ha[{m, k}], hb[{n, k}], acc);
         }
+
+        if (insertPointChanged)
+          rewriter.setInsertionPoint(mfmaBlock, oldInsertPoint);
+
         for (unsigned v = 0; v < 16; ++v) {
           fc[m * numRepN * 16 + n * 16 + v] =
               extract_element(dstElemTy, acc, i32_val(v));
