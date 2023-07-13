@@ -99,6 +99,24 @@ struct DotOpMFMAConversionHelper {
     return std::find(c.begin(), c.end(), val) != c.end();
   }
 
+  static Operation &findLatestOperation(const std::vector<Value> &depVals,
+                                        Block *insertBlock) {
+    std::vector<Block::iterator> depIters;
+    for (auto depVal : depVals) {
+      if (depVal.getDefiningOp()->getBlock() != insertBlock) {
+        continue;
+      }
+      depIters.push_back(depVal.getDefiningOp()->getIterator());
+    }
+    Block::iterator lastDepIt = insertBlock->begin();
+    auto &ops = insertBlock->getOperations();
+    for (auto &op : ops)
+      if (containsVal(depIters, op.getIterator()))
+        lastDepIt = op.getIterator();
+    assert(containsVal(depIters, lastDepIt));
+    return *lastDepIt;
+  }
+
   // Conduct the Dot conversion.
   LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor) const {
     auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
@@ -134,50 +152,39 @@ struct DotOpMFMAConversionHelper {
     ValueTable hb = getValuesFromDotOperandLayoutStruct(
         loadedB, numRepN, numRepK, aTensorTy.getElementType());
     auto dstElemTy = dTensorTy.getElementType();
+
+    auto oldInsertPoint = rewriter.getInsertionPoint();
+    std::vector<Block::iterator> dependencies;
+
+    auto insertBlock = rewriter.getBlock();
+
     auto fc =
         typeConverter->unpackLLElements(loc, loadedC, rewriter, dstElemTy);
 
     auto vecTy = vec_ty(dstElemTy, 16);
     for (int m = 0; m < numRepM; ++m) {
       for (int n = 0; n < numRepN; ++n) {
+        // experimental try move mfma op as close as possible to address
+        // calculation
+        std::vector<Value> deps;
+        for (int k = 0; k < numRepK; ++k) {
+          deps.push_back(ha[{m, k}]);
+          deps.push_back(hb[{n, k}]);
+        }
+        deps.push_back(fc[m * numRepN * 16 + n * 16]);
+
+        auto oldInsertPoint = rewriter.getInsertionPoint();
+
+        auto &latestDep = findLatestOperation(deps, insertBlock);
+
+        rewriter.setInsertionPointAfter(&latestDep);
+        // end of experimental feature
+
         Value acc = undef(vecTy);
         for (unsigned v = 0; v < 16; ++v) {
           acc = insert_element(vecTy, acc, fc[m * numRepN * 16 + n * 16 + v],
                                i32_val(v));
         }
-
-        // experimental try move mfma op as close as possible to address
-        // calculation
-        auto oldInsertPoint = rewriter.getInsertionPoint();
-        bool insertPointChanged = false;
-        std::vector<Block::iterator> dependencies;
-        auto insertBlock = rewriter.getBlock();
-
-        bool depsInOneBlock = true;
-        for (int k = 0; k < numRepK; ++k) {
-          if (ha[{m, k}].getDefiningOp()->getBlock() != insertBlock) {
-            depsInOneBlock = false;
-            break;
-          }
-          if (hb[{n, k}].getDefiningOp()->getBlock() != insertBlock) {
-            depsInOneBlock = false;
-            break;
-          }
-          dependencies.push_back(ha[{m, k}].getDefiningOp()->getIterator());
-          dependencies.push_back(hb[{n, k}].getDefiningOp()->getIterator());
-        }
-        if (depsInOneBlock) {
-          Block::iterator lastDepIt;
-          auto &ops = insertBlock->getOperations();
-          for (auto &op : ops)
-            if (containsVal(dependencies, op.getIterator()))
-              lastDepIt = op.getIterator();
-          assert(containsVal(dependencies, lastDepIt));
-          insertPointChanged = true;
-          auto &lastDepOp = *lastDepIt;
-          rewriter.setInsertionPointAfter(&lastDepOp);
-        }
-        // end of experimental feature
 
         for (size_t k = 0; k < numRepK; k++) {
           acc = mfmaLayout.getIsTransposed()
@@ -185,13 +192,11 @@ struct DotOpMFMAConversionHelper {
                     : generateMFMAOp(mfmaTy, ha[{m, k}], hb[{n, k}], acc);
         }
 
-        if (insertPointChanged)
-          rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
-
         for (unsigned v = 0; v < 16; ++v) {
           fc[m * numRepN * 16 + n * 16 + v] =
               extract_element(dstElemTy, acc, i32_val(v));
         }
+        rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
       }
     }
 
