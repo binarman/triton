@@ -184,8 +184,8 @@ struct DotOpMFMAConversionHelper {
 
         auto &latestDep = findLatestOperation(deps, insertBlock);
 
-        rewriter.setInsertionPointAfter(&latestDep);
-        // **********
+        // rewriter.setInsertionPointAfter(&latestDep);
+        //  **********
 
         Value acc = undef(vecTy);
         for (unsigned v = 0; v < 16; ++v) {
@@ -193,7 +193,7 @@ struct DotOpMFMAConversionHelper {
                                i32_val(v));
         }
         // **********
-        rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+        // rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
         // **********
         // experimental try move mfma op as close as possible to address
         // calculation
@@ -209,15 +209,15 @@ struct DotOpMFMAConversionHelper {
 
         auto &latestDep1 = findLatestOperation(deps, insertBlock);
 
-        rewriter.setInsertionPointAfter(&latestDep1);
-        // **********
+        // rewriter.setInsertionPointAfter(&latestDep1);
+        //  **********
         for (size_t k = 0; k < numRepK; k++) {
           acc = mfmaLayout.getIsTransposed()
                     ? generateMFMAOp(mfmaTy, hb[{n, k}], ha[{m, k}], acc)
                     : generateMFMAOp(mfmaTy, ha[{m, k}], hb[{n, k}], acc);
         }
         // **********
-        rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+        // rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
         // **********
 
         for (unsigned v = 0; v < 16; ++v) {
