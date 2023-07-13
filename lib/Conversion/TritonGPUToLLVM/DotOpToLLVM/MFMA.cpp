@@ -153,13 +153,22 @@ struct DotOpMFMAConversionHelper {
         loadedB, numRepN, numRepK, aTensorTy.getElementType());
     auto dstElemTy = dTensorTy.getElementType();
 
-    auto oldInsertPoint = rewriter.getInsertionPoint();
-    std::vector<Block::iterator> dependencies;
-
     auto insertBlock = rewriter.getBlock();
+
+    // experimental try move mfma op as close as possible to address
+    // calculation
+    std::vector<Value> deps{loadedC};
+    auto &latestDep = findLatestOperation(deps, insertBlock);
+    auto oldInsertPoint = rewriter.getInsertionPoint();
+    rewriter.setInsertionPointAfter(&latestDep);
+    // end of experimental feature
 
     auto fc =
         typeConverter->unpackLLElements(loc, loadedC, rewriter, dstElemTy);
+
+    // **********
+    rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+    // **********
 
     auto vecTy = vec_ty(dstElemTy, 16);
     for (int m = 0; m < numRepM; ++m) {
@@ -196,7 +205,9 @@ struct DotOpMFMAConversionHelper {
           fc[m * numRepN * 16 + n * 16 + v] =
               extract_element(dstElemTy, acc, i32_val(v));
         }
+        // **********
         rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+        // **********
       }
     }
 
