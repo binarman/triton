@@ -94,6 +94,11 @@ struct DotOpMFMAConversionHelper {
     return MatrixCoreType::NOT_APPLICABLE;
   }
 
+  template <class Container, class Value>
+  static bool containsVal(const Container &c, const Value &val) {
+    return std::find(c.begin(), c.end(), val) != c.end();
+  }
+
   // Conduct the Dot conversion.
   LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor) const {
     auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
@@ -145,29 +150,32 @@ struct DotOpMFMAConversionHelper {
         // calculation
         auto oldInsertPoint = rewriter.getInsertionPoint();
         bool insertPointChanged = false;
-        auto aOp = ha[{m, numRepK - 1}].getDefiningOp();
-        auto bOp = hb[{n, numRepK - 1}].getDefiningOp();
-        auto aBlock = aOp->getBlock();
-        auto bBlock = bOp->getBlock();
-        auto mfmaBlock = rewriter.getBlock();
-        if (aBlock == bBlock && aBlock == mfmaBlock) {
-          auto &ops = mfmaBlock->getOperations();
-          auto aIt = aOp->getIterator();
-          auto bIt = bOp->getIterator();
-          int pos = 0;
-          int aPos = -1;
-          int bPos = -1;
-          for (auto &op : ops) {
-            if (op.getIterator() == aIt)
-              aPos = pos;
-            if (op.getIterator() == bIt)
-              bPos = pos;
-            pos++;
+        std::vector<Block::iterator> dependencies;
+        auto insertBlock = rewriter.getBlock();
+
+        bool depsInOneBlock = true;
+        for (int k = 0; k < numRepK; ++k) {
+          if (ha[{m, k}].getDefiningOp()->getBlock() != insertBlock) {
+            depsInOneBlock = false;
+            break;
           }
-          assert(aPos != -1 && bPos != -1);
-          auto insertionIt = aPos < bPos ? aIt : bIt;
+          if (hb[{n, k}].getDefiningOp()->getBlock() != insertBlock) {
+            depsInOneBlock = false;
+            break;
+          }
+          dependencies.push_back(ha[{m, k}].getDefiningOp()->getIterator());
+          dependencies.push_back(hb[{n, k}].getDefiningOp()->getIterator());
+        }
+        if (depsInOneBlock) {
+          Block::iterator lastDepIt;
+          auto &ops = insertBlock->getOperations();
+          for (auto &op : ops)
+            if (containsVal(dependencies, op.getIterator()))
+              lastDepIt = op.getIterator();
+          assert(containsVal(dependencies, lastDepIt));
           insertPointChanged = true;
-          rewriter.setInsertionPoint(mfmaBlock, insertionIt);
+          auto &lastDepOp = *lastDepIt;
+          rewriter.setInsertionPointAfter(&lastDepOp);
         }
         // end of experimental feature
 
@@ -178,7 +186,7 @@ struct DotOpMFMAConversionHelper {
         }
 
         if (insertPointChanged)
-          rewriter.setInsertionPoint(mfmaBlock, oldInsertPoint);
+          rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
 
         for (unsigned v = 0; v < 16; ++v) {
           fc[m * numRepN * 16 + n * 16 + v] =
