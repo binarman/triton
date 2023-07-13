@@ -173,23 +173,6 @@ struct DotOpMFMAConversionHelper {
     auto vecTy = vec_ty(dstElemTy, 16);
     for (int m = 0; m < numRepM; ++m) {
       for (int n = 0; n < numRepN; ++n) {
-        // experimental try move mfma op as close as possible to address
-        // calculation
-        // **********
-        std::vector<Value> deps;
-        for (int k = 0; k < numRepK; ++k) {
-          deps.push_back(ha[{m, k}]);
-          deps.push_back(hb[{n, k}]);
-        }
-        deps.push_back(fc[m * numRepN * 16 + n * 16]);
-
-        auto oldInsertPoint = rewriter.getInsertionPoint();
-
-        auto &latestDep = findLatestOperation(deps, insertBlock);
-
-        rewriter.setInsertionPointAfter(&latestDep);
-        // **********
-
         Value acc = undef(vecTy);
         for (unsigned v = 0; v < 16; ++v) {
           acc = insert_element(vecTy, acc, fc[m * numRepN * 16 + n * 16 + v],
@@ -197,18 +180,32 @@ struct DotOpMFMAConversionHelper {
         }
 
         for (size_t k = 0; k < numRepK; k++) {
+          // experimental try move mfma op as close as possible to address
+          // calculation
+          // **********
+          std::vector<Value> deps;
+          deps.push_back(ha[{m, k}]);
+          deps.push_back(hb[{n, k}]);
+          deps.push_back(fc[m * numRepN * 16 + n * 16]);
+
+          auto oldInsertPoint = rewriter.getInsertionPoint();
+
+          auto &latestDep = findLatestOperation(deps, insertBlock);
+
+          rewriter.setInsertionPointAfter(&latestDep);
+          // **********
           acc = mfmaLayout.getIsTransposed()
                     ? generateMFMAOp(mfmaTy, hb[{n, k}], ha[{m, k}], acc)
                     : generateMFMAOp(mfmaTy, ha[{m, k}], hb[{n, k}], acc);
+          // **********
+          rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+          // **********
         }
 
         for (unsigned v = 0; v < 16; ++v) {
           fc[m * numRepN * 16 + n * 16 + v] =
               extract_element(dstElemTy, acc, i32_val(v));
         }
-        // **********
-        rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
-        // **********
       }
     }
 
