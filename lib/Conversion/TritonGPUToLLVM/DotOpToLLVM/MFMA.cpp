@@ -177,7 +177,8 @@ struct DotOpMFMAConversionHelper {
         // calculation
         // **********
         std::vector<Value> deps;
-        deps.push_back(fc[m * numRepN * 16 + n * 16]);
+        for (unsigned v = 0; v < 16; ++v)
+          deps.push_back(fc[m * numRepN * 16 + n * 16 + v]);
 
         auto oldInsertPoint = rewriter.getInsertionPoint();
 
@@ -194,29 +195,30 @@ struct DotOpMFMAConversionHelper {
         // **********
         rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
         // **********
-
-        for (size_t k = 0; k < numRepK; k++) {
-          // experimental try move mfma op as close as possible to address
-          // calculation
-          // **********
-          std::vector<Value> deps;
+        // experimental try move mfma op as close as possible to address
+        // calculation
+        // **********
+        deps.clear();
+        for (int k = 0; k < numRepK; k++) {
           deps.push_back(ha[{m, k}]);
           deps.push_back(hb[{n, k}]);
-          deps.push_back(acc);
+        }
+        deps.push_back(acc);
 
-          auto oldInsertPoint = rewriter.getInsertionPoint();
+        oldInsertPoint = rewriter.getInsertionPoint();
 
-          auto &latestDep = findLatestOperation(deps, insertBlock);
+        auto &latestDep1 = findLatestOperation(deps, insertBlock);
 
-          rewriter.setInsertionPointAfter(&latestDep);
-          // **********
+        rewriter.setInsertionPointAfter(&latestDep1);
+        // **********
+        for (size_t k = 0; k < numRepK; k++) {
           acc = mfmaLayout.getIsTransposed()
                     ? generateMFMAOp(mfmaTy, hb[{n, k}], ha[{m, k}], acc)
                     : generateMFMAOp(mfmaTy, ha[{m, k}], hb[{n, k}], acc);
-          // **********
-          rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
-          // **********
         }
+        // **********
+        rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+        // **********
 
         for (unsigned v = 0; v < 16; ++v) {
           fc[m * numRepN * 16 + n * 16 + v] =
