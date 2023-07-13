@@ -160,14 +160,14 @@ struct DotOpMFMAConversionHelper {
     std::vector<Value> deps{loadedC};
     auto &latestDep = findLatestOperation(deps, insertBlock);
     auto oldInsertPoint = rewriter.getInsertionPoint();
-    rewriter.setInsertionPointAfter(&latestDep);
+    // rewriter.setInsertionPointAfter(&latestDep);
     // **********
 
     auto fc =
         typeConverter->unpackLLElements(loc, loadedC, rewriter, dstElemTy);
 
     // **********
-    rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
+    // rewriter.setInsertionPoint(insertBlock, oldInsertPoint);
     // **********
 
     auto vecTy = vec_ty(dstElemTy, 16);
