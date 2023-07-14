@@ -1278,7 +1278,10 @@ def dot(lhs: tl.tensor,
         ret_cast_scalar_ty = tl.float32 if lhs.type.scalar.is_int() else ret_scalar_ty
         lhs = cast(lhs, ret_cast_scalar_ty, builder)
         rhs = cast(rhs, ret_cast_scalar_ty, builder)
-        _0 = builder.create_splat(builder.get_fp32(0), [M, N])
+        if ret_cast_scalar_ty == tl.float16:
+            _0 = builder.create_splat(builder.get_fp16(0), [M, N])
+        else:
+            _0 = builder.create_splat(builder.get_fp32(0), [M, N])
         ret_ty = tl.block_type(ret_cast_scalar_ty, [M, N])
         ret = tl.tensor(builder.create_dot(lhs.handle, rhs.handle, _0, allow_tf32),
                         ret_ty)
