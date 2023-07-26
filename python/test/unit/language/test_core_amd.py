@@ -1229,7 +1229,7 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
 # MFMA Test Dot tests
 @pytest.mark.parametrize("M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, out_dtype",
                          [(*shape, 2, False, False, epilogue, allow_tf32, in_dtype, out_dtype)
-                          for shape in [(64, 64, 64), (32, 32, 32)]
+                          for shape in [(64, 64, 64), (32, 32, 32), (16, 16, 16)]
                           for epilogue in ['none', 'trans', 'add-matrix', 'chain-dot', 'softmax']
                           for allow_tf32 in [True, False]
                           for in_dtype, out_dtype in [('float16', 'float16'),
@@ -1239,6 +1239,7 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
 
                          [(*shape_nw, col_a, col_b, 'none', allow_tf32, in_dtype, out_dtype)
                           for shape_nw in [[128, 128, 32, 2],
+                                           [128, 16, 32, 4],
                                            [128, 128, 64, 2],
                                            [128, 32, 32, 2],
                                            [128, 32, 64, 2],

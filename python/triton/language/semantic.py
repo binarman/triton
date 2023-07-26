@@ -1238,8 +1238,19 @@ def gpu_has_mfma() -> bool:
     gfx_arch_details = gfx_arch_details.group(0).strip().split('--')
     return gfx_arch_details[1].split(':')[0] in ['gfx908', 'gfx90a', 'gfx940', 'gfx941']
 
+def mfma_supported_granularity(dim_size) -> bool:
+    supported_granularity = [32]
+    for granularity in supported_granularity:
+        if dim_size % granularity == 0:
+            return True
+    return False
+
 def mfma_supported(M, N, K, allow_tf32, ret_scalar_ty) -> bool:
     if not gpu_has_mfma():
+        return False
+    if not mfma_supported_granularity(M) or \
+       not mfma_supported_granularity(N) or \
+       not mfma_supported_granularity(K):
         return False
     # TODO: Add check for configurations and types.
     return True
