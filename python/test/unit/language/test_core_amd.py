@@ -1486,7 +1486,12 @@ module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.threads-per-war
     with tempfile.NamedTemporaryFile(mode='w', suffix='.ttgir') as f:
         f.write(ir)
         f.flush()
-        kernel = triton.compile(f.name)
+        arch_triple = "amdgcn-amd-amdhsa"
+        arch_name = "gfx90a"
+        features = ""
+        warp_size = 64
+        capabilities = [arch_triple, arch_name, features, warp_size]
+        kernel = triton.compile(f.name, device_type="hip", cc=capabilities)
 
     import triton.language.semantic as sem
     if torch.version.hip is not None and sem.gpu_has_mfma():
