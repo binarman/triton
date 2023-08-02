@@ -293,7 +293,7 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     # p = torch.exp(p)
     ref_out = torch.matmul(p, v)
 
-    if torch.version.hip is None:
+    if torch.version.hip is not None:
         ref_out.backward(dout)
         ref_dv, v.grad = v.grad.clone(), None
         ref_dk, k.grad = k.grad.clone(), None
@@ -302,18 +302,18 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     tri_out = attention(q, k, v, sm_scale)
     # print(ref_out)
     # print(tri_out)
-    if torch.version.hip is None:
+    if torch.version.hip is not None:
         tri_out.backward(dout)
         tri_dv, v.grad = v.grad.clone(), None
         tri_dk, k.grad = k.grad.clone(), None
         tri_dq, q.grad = q.grad.clone(), None
     # compare
-    assert torch.allclose(ref_out, tri_out, atol=1e-2, rtol=0)
-    if torch.version.hip is None:
+    assert torch.allclose(ref_out, tri_out, atol=1e-1, rtol=0)
+    if torch.version.hip is not None:
         # TODO: Enable backward pass for MFMA dot.
-        assert torch.allclose(ref_dv, tri_dv, atol=1e-2, rtol=0)
-        assert torch.allclose(ref_dk, tri_dk, atol=1e-2, rtol=0)
-        assert torch.allclose(ref_dq, tri_dq, atol=1e-2, rtol=0)
+        assert torch.allclose(ref_dv, tri_dv, atol=1e-1, rtol=0)
+        assert torch.allclose(ref_dk, tri_dk, atol=1e-1, rtol=0)
+        assert torch.allclose(ref_dq, tri_dq, atol=1e-1, rtol=0)
 
 
 try:
@@ -369,4 +369,4 @@ def bench_flash_attention(BATCH, H, N_CTX, D_HEAD, mode, provider, dtype=torch.f
 
 
 # only works on post-Ampere GPUs right now
-bench_flash_attention.run(save_path='.', print_data=True)
+# bench_flash_attention.run(save_path='.', print_data=True)

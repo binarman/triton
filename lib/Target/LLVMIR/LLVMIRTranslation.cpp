@@ -303,6 +303,14 @@ translateLLVMToLLVMIR(llvm::LLVMContext *llvmContext, mlir::ModuleOp module,
       return nullptr;
   }
 
+  for (auto &F: llvmModule->functions()) {
+    std::string vgprs = std::getenv("VGPRS");
+    std::string waves = std::getenv("WAVES");
+
+    F.addFnAttr("amdgpu-num-vgpr", vgprs);
+    F.addFnAttr("amdgpu-waves-per-eu", waves);
+  }
+
   auto optPipeline = mlir::makeOptimizingTransformer(
       /*optLevel=*/3, /*sizeLevel=*/0,
       /*targetMachine=*/nullptr);
