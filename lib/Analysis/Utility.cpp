@@ -149,31 +149,32 @@ bool supportMMA(triton::DotOp op, int version) {
 }
 
 #ifdef USE_ROCM
-static bool supportMFMAGranularity(int dim_size) {
-  std::vector<int> supported_granularity{32};
-  for (int granularity: supported_granularity)
-    if (dim_size % granularity == 0)
-      return true;
-  return false;
+static bool supportMFMAGranularity(int m, int n, int k) {
+  // these limitations are dtype dependent, in future we may relax them
+  int granularityMN = 32;
+  int granularityK = 8;
+  if (m % granularityMN != 0 || n % granularityMN != 0)
+    return false;
+  if (k % granularityK != 0)
+    return false;
+  return true;
 }
 
 bool supportMFMA(triton::DotOp op) {
   auto aTy = op.getA().getType().cast<RankedTensorType>();
   auto bTy = op.getB().getType().cast<RankedTensorType>();
 
-  auto aShape = aTy.getShape();
-  auto bShape = bTy.getShape();
-
-  assert(aShape[1] == bShape[0]);
-  if (!supportMFMAGranularity(aShape[0]) ||
-      !supportMFMAGranularity(aShape[1]) ||
-      !supportMFMAGranularity(bShape[1]))
-    return false;
-
   auto aElemTy = aTy.getElementType();
   auto bElemTy = bTy.getElementType();
 
   if (aElemTy != bElemTy)
+    return false;
+
+  auto aShape = aTy.getShape();
+  auto bShape = bTy.getShape();
+
+  assert(aShape[1] == bShape[0]);
+  if (!supportMFMAGranularity(aShape[0], bShape[1], aShape[1]))
     return false;
 
   return aElemTy.isF16() || aElemTy.isBF16() || aElemTy.isF32() ||
