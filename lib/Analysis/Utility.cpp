@@ -151,8 +151,8 @@ bool supportMMA(triton::DotOp op, int version) {
 #ifdef USE_ROCM
 static bool supportMFMAGranularity(int m, int n, int k) {
   // these limitations are dtype dependent, in future we may relax them
-  int granularityMN = 32;
-  int granularityK = 8;
+  const int granularityMN = 32;
+  const int granularityK = 8;
   if (m % granularityMN != 0 || n % granularityMN != 0)
     return false;
   if (k % granularityK != 0)
