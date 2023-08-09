@@ -94,6 +94,34 @@ struct DotOpMFMAConversionHelper {
     return MatrixCoreType::NOT_APPLICABLE;
   }
 
+  Type getNativeResultTypeFromMatricCoreType(MatrixCoreType type) const {
+    switch (type) {
+      case MatrixCoreType::FP32_FP16_FP16_FP32:
+      case MatrixCoreType::FP32_FP32_FP32_FP32:
+      case MatrixCoreType::FP32_BF16_BF16_FP32:
+        return f32_ty;
+      case MatrixCoreType::INT32_INT8_INT8_INT32:
+        return i32_ty;
+      case MatrixCoreType::FP64_FP64_FP64_FP64:
+        return f64_ty;
+      default:
+        llvm::report_fatal_error("Encountered unknown MFMA operation type");
+    }
+    return Type();
+  }
+
+  Value elemCast(Value src, Type dstType) const {
+    auto srcType = src.getType();
+    assert(srcType.isIntOrFloat() && dstType.isIntOrFloat());
+    if (srcType == dstType)
+      return src;
+    if (srcType.isF16() && dstType.isF32())
+      return rewriter.create<LLVM::FPExtOp>(loc, dstType, src);
+    if (srcType.isF32() && dstType.isF16())
+      return rewriter.create<LLVM::FPTruncOp>(loc, dstType, src);
+    llvm::report_fatal_error("unexpected src and dst type combination");
+  }
+
   // Conduct the Dot conversion.
   LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor) const {
     auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
@@ -132,13 +160,16 @@ struct DotOpMFMAConversionHelper {
     auto fc =
         typeConverter->unpackLLElements(loc, loadedC, rewriter, dstElemTy);
 
-    auto vecTy = vec_ty(dstElemTy, 16);
+    auto nativeDstElemTy = getNativeResultTypeFromMatricCoreType(mfmaTy);
+
+    auto vecTy = vec_ty(nativeDstElemTy, 16);
     for (int m = 0; m < numRepM; ++m) {
       for (int n = 0; n < numRepN; ++n) {
         Value acc = undef(vecTy);
         for (unsigned v = 0; v < 16; ++v) {
-          acc = insert_element(vecTy, acc, fc[m * numRepN * 16 + n * 16 + v],
-                               i32_val(v));
+          Value fcElem = fc[m * numRepN * 16 + n * 16 + v];
+          fcElem = elemCast(fcElem, nativeDstElemTy);
+          acc = insert_element(vecTy, acc, fcElem, i32_val(v));
         }
 
         for (size_t k = 0; k < numRepK; k++) {
@@ -147,8 +178,9 @@ struct DotOpMFMAConversionHelper {
                     : generateMFMAOp(mfmaTy, ha[{m, k}], hb[{n, k}], acc);
         }
         for (unsigned v = 0; v < 16; ++v) {
-          fc[m * numRepN * 16 + n * 16 + v] =
-              extract_element(dstElemTy, acc, i32_val(v));
+          Value fcElem = extract_element(nativeDstElemTy, acc, i32_val(v));
+          fcElem = elemCast(fcElem, dstElemTy);
+          fc[m * numRepN * 16 + n * 16 + v] = fcElem;
         }
       }
     }
