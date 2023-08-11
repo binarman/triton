@@ -507,6 +507,10 @@ An encoding for tensors that have been produced by MI100 && MI200 tensor cores.
 It is characterized by parameters `warpsPerCTA` and `nonKDim` that indicates how data should be partitioned
 between waves (analogous to the term 'warp' used in NVIDIA's CUDA programming model).
 
+For MFMA, an additional attribute `mfmaKBase` defines how many elements should be feed
+to one mfma instruction along k dimension of the operand.
+This attribute is Used in derivated DotOperand encoding, do not affect pure mfma encoding.
+
 Example 1:
 Suppose we have a tensor with a shape of [32, 64], warpsPerCTA set to [1, 2] and nonKDim set to 32.
 The data will be distributed between threads as follows:
@@ -573,6 +577,7 @@ The data will be distributed between threads as follows:
   let parameters = (
     ins
     "unsigned":$nonKDim,
+    "unsigned":$kDim,
     ArrayRefParameter<"unsigned">:$warpsPerCTA,
     "bool":$isTransposed
   );
@@ -671,7 +676,7 @@ section 9.7.13.4.1 for more details.
     SmallVector<int64_t> getMMAv2Rep(ArrayRef<int64_t> shape,
                                      int bitwidth) const;
 #ifdef USE_ROCM
-    SmallVector<int64_t> getMFMAElemsPerThread(Type elemTy) const;
+    SmallVector<int64_t> getMFMAElemsPerInstr() const;
     SmallVector<int64_t> getMFMARep(ArrayRef<int64_t> operandShape,
                                     Type elemType) const;
 #endif
