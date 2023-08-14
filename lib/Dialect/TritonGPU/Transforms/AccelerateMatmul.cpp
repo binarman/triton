@@ -358,7 +358,7 @@ public:
     mlir::RewritePatternSet patterns(context);
 #ifdef USE_ROCM
     if (computeCapability == 1 || computeCapability == 2) {
-      int mfmaVersion = 1;
+      int mfmaVersion = computeCapability;
       patterns.add<::BlockedToMFMA>(context, mfmaVersion);
     }
 #else
