@@ -507,7 +507,7 @@ An encoding for tensors that have been produced by MI100 && MI200 tensor cores.
 It is characterized by parameters `warpsPerCTA` and `nonKDim` that indicates how data should be partitioned
 between waves (analogous to the term 'warp' used in NVIDIA's CUDA programming model).
 
-For MFMA, an additional attribute `mfmaKBase` defines how many elements should be feed
+An additional attribute `kDim` defines how many elements should be feed
 to one mfma instruction along k dimension of the operand.
 This attribute is Used in derivated DotOperand encoding, do not affect pure mfma encoding.
 
