@@ -31,10 +31,13 @@ TritonGPUToLLVMTypeConverter::TritonGPUToLLVMTypeConverter(
   addConversion([&](mlir::Float8E5M2Type type) -> std::optional<Type> {
     return IntegerType::get(type.getContext(), 8);
   });
+
+#ifndef USE_ROCM
   // Internally store bfloat16 as int16
   addConversion([&](BFloat16Type type) -> std::optional<Type> {
     return IntegerType::get(type.getContext(), 16);
   });
+#endif
 }
 
 Type TritonGPUToLLVMTypeConverter::convertTritonPointerType(
@@ -107,10 +110,8 @@ Type TritonGPUToLLVMTypeConverter::getElementTypeForStruct(
   if (auto mfmaParent = dotOpLayout.getParent().dyn_cast<MfmaEncodingAttr>()) {
     if (elemTy.isF32())
       return elemTy;
-    if (elemTy.isInteger(16)) // aka BF16
+    if (elemTy.isBF16() || elemTy.isF16())
       return vec_ty(elemTy, mfmaParent.getKDim() / 2);
-    if (elemTy.isF16())
-      return vec_ty(elemTy, 4);
     if (elemTy.isInteger(8))
       return IntegerType::get(ctx, 32);
   }

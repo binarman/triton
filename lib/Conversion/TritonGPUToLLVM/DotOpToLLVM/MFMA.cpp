@@ -48,6 +48,13 @@ struct DotOpMFMAConversionHelper {
     return rewriter.create<arith::TruncIOp>(loc, i32_ty, tid);
   }
 
+  Value castBF16VectoInt16Vec(Value src) const {
+    auto srcTy= dyn_cast<VectorType>(src.getType());
+    assert(srcTy && srcTy.getElementType().isBF16());
+    Type bfTy = vec_ty(i16_ty, srcTy.getNumElements());
+    return bitcast(src, bfTy);
+  }
+
   Value generateMFMAOp(MatrixCoreType mfmaTy, Value valA, Value valB,
                        Value valC) const {
     auto resType = valC.getType();
@@ -58,13 +65,21 @@ struct DotOpMFMAConversionHelper {
           loc, TypeRange{resType},
           ValueRange{valA, valB, valC, zeroFlag, zeroFlag, zeroFlag});
     case MatrixCoreType::FP32_BF16_BF16_FP32:
+    {
+      valA = castBF16VectoInt16Vec(valA);
+      valB = castBF16VectoInt16Vec(valB);
       return rewriter.create<ROCDL::mfma_f32_32x32x4bf16>(
           loc, TypeRange{resType},
           ValueRange{valA, valB, valC, zeroFlag, zeroFlag, zeroFlag});
+    }
     case MatrixCoreType::FP32_BF16_BF16_FP32_1K:
+    {
+      valA = castBF16VectoInt16Vec(valA);
+      valB = castBF16VectoInt16Vec(valB);
       return rewriter.create<ROCDL::mfma_f32_32x32x8bf16_1k>(
           loc, TypeRange{resType},
           ValueRange{valA, valB, valC, zeroFlag, zeroFlag, zeroFlag});
+    }
     case MatrixCoreType::FP32_FP32_FP32_FP32:
       return rewriter.create<ROCDL::mfma_f32_32x32x2f32>(
           loc, TypeRange{resType},

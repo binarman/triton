@@ -843,7 +843,7 @@ struct FpToFpOpConversion
     auto as_int32 = bitcast(v, i32_ty);
     auto shifted = lshr(i32_ty, as_int32, i32_val(16));
     auto truncated = trunc(i16_ty, shifted);
-    return(bitcast(truncated, i16_ty));
+    return(bitcast(truncated, bf16_ty));
 #else
     PTXBuilder builder;
     auto &cvt = *builder.create("cvt.rn.bf16.f32");
