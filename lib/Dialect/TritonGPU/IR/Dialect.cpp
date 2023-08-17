@@ -677,7 +677,7 @@ SmallVector<int64_t>
 DotOperandEncodingAttr::getMFMAElemsPerInstr() const {
   auto mfmaEncoding = getParent().cast<MfmaEncodingAttr>();
   int64_t nonKDim = mfmaEncoding.getNonKDim();
-  int64_t kDim = mfmaEncoding.getKDim();
+  int64_t kDim = getKWidth();
   if (getOpIdx() == 0)
     return {nonKDim, kDim};
   else
@@ -935,17 +935,12 @@ Attribute MfmaEncodingAttr::parse(AsmParser &parser, Type type) {
     return {};
 
   unsigned nonKDim = 0;
-  unsigned kDim = 0;
   SmallVector<unsigned, 2> warpsPerCTA;
   bool isTransposed;
 
   for (const NamedAttribute &attr : dict) {
     if (attr.getName() == "nonKDim") {
       if (parseUInt(parser, attr, nonKDim, "nonKDim").failed())
-        return {};
-    }
-    if (attr.getName() == "kDim") {
-      if (parseUInt(parser, attr, kDim, "kDim").failed())
         return {};
     }
     if (attr.getName() == "warpsPerCTA") {
@@ -958,7 +953,7 @@ Attribute MfmaEncodingAttr::parse(AsmParser &parser, Type type) {
   }
 
   return parser.getChecked<MfmaEncodingAttr>(parser.getContext(), nonKDim,
-                                             kDim, warpsPerCTA, isTransposed);
+                                             warpsPerCTA, isTransposed);
 }
 
 void MfmaEncodingAttr::print(AsmPrinter &printer) const {
@@ -1083,11 +1078,13 @@ Attribute DotOperandEncodingAttr::parse(AsmParser &parser, Type type) {
   unsigned kWidth = 0;
   Attribute _kWidth = attrs.get("kWidth");
   if (_kWidth) {
+#ifndef USE_ROCM
     if (!mmaParent || mmaParent.isVolta()) {
       auto loc = parser.getNameLoc();
       parser.emitError(loc, "kWidth only supported for MMAv2+ parent");
       return Attribute();
     }
+#endif
     kWidth = _kWidth.cast<IntegerAttr>().getInt();
   }
   return parser.getChecked<DotOperandEncodingAttr>(parser.getContext(), opIdx,

@@ -93,7 +93,7 @@ struct DotOpMFMAConversionHelper {
     if (elemTy.isBF16()) {
       auto dotOpEncoding = tensorTy.getEncoding().cast<DotOperandEncodingAttr>();
       auto mfmaEncoding = dotOpEncoding.getParent().cast<MfmaEncodingAttr>();
-      if (mfmaEncoding.getKDim() == 8)
+      if (dotOpEncoding.getKWidth() == 8)
         return MatrixCoreType::FP32_BF16_BF16_FP32_1K;
       else
         return MatrixCoreType::FP32_BF16_BF16_FP32;

@@ -507,10 +507,6 @@ An encoding for tensors that have been produced by MI100 && MI200 tensor cores.
 It is characterized by parameters `warpsPerCTA` and `nonKDim` that indicates how data should be partitioned
 between waves (analogous to the term 'warp' used in NVIDIA's CUDA programming model).
 
-An additional attribute `kDim` defines how many elements should be feed
-to one mfma instruction along k dimension of the operand.
-This attribute is Used in derivated DotOperand encoding, do not affect pure mfma encoding.
-
 Example 1:
 Suppose we have a tensor with a shape of [32, 64], warpsPerCTA set to [1, 2] and nonKDim set to 32.
 The data will be distributed between threads as follows:
@@ -577,7 +573,6 @@ The data will be distributed between threads as follows:
   let parameters = (
     ins
     "unsigned":$nonKDim,
-    "unsigned":$kDim,
     ArrayRefParameter<"unsigned">:$warpsPerCTA,
     "bool":$isTransposed
   );
@@ -652,14 +647,6 @@ section 9.7.13.4.1 for more details.
         return $_get(context, opIdx, parent, 0);
       unsigned bitwidth = eltTy.getIntOrFloatBitWidth();
       unsigned kWidth = 32 / bitwidth;
-      return $_get(context, opIdx, parent, kWidth);
-    }]>,
-
-    // Specially for MFMA(MI100/MI200)
-    AttrBuilder<(ins "unsigned":$opIdx,
-                     "Attribute":$parent), [{
-      assert(llvm::isa<MfmaEncodingAttr>(parent));
-      unsigned kWidth = 0; // unused for MFMA ops
       return $_get(context, opIdx, parent, kWidth);
     }]>
   ];

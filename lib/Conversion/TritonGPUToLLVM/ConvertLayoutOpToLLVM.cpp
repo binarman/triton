@@ -675,7 +675,8 @@ private:
       // TODO: Support types other than float16 and
       // bf16 (represented as int16 in llvm ir).
       assert((type::isFloat(elemTy) || type::isInt(elemTy)) && elemSize == 16);
-      unsigned vecSize = 4;
+      auto dotOperandLayout = dstTy.getEncoding().cast<triton::gpu::DotOperandEncodingAttr>();
+      unsigned vecSize = dotOperandLayout.getKWidth() / 2;
       Type vecTy = vec_ty(elemTy, vecSize);
       types = SmallVector<Type>(elems / vecSize, vecTy);
       for (unsigned i = 0; i < elems; i += vecSize) {

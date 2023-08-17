@@ -185,7 +185,7 @@ public:
 
     bool isTransposed = isChainDot(dotOp);
     mfmaEnc = triton::gpu::MfmaEncodingAttr::get(
-        oldRetType.getContext(), nonKDim, kDim, warpsPerTile, isTransposed);
+        oldRetType.getContext(), nonKDim, warpsPerTile, isTransposed);
 
     auto newRetType =
         RankedTensorType::get(retShape, oldRetType.getElementType(), mfmaEnc);
@@ -207,10 +207,10 @@ public:
 
     auto newAType = RankedTensorType::get(
         oldAType.getShape(), oldAType.getElementType(),
-        triton::gpu::DotOperandEncodingAttr::get(ctx, 0, mfmaEnc));
+        triton::gpu::DotOperandEncodingAttr::get(ctx, 0, mfmaEnc, kDim));
     auto newBType = RankedTensorType::get(
         oldBType.getShape(), oldBType.getElementType(),
-        triton::gpu::DotOperandEncodingAttr::get(ctx, 1, mfmaEnc));
+        triton::gpu::DotOperandEncodingAttr::get(ctx, 1, mfmaEnc, kDim));
     a = rewriter.create<triton::gpu::ConvertLayoutOp>(a.getLoc(), newAType, a);
     b = rewriter.create<triton::gpu::ConvertLayoutOp>(b.getLoc(), newBType, b);
     auto newDot = rewriter.create<triton::DotOp>(
