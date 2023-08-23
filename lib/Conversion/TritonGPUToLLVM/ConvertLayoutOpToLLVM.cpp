@@ -676,7 +676,11 @@ private:
       // bf16 (represented as int16 in llvm ir).
       assert((type::isFloat(elemTy) || type::isInt(elemTy)) && elemSize == 16);
       auto dotOperandLayout = dstTy.getEncoding().cast<triton::gpu::DotOperandEncodingAttr>();
-      unsigned vecSize = dotOperandLayout.getKWidth() / 2;
+      // vecSize is an number of sequential elements holing by one lane
+      // for MFMA 32x32 encoding it is 4
+      // For MFMA dot operand encding for fp16 and bfloat16 on MI200 types it is also 4, so 
+      // MFMA operand and MFMA layouts are the same
+      const unsigned vecSize = 4;
       Type vecTy = vec_ty(elemTy, vecSize);
       types = SmallVector<Type>(elems / vecSize, vecTy);
       for (unsigned i = 0; i < elems; i += vecSize) {
