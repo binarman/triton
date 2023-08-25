@@ -9,6 +9,7 @@ from torch.testing import assert_close
 import triton
 import triton.language as tl
 import yaml
+import multiprocessing
 
 
 @triton.jit
@@ -94,23 +95,33 @@ def get_variant_golden(a, b):
     return c_padded[:SIZE_M, :SIZE_N]
 
 
-# def tune_gemm(SIZE_M, SIZE_N, SIZE_K, num_warps, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, SPLIT_K, kpack, mPerWave):
-def tune_gemm(SIZE_M, SIZE_N, SIZE_K):
+def try_config(SIZE_M, SIZE_N, SIZE_K, index, block_m, block_n, block_k, split_k, num_warps):
+    import torch
     a = torch.randn((SIZE_M, SIZE_K), device='cuda', dtype=torch.float16)
     b = torch.randn((SIZE_K, SIZE_N), device='cuda', dtype=torch.float16)
     c = torch.zeros((SIZE_M, SIZE_N), device=a.device, dtype=torch.float32)
 
-    # call pytorch function to get golden
-    golden = torch.matmul(a, b)
+    perf_config = f'{block_m},{block_n},{block_k},{split_k},{num_warps}'
+    print(f"{index}: m = {SIZE_M}, n = {SIZE_N}, k = {SIZE_K}, curr_config = {perf_config}", end=" ")
+    try:
+        triton_matmul(a, b, c, block_m, block_n, block_k, split_k, num_warps)
+        print("compiled")
+    except Exception:
+        print("Exception happened during compilation matmul, skip")
+        return None
+    config_tuple = (block_m, block_n, block_k, split_k, num_warps)
+    return config_tuple
 
+
+def compile_tuning_configurations(SIZE_M, SIZE_N, SIZE_K, num_threads):
+    thread_pool = multiprocessing.Pool(processes=num_threads)
 
     # tune space
     block_range = [32, 64, 128]
     split_k_range = [1, 2, 4, 5, 8, 10]
     num_warps_range = [1, 2, 4, 8, 16]
+    tasks = []
 
-    min_time = 1024 * 1024 * 1024
-    best_config = ''
     index = 0
     for block_m in block_range:
         if SIZE_M <= 32 and block_m != 32:
@@ -128,36 +139,66 @@ def tune_gemm(SIZE_M, SIZE_N, SIZE_K):
                         continue
 
                     for num_warps in num_warps_range:
-                        try:
-                            perf_config = f'{block_m},{block_n},{block_k},{split_k},{num_warps}'
-                            c.zero_()
-                            exec_time = triton.testing.do_bench(lambda: triton_matmul(a, b, c, block_m, block_n, block_k, split_k, num_warps))
-                        except Exception:
-                            print("Exception happened in matmul, skip")
-                            continue
-
-                        # It's not easy to get a proper error threshold in different size
-                        # Here the gemm calculation is padded to a different size in order to get
-                        # a variant version of the golden result. And the error between golden and
-                        # golden_variant provide reference on selecting the proper rtol / atol.
-                        golden_variant = get_variant_golden(a, b)
-                        golden_diff = golden - golden_variant
-                        golden_abs_err = torch.max(torch.abs(golden_diff)).item()
-                        golden_rel_err = torch.max(torch.abs(golden_diff / golden)).item()
-                        # torch.set_printoptions(profile="full")
-                        # try:
-                        #     assert_close(c, golden, rtol=max(0.05, 1.5 * golden_rel_err), atol=max(0.05, 1.5 * golden_abs_err), check_dtype=False)
-                        # except AssertionError:
-                        #     print(f"abs_error = {golden_abs_err}")
-                        #     print(f"rel_error = {golden_rel_err}")
-                        #     print('result mismatch, skip')
-                        #     continue
-
-                        if exec_time < min_time:
-                            min_time = exec_time
-                            best_config = perf_config
-                        print(f"{index}: m = {SIZE_M}, n = {SIZE_N}, k = {SIZE_K}, curr_config = {perf_config}, min_time = {min_time} ms", )
+                        task_args = (SIZE_M, SIZE_N, SIZE_K, index, block_m, block_n, block_k, split_k, num_warps)
+                        tasks += [thread_pool.apply_async(try_config, args=task_args)]
                         index += 1
+
+    configs = []
+    for task in tasks:
+        result = task.get()
+        if result:
+            configs += [result]
+
+    return configs
+
+
+def run_profiler(SIZE_M, SIZE_N, SIZE_K, configs):
+    a = torch.randn((SIZE_M, SIZE_K), device='cuda', dtype=torch.float16)
+    b = torch.randn((SIZE_K, SIZE_N), device='cuda', dtype=torch.float16)
+    c = torch.zeros((SIZE_M, SIZE_N), device=a.device, dtype=torch.float32)
+
+    # call pytorch function to get golden
+    # golden = torch.matmul(a, b)
+
+    # tune space
+    min_time = 1024 * 1024 * 1024
+    best_config = ''
+    index = 0
+    for config in configs:
+        block_m, block_n, block_k, split_k, num_warps = config
+        print(f"{index}: ", end="")
+        index += 1
+        try:
+            perf_config = f'{block_m},{block_n},{block_k},{split_k},{num_warps}'
+            c.zero_()
+            exec_time = triton.testing.do_bench(lambda: triton_matmul(a, b, c, block_m, block_n, block_k, split_k, num_warps))
+        except Exception:
+            print("Exception happened in matmul, skip")
+            continue
+
+        # It's not easy to get a proper error threshold in different size
+        # Here the gemm calculation is padded to a different size in order to get
+        # a variant version of the golden result. And the error between golden and
+        # golden_variant provide reference on selecting the proper rtol / atol.
+        # golden_variant = get_variant_golden(a, b)
+        # golden_diff = golden - golden_variant
+        # golden_abs_err = torch.max(torch.abs(golden_diff)).item()
+        # golden_rel_err = torch.max(torch.abs(golden_diff / golden)).item()
+        # torch.set_printoptions(profile="full")
+        # try:
+        #     assert_close(c, golden, rtol=max(0.05, 1.5 * golden_rel_err), atol=max(0.05, 1.5 * golden_abs_err), check_dtype=False)
+        # except AssertionError:
+        #     print(f"abs_error = {golden_abs_err}")
+        #     print(f"rel_error = {golden_rel_err}")
+        #     print('result mismatch, skip')
+        #     continue
+
+        if exec_time < min_time:
+            min_time = exec_time
+            best_config = perf_config
+        print(f"m = {SIZE_M}, n = {SIZE_N}, k = {SIZE_K}, curr_config = {perf_config}, min_time = {min_time} ms", )
+        index += 1
+
     flops = 2 * SIZE_M * SIZE_N * SIZE_K / min_time / 1.0e9
     strr = f'Best Result: {SIZE_M},{SIZE_N},{SIZE_K} best parameters: {best_config} --> {min_time} ms, {flops} TFLOPS'
     print(strr)
@@ -172,6 +213,7 @@ def parse_args():
     parser.add_argument("-m", type=int, default=argparse.SUPPRESS)
     parser.add_argument("-n", type=int, default=argparse.SUPPRESS)
     parser.add_argument("-k", type=int, default=argparse.SUPPRESS)
+    parser.add_argument("--num_threads", type=int, default=1)
     args = parser.parse_args()
 
     return args
@@ -182,8 +224,10 @@ def main():
     M = args.m
     N = args.n
     K = args.k
+    num_threads = args.num_threads
 
-    tune_gemm(M, N, K)
+    configs = compile_tuning_configurations(M, N, K, num_threads)
+    run_profiler(M, N, K, configs)
 
 if __name__ == '__main__':
     sys.exit(main())
