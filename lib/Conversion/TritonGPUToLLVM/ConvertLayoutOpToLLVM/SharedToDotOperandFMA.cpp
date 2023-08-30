@@ -68,9 +68,6 @@ Value getStructFromValueTable(ArrayRef<Value> vals,
     else
       elems.push_back(bitcast(val, resElemTy));
   }
-  MLIRContext *ctx = elemTy.getContext();
-  Type structTy = struct_ty(elemTypes);
-  return typeConverter->packLLElements(loc, elems, rewriter, structTy);
 #else
   SmallVector<Type> elemTypes(vals.size(), elemTy);
   SmallVector<Value> elems;
@@ -78,10 +75,10 @@ Value getStructFromValueTable(ArrayRef<Value> vals,
   for (auto &val : vals) {
     elems.push_back(val);
   }
+#endif
   MLIRContext *ctx = elemTy.getContext();
   Type structTy = struct_ty(elemTypes);
   return typeConverter->packLLElements(loc, elems, rewriter, structTy);
-#endif
 }
 
 ValueTable getValueTableFromStruct(Value val, int K, int n0, int shapePerCTA,
