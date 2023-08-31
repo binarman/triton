@@ -2248,14 +2248,13 @@ class MmaLayout:
 
 
 class MfmaLayout:
-    def __init__(self, non_k_dim, k_dim, warps_per_cta, isTransposed):
+    def __init__(self, non_k_dim, warps_per_cta, isTransposed):
         self.non_k_dim = str(non_k_dim)
-        self.k_dim = str(k_dim)
         self.warps_per_cta = str(warps_per_cta)
         self.isTransposed = str(isTransposed).lower()
 
     def __str__(self):
-        return f"#triton_gpu.mfma<{{nonKDim = {self.non_k_dim}, kDim = {self.k_dim}, warpsPerCTA = {self.warps_per_cta}, isTransposed = {self.isTransposed}}}>"
+        return f"#triton_gpu.mfma<{{nonKDim = {self.non_k_dim}, warpsPerCTA = {self.warps_per_cta}, isTransposed = {self.isTransposed}}}>"
 
 
 class BlockedLayout:
@@ -2474,8 +2473,8 @@ module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.threads-per-war
 
 if torch.version.hip is not None and _get_warp_size() == 64:
     layouts = [
-        MfmaLayout(non_k_dim=32, k_dim=2, warps_per_cta=[4, 1], isTransposed=True),
-        MfmaLayout(non_k_dim=32, k_dim=2, warps_per_cta=[2, 2], isTransposed=False),
+        MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1], isTransposed=True),
+        MfmaLayout(non_k_dim=32, warps_per_cta=[2, 2], isTransposed=False),
     ]
     shapes = [[128, 32], [128, 128], [32, 128], [64, 64]]
 else:
@@ -2557,7 +2556,7 @@ def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
 
 @pytest.mark.parametrize("shape", [(64, 64)])
 @pytest.mark.parametrize("dtype", ['float16'])
-@pytest.mark.parametrize("src_layout", [MfmaLayout(non_k_dim=32, k_dim=2, warps_per_cta=[2, 1], isTransposed=False), MfmaLayout(non_k_dim=32, k_dim=2, warps_per_cta=[4, 1], isTransposed=True)])
+@pytest.mark.parametrize("src_layout", [MfmaLayout(non_k_dim=32, warps_per_cta=[2, 1], isTransposed=False), MfmaLayout(non_k_dim=32, warps_per_cta=[4, 1], isTransposed=True)])
 @pytest.mark.parametrize("dst_layout", [BlockedLayout([1, 4], [4, 16], [1, 1], [1, 0])])
 def test_make_range(dtype, shape, src_layout, dst_layout, device='cuda'):
     ir = f"""
