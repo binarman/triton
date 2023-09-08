@@ -638,6 +638,70 @@ public:
   }
 };
 
+#ifdef USE_ROCM
+
+// Following pattern tried to eliminate shared layout
+// to keep values in registers instead of storing them in LDS
+//
+// looking for following pattern:
+//   entryConvert = ConvertLayoutOp(x) MFMA -> SharedLayout1
+//   trans = transOp(c1) SharedLayout1 -> SharedLayout2
+//   outputConvert = ConvertLayout(t) SharedLayout2 -> dotOp(MFMA)
+//
+// transforms to
+//   transMFMA = ConvertLayoutOp(x) MFMA -> transposed MFMA
+//   transDotMFMA = ConvertLayout(c1) transposed MFMA -> dotOp(transposed MFMA)
+//   dotMFMA = ConvertLayout(c1) dotOp(transposed MFMA) -> dotOp(MFMA)
+class EliminateMFMATrans : public mlir::RewritePattern {
+public:
+  EliminateMFMATrans(mlir::MLIRContext *context)
+      : mlir::RewritePattern(triton::gpu::ConvertLayoutOp::getOperationName(),
+                             1, context) {}
+
+  LogicalResult
+  matchAndRewrite(mlir::Operation *op,
+                  mlir::PatternRewriter &rewriter) const override {
+    auto outputConvert = cast<triton::gpu::ConvertLayoutOp>(op);
+    auto outputType = cast<RankedTensorType>(outputConvert.getResult().getType());
+    auto outputLayout = dyn_cast_or_null<DotOperandEncodingAttr>(outputType.getEncoding());
+    if (!outputLayout)
+      return mlir::failure();
+    auto outputParentLayout = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(outputLayout.getParent());
+    if (!outputParentLayout)
+      return mlir::failure();
+
+    auto trans = dyn_cast_or_null<triton::TransOp>(outputConvert.getSrc().getDefiningOp());
+    if (!trans)
+      return mlir::failure();
+    assert(llvm::isa<triton::gpu::SharedEncodingAttr>(cast<RankedTensorType>(trans.getResult().getType()).getEncoding()));
+    assert(llvm::isa<triton::gpu::SharedEncodingAttr>(cast<RankedTensorType>(trans.getSrc().getType()).getEncoding()));
+
+    auto entryConvert = dyn_cast_or_null<triton::gpu::ConvertLayoutOp>(trans.getSrc().getDefiningOp());
+    if (!entryConvert)
+      return mlir::failure();
+    auto inputType = cast<RankedTensorType>(entryConvert.getSrc().getType());
+    auto inputLayout = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(inputType.getEncoding());
+    if (!inputLayout)
+      return mlir::failure();
+
+    auto loc = trans.getLoc();
+
+    auto dtype = inputType.getElementType();
+    auto tranposedShape = outputType.getShape();
+    auto transposedMfma = triton::gpu::MfmaEncodingAttr::get(getContext(), inputLayout.getNonKDim(), inputLayout.getWarpsPerCTA(), !inputLayout.getIsTransposed());
+    auto transposedMFMAType = RankedTensorType::get(tranposedShape, dtype, transposedMfma);
+
+    auto transMFMA = rewriter.create<ConvertLayoutOp>(loc, transposedMFMAType, entryConvert.getSrc());
+    auto transDotMFMA = rewriter.create<ConvertLayoutOp>(loc, outputConvert.getResult().getType(), transMFMA.getResult());
+
+    rewriter.replaceOp(op, transDotMFMA.getResult());
+
+    return mlir::success();
+  }
+};
+
+#endif // USE_ROCM
+
 } // namespace
 
 #define GEN_PASS_CLASSES
@@ -664,6 +728,9 @@ public:
     patterns.add<MoveConvertOutOfIf>(context);
     patterns.add<DecomposeDotOperand>(context);
     patterns.add<ConvertDotConvert>(context);
+#ifdef USE_ROCM
+    patterns.add<EliminateMFMATrans>(context);
+#endif
 
     if (mlir::applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
       signalPassFailure();
