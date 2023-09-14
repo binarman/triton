@@ -640,8 +640,12 @@ public:
 
 #ifdef USE_ROCM
 
-// Following pattern tried to eliminate shared layout
-// to keep values in registers instead of storing them in LDS
+// Following pattern looking for TransOp between ConvertOps
+// If these ConvertOps process tensors with compatible mfma encodings,
+// replace TransOp with simple convert layout operation
+//
+// This pattern works as an optional preparation step for
+// FuseConversionWithMFMADot pattern
 //
 // looking for following pattern:
 //   entryConvert = ConvertLayoutOp(x) MFMA -> SharedLayout1
@@ -683,6 +687,15 @@ public:
     auto inputLayout = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(inputType.getEncoding());
     if (!inputLayout)
       return mlir::failure();
+    
+    assert(inputType.getElementType() == outputType.getElementType());
+    assert(inputType.getShape() == outputType.getShape());
+
+    // In following cases we can not eliminate layout conversions
+    if (outputParentLayout.getWarpsPerCTA() != inputLayout.getWarpsPerCTA())
+      return mlir::failure();
+    if (outputParentLayout.getNonKDim() != inputLayout.getNonKDim())
+      return mlir::failure();
 
     auto loc = trans.getLoc();
 
@@ -698,6 +711,195 @@ public:
 
     return mlir::success();
   }
+};
+
+// Following pattern searches for mfma DotOp with ConvertOps as arguments
+// chains of convert layouts with operands which 
+class FuseConversionWithMFMADot : public mlir::RewritePattern {
+public:
+  FuseConversionWithMFMADot(mlir::MLIRContext *context)
+      : mlir::RewritePattern(triton::DotOp::getOperationName(),
+                             1, context) {}
+
+  LogicalResult
+  matchAndRewrite(mlir::Operation *op,
+                  mlir::PatternRewriter &rewriter) const override {
+    auto dot = cast<triton::DotOp>(op);
+    auto dotLoc = dot.getLoc();
+    auto dotType = cast<RankedTensorType>(dot.getD().getType());
+    int dotFlavor = getMFMAFlavor(dotType);
+    if (dotFlavor == 0)
+      return mlir::failure();
+
+    auto aEarlySrc = earliestMFMACompatibleValue(dot.getA());
+    auto bEarlySrc = earliestMFMACompatibleValue(dot.getB());
+    llvm::outs() << "Analyzing: " << dot << "\n";
+    llvm::outs() << "  srcA: " << aEarlySrc << "\n";
+    llvm::outs() << "  srcB: " << bEarlySrc << "\n";
+
+    if (aEarlySrc == dot.getA() && bEarlySrc == dot.getB())
+      return mlir::failure();
+
+    auto aEarlyType = cast<RankedTensorType>(aEarlySrc.getType());
+    auto bEarlyType = cast<RankedTensorType>(bEarlySrc.getType());
+    int aFlavor = getMFMAFlavor(aEarlyType);
+    int bFlavor = getMFMAFlavor(bEarlyType);
+
+    llvm::outs() << "  flavors: " << aFlavor << " " << bFlavor << " " << dotFlavor << "\n";
+
+    // case 1, no need to tranpose anything, just reuse earlier found values
+    if (aFlavor != bFlavor && bFlavor == dotFlavor) {
+      rewriter.setInsertionPoint(dot);
+
+      auto newA = adjustLayout(rewriter, dotLoc, aEarlySrc, dot.getA().getType());
+      dot.setOperand(0, newA);
+
+      auto newB = adjustLayout(rewriter, dotLoc, bEarlySrc, dot.getB().getType());
+      dot.setOperand(1, newB);
+      return mlir::success();
+    }
+
+    // case 2, can transpose dot and use operand layouts as-is
+    if (aFlavor != bFlavor && aFlavor == dotFlavor) {
+      rewriter.setInsertionPoint(dot);
+
+      auto newAType = transposeLayout(dot.getA().getType());
+      Value newA = adjustLayout(rewriter, dotLoc, aEarlySrc, newAType);
+
+      auto newBType = transposeLayout(dot.getB().getType());
+      Value newB = adjustLayout(rewriter, dotLoc, bEarlySrc, newAType);
+
+      auto newCType = transposeLayout(dot.getC().getType());
+      Value newC = adjustLayout(rewriter, dotLoc, dot.getC(), newCType);
+      
+      auto newDot = rewriter.create<triton::DotOp>(dotLoc, newA, newB, newC, dot.getAllowTF32());
+
+      rewriter.replaceOpWithNewOp<triton::gpu::ConvertLayoutOp>(dot, newCType, newDot.getD());
+      return mlir::success();
+    }
+    // case 3
+    // aFlavor == bFlavor
+    // 
+    // try to transpose a or b if succeed, try to apply case 1 and 2
+
+    return mlir::failure();
+  }
+
+private:
+
+  static Type transposeLayout(Type srcType) {
+    auto tensorType = cast<RankedTensorType>(srcType);
+    auto enc = tensorType.getEncoding();
+    auto shape = tensorType.getShape();
+    auto dtype = tensorType.getElementType();
+    mlir::Attribute newEnc;
+    triton::gpu::MfmaEncodingAttr srcMfmaEnc;
+    auto dotOpEnc = dyn_cast_or_null<triton::gpu::DotOperandEncodingAttr>(enc);
+    if (dotOpEnc)
+      srcMfmaEnc = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(dotOpEnc.getParent());
+    else
+      srcMfmaEnc = cast<triton::gpu::MfmaEncodingAttr>(enc);
+    
+    auto ctx = srcMfmaEnc.getContext();
+    auto nonKDim = srcMfmaEnc.getNonKDim();
+    auto warpsPerCTA = srcMfmaEnc.getWarpsPerCTA();
+    auto isTransposed = !srcMfmaEnc.getIsTransposed();
+    auto newMfmaEnc = triton::gpu::MfmaEncodingAttr::get(ctx, nonKDim, warpsPerCTA, isTransposed);
+    if (dotOpEnc)
+      newEnc = triton::gpu::DotOperandEncodingAttr::get(ctx, dotOpEnc.getOpIdx(), newMfmaEnc);
+    else
+      newEnc = newMfmaEnc;
+    auto newType = RankedTensorType::get(shape, dtype, newEnc);
+    return newType;
+  }
+
+  static Value adjustLayout(mlir::PatternRewriter &rewriter, mlir::Location loc, Value src, Type targetType){
+    assert(isa<RankedTensorType>(targetType));
+    auto srcType = cast<RankedTensorType>(src.getType());
+    if (srcType == targetType)
+      return src;
+    auto convert = rewriter.create<triton::gpu::ConvertLayoutOp>(loc, targetType, src);
+    return convert.getResult();
+  }
+
+  // mfma layout can be one of two flavors:
+  // flavor 0 - encoding is not mfma related
+  // flavor 1 includes: input A, transposed dot output, transposed input B
+  // flavor 2 includes: input B, dot output, transposed input A
+  static int getMFMAFlavor(RankedTensorType type) {
+    auto encoding = type.getEncoding();
+    auto dotOpEncoding = dyn_cast_or_null<triton::gpu::DotOperandEncodingAttr>(encoding);
+    if (dotOpEncoding) {
+      auto mfmaEncoding = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(dotOpEncoding.getParent());
+      if (mfmaEncoding) {
+        bool isInputA = dotOpEncoding.getOpIdx() == 0;
+        bool isTransposed = mfmaEncoding.getIsTransposed();
+        // input A && not transposed  =>  flavor 1
+        // input A && transposed  =>  flavor 2
+        // input B && not transposed  =>  flavor 1
+        // input B && transposed  =>  flavor 2
+        int flavor = (isInputA != isTransposed ? 1 : 2);
+        return flavor;
+      }
+    }
+    auto mfmaEncoding = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(encoding);
+    if (mfmaEncoding) {
+      return mfmaEncoding.getIsTransposed() ? 1 : 2;
+    }
+    return 0;
+  }
+
+  static bool areEncodingsCompatible(mlir::Attribute query, triton::gpu::DotOperandEncodingAttr targetDotOperand) {
+    auto targetMfma = cast<triton::gpu::MfmaEncodingAttr>(targetDotOperand.getParent());
+
+    triton::gpu::MfmaEncodingAttr queryMfma;
+    bool kDimCompatible = false;
+
+    auto queryDotOperand = dyn_cast_or_null<triton::gpu::DotOperandEncodingAttr>(query);
+    if (queryDotOperand) {
+      queryMfma = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(queryDotOperand.getParent());
+      kDimCompatible = queryDotOperand.getKWidth() == targetDotOperand.getKWidth();
+    } else {
+      queryMfma = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(query);
+      if (targetMfma.getNonKDim() == 32) {
+        kDimCompatible = targetDotOperand.getKWidth() == 8;
+      } else {
+        assert(targetMfma.getNonKDim() == 16);
+        // TODO implement for mfma16
+        kDimCompatible = false;
+      }
+    }
+
+    if (!queryMfma)
+      return false;
+
+    bool nonKDimCompatible = queryMfma.getNonKDim() == targetMfma.getNonKDim();
+    bool warpsPerCTACompatible = queryMfma.getWarpsPerCTA() == targetMfma.getWarpsPerCTA();
+
+    return nonKDimCompatible && warpsPerCTACompatible && kDimCompatible;
+  }
+
+  // trace chain of layout conversions and find earliest compatible value,
+  // which can be used as a dot operand
+  static mlir::Value earliestMFMACompatibleValue(mlir::Value val) {
+    auto tensorType = dyn_cast_or_null<RankedTensorType>(val.getType());
+    auto dotEnc = cast<triton::gpu::DotOperandEncodingAttr>(tensorType.getEncoding());
+    auto mfmaEnc = cast<triton::gpu::MfmaEncodingAttr>(dotEnc.getParent());
+    mlir::Operation *op;
+    triton::gpu::ConvertLayoutOp convertOp;
+    Value earliestDef;
+    while (true) {
+      auto valType = cast<RankedTensorType>(val.getType());
+      if (areEncodingsCompatible(valType.getEncoding(), dotEnc))
+        earliestDef = val;
+      op = val.getDefiningOp();
+      convertOp = dyn_cast_or_null<triton::gpu::ConvertLayoutOp>(op);
+      if (!convertOp)
+        return earliestDef;
+      val = convertOp.getSrc();
+    }
+  }
+
 };
 
 #endif // USE_ROCM
@@ -730,6 +932,7 @@ public:
     patterns.add<ConvertDotConvert>(context);
 #ifdef USE_ROCM
     patterns.add<EliminateMFMATrans>(context);
+    patterns.add<FuseConversionWithMFMADot>(context);
 #endif
 
     if (mlir::applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
