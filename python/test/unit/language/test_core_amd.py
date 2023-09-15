@@ -2237,6 +2237,50 @@ class SharedLayout:
         return f"#triton_gpu.shared<{{vec = {self.vec}, perPhase={self.per_phase}, maxPhase={self.max_phase}, order={self.order}}}>"
 
 
+def test_mfma_layout_simplification():
+    ir = """
+#blocked = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [8, 8], warpsPerCTA = [4, 1], order = [1, 0]}>
+#mfma1 = #triton_gpu.mfma<{nonKDim = 32, warpsPerCTA = [4, 1], isTransposed = false}>
+#mfma2 = #triton_gpu.mfma<{nonKDim = 32, warpsPerCTA = [4, 1], isTransposed = true}>
+#mfma2op0 = #triton_gpu.dot_op<{opIdx = 0, parent = #mfma2, kWidth = 8}>
+#mfma2op1 = #triton_gpu.dot_op<{opIdx = 1, parent = #mfma2, kWidth = 8}>
+module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.threads-per-warp" = 64 : i32} {
+  tt.func public @kernel_0d1d2d(%arg0: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
+    %cst = arith.constant dense<0.000000e+00> : tensor<32x32xf32, #mfma2>
+    %aAddr = tt.splat %arg0 : (!tt.ptr<f16>) -> tensor<32x32x!tt.ptr<f16>, #blocked>
+    %bAddr = tt.splat %arg1 : (!tt.ptr<f16>) -> tensor<32x32x!tt.ptr<f16>, #blocked>
+
+    %aData = tt.load %aAddr {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<32x32xf16, #blocked>
+    %bData = tt.load %bAddr {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<32x32xf16, #blocked>
+
+    %aData1 = triton_gpu.convert_layout %aData : (tensor<32x32xf16, #blocked>) -> tensor<32x32xf16, #mfma1>
+
+    %aData2 = triton_gpu.convert_layout %aData1 : (tensor<32x32xf16, #mfma1>) -> tensor<32x32xf16, #mfma2>
+    %aData3 = triton_gpu.convert_layout %aData2 : (tensor<32x32xf16, #mfma2>) -> tensor<32x32xf16, #mfma2op0>
+    %bData1 = triton_gpu.convert_layout %bData : (tensor<32x32xf16, #blocked>) -> tensor<32x32xf16, #mfma2op1>
+    %cData = tt.dot %aData3, %bData1, %cst {allowTF32 = true} : tensor<32x32xf16, #mfma2op0> * tensor<32x32xf16, #mfma2op1> -> tensor<32x32xf32, #mfma2>
+
+    %cAddr = tt.splat %arg2 : (!tt.ptr<f32>) -> tensor<32x32x!tt.ptr<f32>, #blocked>
+
+    %cData1 = triton_gpu.convert_layout %cData : (tensor<32x32xf32, #mfma2>) -> tensor<32x32xf32, #blocked>
+    tt.store %cAddr, %cData1 {cache = 1 : i32, evict = 1 : i32} : tensor<32x32xf32, #blocked>
+    tt.return
+  }
+}
+"""
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.ttir') as f:
+        f.write(ir)
+        f.flush()
+        arch_triple = "amdgcn-amd-amdhsa"
+        arch_name = "gfx90a"
+        features = ""
+        warp_size = 64
+        capabilities = [arch_triple, arch_name, features, warp_size]
+        kernel = triton.compile(f.name, device_type="hip", cc=capabilities)
+        print(kernel.asm['ttgir'])
+
+
 @pytest.mark.parametrize("vec_size", [2, 4])
 @pytest.mark.parametrize("swizzle", [True, False])
 @pytest.mark.parametrize("transposeA", [True, False])
