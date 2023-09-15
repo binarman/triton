@@ -2514,7 +2514,6 @@ module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.threads-per-war
         warp_size = 64
         capabilities = [arch_triple, arch_name, features, warp_size]
         kernel = triton.compile(f.name, device_type="hip", cc=capabilities)
-        print(kernel.asm['ttgir'])
 
 
 @pytest.mark.parametrize("vec_size", [2, 4])
