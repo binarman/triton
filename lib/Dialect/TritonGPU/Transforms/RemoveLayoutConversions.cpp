@@ -17,6 +17,10 @@
 #include "triton/Dialect/TritonGPU/Transforms/TritonGPUConversion.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 
+#ifdef USE_ROCM
+#include "triton/Analysis/Utility.h"
+#endif
+
 #include <memory>
 
 using namespace mlir;
@@ -731,8 +735,8 @@ public:
     if (dotFlavor == 0)
       return mlir::failure();
 
-    auto aEarlySrc = earliestMFMACompatibleValue(dot.getA());
-    auto bEarlySrc = earliestMFMACompatibleValue(dot.getB());
+    auto [aEarlySrc, aDist] = earliestMFMACompatibleValue(dot.getA());
+    auto [bEarlySrc, bDist] = earliestMFMACompatibleValue(dot.getB());
     llvm::outs() << "Analyzing: " << dot << "\n";
     llvm::outs() << "  srcA: " << aEarlySrc << "\n";
     llvm::outs() << "  srcB: " << bEarlySrc << "\n";
@@ -749,13 +753,18 @@ public:
 
     // case 1, no need to tranpose anything, just reuse earlier found values
     if (aFlavor != bFlavor && bFlavor == dotFlavor) {
+      // if distance between curren dot operand and proposed operand is 1
+      // we will create layout conversion operation with adjustLayout,
+      // so data flow chain will not get shorter.
+      if (aDist <= 1 && bDist <= 1)
+        return mlir::failure();
       rewriter.setInsertionPoint(dot);
 
       auto newA = adjustLayout(rewriter, dotLoc, aEarlySrc, dot.getA().getType());
-      dot.setOperand(0, newA);
 
       auto newB = adjustLayout(rewriter, dotLoc, bEarlySrc, dot.getB().getType());
-      dot.setOperand(1, newB);
+
+      rewriter.replaceOpWithNewOp<triton::DotOp>(dot, newA, newB, dot.getC(), dot.getAllowTF32());
       return mlir::success();
     }
 
@@ -881,25 +890,98 @@ private:
 
   // trace chain of layout conversions and find earliest compatible value,
   // which can be used as a dot operand
-  static mlir::Value earliestMFMACompatibleValue(mlir::Value val) {
+  // returns pair: found value and distance to this value (0 if returned value equal to input val).
+  static std::tuple<mlir::Value, int> earliestMFMACompatibleValue(mlir::Value val) {
     auto tensorType = dyn_cast_or_null<RankedTensorType>(val.getType());
     auto dotEnc = cast<triton::gpu::DotOperandEncodingAttr>(tensorType.getEncoding());
     auto mfmaEnc = cast<triton::gpu::MfmaEncodingAttr>(dotEnc.getParent());
     mlir::Operation *op;
     triton::gpu::ConvertLayoutOp convertOp;
     Value earliestDef;
-    while (true) {
+    int earliestDist;
+    for (int dist = 0; ; ++dist) {
       auto valType = cast<RankedTensorType>(val.getType());
-      if (areEncodingsCompatible(valType.getEncoding(), dotEnc))
+      if (areEncodingsCompatible(valType.getEncoding(), dotEnc)) {
         earliestDef = val;
+        earliestDist = dist;
+      }
       op = val.getDefiningOp();
       convertOp = dyn_cast_or_null<triton::gpu::ConvertLayoutOp>(op);
       if (!convertOp)
-        return earliestDef;
+        return {earliestDef, earliestDist};
       val = convertOp.getSrc();
     }
   }
 
+};
+
+// Following pattern searches for mfma DotOp with ConvertOps as arguments
+// chains of convert layouts with operands which
+class SimplifyMFMADotOpConversions : public mlir::RewritePattern {
+public:
+  SimplifyMFMADotOpConversions(mlir::MLIRContext *context)
+      : mlir::RewritePattern(triton::gpu::ConvertLayoutOp::getOperationName(),
+                             1, context) {}
+
+  LogicalResult
+  matchAndRewrite(mlir::Operation *op,
+                  mlir::PatternRewriter &rewriter) const override {
+    auto candidate = cast<triton::gpu::ConvertLayoutOp>(op);
+    auto dstType = cast<RankedTensorType>(candidate.getResult().getType());
+    auto dotOpEnc = dyn_cast_or_null<triton::gpu::DotOperandEncodingAttr>(dstType.getEncoding());
+    if (!dotOpEnc)
+      return mlir::failure();
+    auto mfmaEnc = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(dotOpEnc.getParent());
+    if (!mfmaEnc)
+      return mlir::failure();
+    auto loc = candidate.getLoc();
+
+    auto [earlySrc, dist] = earliestMFMACompatibleValue(candidate.getResult());
+
+    if (dist > 1) {
+      rewriter.setInsertionPoint(candidate);
+      auto newCvt = adjustLayout(rewriter, loc, earlySrc, dstType);
+      rewriter.replaceOp(candidate, newCvt);
+      return mlir::success();
+    }
+
+    return mlir::failure();
+  }
+
+private:
+
+  static Value adjustLayout(mlir::PatternRewriter &rewriter, mlir::Location loc, Value src, Type targetType){
+    assert(isa<RankedTensorType>(targetType));
+    auto srcType = cast<RankedTensorType>(src.getType());
+    if (srcType == targetType)
+      return src;
+    auto convert = rewriter.create<triton::gpu::ConvertLayoutOp>(loc, targetType, src);
+    return convert.getResult();
+  }
+
+  // trace chain of layout conversions and find earliest compatible value,
+  // which can be used as a dot operand
+  // returns pair: found value and distance to this value (0 if returned value equal to input val).
+  static std::tuple<mlir::Value, int> earliestMFMACompatibleValue(mlir::Value val) {
+    auto dstType = cast<RankedTensorType>(val.getType());
+    mlir::Operation *op;
+    triton::gpu::ConvertLayoutOp convertOp;
+    Value earliestDef = val;
+    int earliestDist = 0;
+    for (int dist = 0; ; ++dist) {
+      auto valType = cast<RankedTensorType>(val.getType());
+      auto mfmaLayout = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(valType.getEncoding());
+      if (mfmaLayout && isMfmaToDotShortcut(valType, dstType)) {
+        earliestDef = val;
+        earliestDist = dist;
+      }
+      op = val.getDefiningOp();
+      convertOp = dyn_cast_or_null<triton::gpu::ConvertLayoutOp>(op);
+      if (!convertOp)
+        return {earliestDef, earliestDist};
+      val = convertOp.getSrc();
+    }
+  }
 };
 
 #endif // USE_ROCM
@@ -932,7 +1014,8 @@ public:
     patterns.add<ConvertDotConvert>(context);
 #ifdef USE_ROCM
     patterns.add<EliminateMFMATrans>(context);
-    patterns.add<FuseConversionWithMFMADot>(context);
+    // patterns.add<FuseConversionWithMFMADot>(context);
+    patterns.add<SimplifyMFMADotOpConversions>(context);
 #endif
 
     if (mlir::applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
@@ -942,6 +1025,7 @@ public:
     if (fixupLoops(m).failed()) {
       signalPassFailure();
     }
+    llvm::outs() << "after remove layoutConversions:\n" << m << "\n";
   }
 };
 

@@ -122,8 +122,10 @@ public:
     auto filter = [&dotOp](Operation *op) {
       return op->getParentRegion() == dotOp->getParentRegion();
     };
-    auto slices = mlir::getSlice(dotOp, filter);
-    for (Operation *op : slices) {
+    SetVector<Operation *> backwardSlice;
+    mlir::getBackwardSlice(dotOp.getD(), &backwardSlice, filter, false);
+    bool foundDot = false;
+    for (Operation *op : backwardSlice) {
       if (isa<triton::DotOp>(op) && (op != dotOp))
         return true;
     }

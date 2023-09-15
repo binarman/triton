@@ -1090,6 +1090,17 @@ Attribute DotOperandEncodingAttr::parse(AsmParser &parser, Type type) {
   auto mmaParent = parent.dyn_cast<MmaEncodingAttr>();
   unsigned kWidth = 0;
   Attribute _kWidth = attrs.get("kWidth");
+#ifdef USE_ROCM
+  if (_kWidth) {
+    auto mfmaParent = parent.dyn_cast<MfmaEncodingAttr>();
+    if (!mfmaParent) {
+      auto loc = parser.getNameLoc();
+      parser.emitError(loc, "kWidth only supported for MFMA parent");
+      return Attribute();
+    }
+    kWidth = _kWidth.cast<IntegerAttr>().getInt();
+  }
+#else
   if (_kWidth) {
     if (!mmaParent || mmaParent.isVolta()) {
       auto loc = parser.getNameLoc();
@@ -1098,6 +1109,7 @@ Attribute DotOperandEncodingAttr::parse(AsmParser &parser, Type type) {
     }
     kWidth = _kWidth.cast<IntegerAttr>().getInt();
   }
+#endif
   return parser.getChecked<DotOperandEncodingAttr>(parser.getContext(), opIdx,
                                                    parent, kWidth);
 }
