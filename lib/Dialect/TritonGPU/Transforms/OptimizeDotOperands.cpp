@@ -143,6 +143,78 @@ public:
   }
 };
 
+#ifdef USE_ROCM
+// Following pattern searches for mfma DotOp with ConvertOps as arguments
+// chains of convert layouts with operands which
+class SimplifyMFMADotOpConversions : public mlir::RewritePattern {
+public:
+  SimplifyMFMADotOpConversions(mlir::MLIRContext *context)
+      : mlir::RewritePattern(triton::gpu::ConvertLayoutOp::getOperationName(),
+                             1, context) {}
+
+  LogicalResult
+  matchAndRewrite(mlir::Operation *op,
+                  mlir::PatternRewriter &rewriter) const override {
+    auto candidate = cast<triton::gpu::ConvertLayoutOp>(op);
+    auto dstType = cast<RankedTensorType>(candidate.getResult().getType());
+    auto dotOpEnc = dyn_cast_or_null<triton::gpu::DotOperandEncodingAttr>(dstType.getEncoding());
+    if (!dotOpEnc)
+      return mlir::failure();
+    auto mfmaEnc = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(dotOpEnc.getParent());
+    if (!mfmaEnc)
+      return mlir::failure();
+    auto loc = candidate.getLoc();
+
+    auto [earlySrc, dist] = earliestMFMACompatibleValue(candidate.getResult());
+
+    if (dist > 1) {
+      rewriter.setInsertionPoint(candidate);
+      auto newCvt = adjustLayout(rewriter, loc, earlySrc, dstType);
+      rewriter.replaceOp(candidate, newCvt);
+      return mlir::success();
+    }
+
+    return mlir::failure();
+  }
+
+private:
+
+  static Value adjustLayout(mlir::PatternRewriter &rewriter, mlir::Location loc, Value src, Type targetType){
+    assert(isa<RankedTensorType>(targetType));
+    auto srcType = cast<RankedTensorType>(src.getType());
+    if (srcType == targetType)
+      return src;
+    auto convert = rewriter.create<triton::gpu::ConvertLayoutOp>(loc, targetType, src);
+    return convert.getResult();
+  }
+
+  // trace chain of layout conversions and find earliest compatible value,
+  // which can be used as a dot operand
+  // returns pair: found value and distance to this value (0 if returned value equal to input val).
+  static std::tuple<mlir::Value, int> earliestMFMACompatibleValue(mlir::Value val) {
+    auto dstType = cast<RankedTensorType>(val.getType());
+    mlir::Operation *op;
+    Value earliestDef = val;
+    int earliestDist = 0;
+    for (int dist = 0; ; ++dist) {
+      auto valType = cast<RankedTensorType>(val.getType());
+      auto mfmaLayout = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(valType.getEncoding());
+      if (mfmaLayout && isMfmaToDotShortcut(valType, dstType)) {
+        earliestDef = val;
+        earliestDist = dist;
+      }
+      op = val.getDefiningOp();
+      auto convertOp = dyn_cast_or_null<triton::gpu::ConvertLayoutOp>(op);
+      auto transposeOp = dyn_cast_or_null<triton::TransOp>(op);
+      if (!convertOp && !transposeOp)
+        return {earliestDef, earliestDist};
+      val = op->getOperand(0);
+    }
+  }
+};
+
+#endif // USE_ROCM
+
 } // namespace
 
 #define GEN_PASS_CLASSES
@@ -165,6 +237,9 @@ public:
     mlir::RewritePatternSet patterns(context);
     patterns.add<ConvertTransConvert>(context);
     patterns.add<MoveOpAfterLayoutConversion>(context);
+#ifdef USE_ROCM
+    patterns.add<SimplifyMFMADotOpConversions>(context);
+#endif
     if (applyPatternsAndFoldGreedily(m, std::move(patterns)).failed())
       signalPassFailure();
     if (fixupLoops(m).failed())
