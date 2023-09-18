@@ -421,12 +421,10 @@ bool isMfmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
   bool orientationCompatible = getMfmaOrientation(srcMfmaLayout) == getMfmaDotOpOrientation(dotOperandLayout);
   bool kWidthCompatible = dotOperandLayout.getKWidth() == 4;
   bool nonKDimCompatible = (srcMfmaLayout.getNonKDim() == 32) && (dstMfmaLayout.getNonKDim() == 32);
-  bool warpsCompatible = srcMfmaLayout.getWarpsPerCTA() == dstMfmaLayout.getWarpsPerCTA();
-
+  int kDim = dotOperandLayout.getOpIdx() == 0 ? 0 : 1;
+  bool warpsCompatible = (srcMfmaLayout.getWarpsPerCTA() == dstMfmaLayout.getWarpsPerCTA()) && (dstMfmaLayout.getWarpsPerCTA()[kDim] == 1);
   bool layoutsCompatible = orientationCompatible && kWidthCompatible && nonKDimCompatible && warpsCompatible;
-  // TODO: Remove the restriction on the warpsPerCTA once chain dot testing is
-  // improved.
-  return srcMfmaLayout.getWarpsPerCTA()[1] == 1 && layoutsCompatible;
+  return layoutsCompatible;
 }
 #endif
 
