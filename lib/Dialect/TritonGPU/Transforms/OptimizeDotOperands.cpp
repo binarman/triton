@@ -165,11 +165,11 @@ public:
       return mlir::failure();
     auto loc = candidate.getLoc();
 
-    auto [earlySrc, dist] = earliestMFMACompatibleValue(candidate.getResult());
+    auto [earlySrc, dist, needTranspose] = earliestMFMACompatibleValue(candidate.getResult());
 
     if (dist > 1) {
       rewriter.setInsertionPoint(candidate);
-      auto newCvt = adjustLayout(rewriter, loc, earlySrc, dstType);
+      auto newCvt = adjustLayout(rewriter, loc, earlySrc, dstType, needTranspose);
       rewriter.replaceOp(candidate, newCvt);
       return mlir::success();
     }
@@ -179,35 +179,58 @@ public:
 
 private:
 
-  static Value adjustLayout(mlir::PatternRewriter &rewriter, mlir::Location loc, Value src, Type targetType){
+  // Insert no-op operations to adjust compatible layout
+  static Value adjustLayout(mlir::PatternRewriter &rewriter, mlir::Location loc, Value src, Type targetType, bool transpose) {
     assert(isa<RankedTensorType>(targetType));
     auto srcType = cast<RankedTensorType>(src.getType());
     if (srcType == targetType)
       return src;
+    if (transpose) {
+      auto srcEncoding = cast<triton::gpu::MfmaEncodingAttr>(srcType.getEncoding());
+      auto ctx = srcEncoding.getContext();
+      auto nonKDim = srcEncoding.getNonKDim();
+      auto warps = srcEncoding.getWarpsPerCTA();
+      auto trans = srcEncoding.getIsTransposed();
+      auto tSrcEncoding = triton::gpu::MfmaEncodingAttr::get(ctx, nonKDim, warps, !trans);
+
+      auto shape = srcType.getShape();
+      auto dtype = srcType.getElementType();
+      auto tSrcType = RankedTensorType::get(shape, dtype, tSrcEncoding);
+      src = rewriter.create<triton::ViewOp>(loc, tSrcType, src);
+    }
     auto convert = rewriter.create<triton::gpu::ConvertLayoutOp>(loc, targetType, src);
     return convert.getResult();
   }
 
   // trace chain of layout conversions and find earliest compatible value,
   // which can be used as a dot operand
-  // returns pair: found value and distance to this value (0 if returned value equal to input val).
-  static std::tuple<mlir::Value, int> earliestMFMACompatibleValue(mlir::Value val) {
+  // returns tuple: found value, distance to this value (0 if returned value equal to input val)
+  // and flag which means we need to transpose value.
+  static std::tuple<mlir::Value, int, bool> earliestMFMACompatibleValue(mlir::Value val) {
     auto dstType = cast<RankedTensorType>(val.getType());
     mlir::Operation *op;
+    bool isTransposed = false;
+
+    // Components of best found result
     Value earliestDef = val;
     int earliestDist = 0;
+    bool earliestTransposed = false;
+
     for (int dist = 0; ; ++dist) {
       auto valType = cast<RankedTensorType>(val.getType());
       auto mfmaLayout = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(valType.getEncoding());
-      if (mfmaLayout && isMfmaToDotShortcut(valType, dstType)) {
+      if (mfmaLayout && isMfmaToDotShortcut(valType, dstType, isTransposed)) {
         earliestDef = val;
         earliestDist = dist;
+        earliestTransposed = isTransposed;
       }
       op = val.getDefiningOp();
       auto convertOp = dyn_cast_or_null<triton::gpu::ConvertLayoutOp>(op);
       auto transposeOp = dyn_cast_or_null<triton::TransOp>(op);
       if (!convertOp && !transposeOp)
-        return {earliestDef, earliestDist};
+        return {earliestDef, earliestDist, earliestTransposed};
+      if (transposeOp)
+        isTransposed = !isTransposed;
       val = op->getOperand(0);
     }
   }

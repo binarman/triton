@@ -404,12 +404,11 @@ static int getMfmaDotOpOrientation(triton::gpu::DotOperandEncodingAttr enc){
   auto mfmaLayout = dyn_cast_or_null<triton::gpu::MfmaEncodingAttr>(enc.getParent());
   if (!mfmaLayout)
     return 0;
-  bool isTransposed = mfmaLayout.getIsTransposed();
   bool isAOperand = enc.getOpIdx() == 0;
-  return isAOperand != isTransposed ? 1 : 2;
+  return isAOperand ? 1 : 2;
 }
 
-bool isMfmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
+bool isMfmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy, bool isSrcTransposedToDst) {
   auto srcLayout = srcTy.getEncoding();
   auto dstLayout = dstTy.getEncoding();
   auto srcMfmaLayout = srcLayout.cast<triton::gpu::MfmaEncodingAttr>();
@@ -421,8 +420,7 @@ bool isMfmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
   bool orientationCompatible = getMfmaOrientation(srcMfmaLayout) == getMfmaDotOpOrientation(dotOperandLayout);
   bool kWidthCompatible = dotOperandLayout.getKWidth() == 4;
   bool nonKDimCompatible = (srcMfmaLayout.getNonKDim() == 32) && (dstMfmaLayout.getNonKDim() == 32);
-  int kDim = dotOperandLayout.getOpIdx() == 0 ? 0 : 1;
-  bool warpsCompatible = (srcMfmaLayout.getWarpsPerCTA() == dstMfmaLayout.getWarpsPerCTA()) && (dstMfmaLayout.getWarpsPerCTA()[kDim] == 1);
+  bool warpsCompatible = (srcMfmaLayout.getWarpsPerCTA() == dstMfmaLayout.getWarpsPerCTA());
   bool layoutsCompatible = orientationCompatible && kWidthCompatible && nonKDimCompatible && warpsCompatible;
   return layoutsCompatible;
 }

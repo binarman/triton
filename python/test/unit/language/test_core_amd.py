@@ -1813,10 +1813,13 @@ def test_gemm(SIZE_M, SIZE_N, SIZE_K, NUM_WARPS, BLOCK_SIZE_M, BLOCK_SIZE_N, BLO
 
 @pytest.mark.parametrize("M, N, K, num_warps, z_first",
                          [(*shape, num_warps, z_first)
-                          for shape in [(64, 64, 64), (32, 32, 32), (16, 16, 16)]
+                          for shape in [(128, 128, 128), (64, 64, 64), (32, 32, 32), (16, 16, 16)]
                           for num_warps in [1, 2, 4]
                           for z_first in [False, True]])
 def test_advanced_chained_dot(M, N, K, num_warps, z_first, device='cuda'):
+    if M == 128 and N == 128 and K == 128 and num_warps == 4:
+        pytest.skip("Out of resources")
+
     # triton kernel
     @triton.jit
     def kernel(X, stride_xm, stride_xk,
@@ -1846,14 +1849,14 @@ def test_advanced_chained_dot(M, N, K, num_warps, z_first, device='cuda'):
     # input
     rs = RandomState(17)
     in_dtype="float16"
-    x = numpy_random((M, K), dtype_str=in_dtype, rs=rs)
-    y = numpy_random((K, N), dtype_str=in_dtype, rs=rs)
-    w = numpy_random((N, N), dtype_str=in_dtype, rs=rs)
+    x = numpy_random((M, K), dtype_str=in_dtype, rs=rs) * 0.1
+    y = numpy_random((K, N), dtype_str=in_dtype, rs=rs) * 0.1
+    w = numpy_random((N, N), dtype_str=in_dtype, rs=rs) * 0.1
     x_tri = to_triton(x, device=device)
     y_tri = to_triton(y, device=device)
     w_tri = to_triton(w, device=device)
     # triton result
-    z = 1 + numpy_random((M, N), dtype_str=in_dtype, rs=rs) * .1
+    z = numpy_random((M, N), dtype_str=in_dtype, rs=rs)
 
     z_tri = to_triton(z, device=device)
 
