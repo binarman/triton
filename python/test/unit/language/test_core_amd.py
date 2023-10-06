@@ -23,6 +23,13 @@ dtypes = int_dtypes + uint_dtypes + float_dtypes
 dtypes_with_bfloat16 = dtypes + ['bfloat16']
 torch_dtypes = ['bool'] + int_dtypes + ['uint8'] + float_dtypes + ['bfloat16']
 
+try:
+    cache_contents=os.listdir(os.path.expanduser('~/.triton/cache'))
+    print(cache_contents)
+except:
+    print("no cache found!")
+exit(1)
+
 if is_hip():
     GPU_DIALECT = "triton_gpu"
     THREADS_PER_WARP = 64
