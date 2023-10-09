@@ -20,6 +20,7 @@ import triton.language as tl
 
 @triton.jit
 def max_fn(x, y):
+    // just to trigger rebuild
     return tl.math.max(x, y)
 
 @triton.jit
