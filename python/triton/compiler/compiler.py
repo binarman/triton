@@ -34,6 +34,7 @@ from .utils import (InfoFromBackendForTensorMap, TensorMapManager,
 CUDA_DEFAULT_WARP_SIZE = 32
 
 def inline_triton_ir(mod):
+    print(mod, flush=True)
     pm = ir.pass_manager(mod.context)
     pm.enable_debug()
     pm.add_inliner_pass()
@@ -254,6 +255,7 @@ def get_amdgpu_arch_fulldetails():
     try:
         # TODO: package rocm.cc with Triton
         arch_info = get_arch_info()
+        arch_info = "amdgcn-amd-amdhsa--gfx940:sramecc+:xnack-"
         warp_size = get_warp_size()
         gfx_arch_details = re.search('amd.*', arch_info).group(0).strip().split('--')
         arch_triple = gfx_arch_details[0]

@@ -1268,6 +1268,7 @@ def gpu_matrix_core_version() -> int:
     if not is_hip():
         return 0
     arch_info = _triton.get_arch_info()
+    arch_info = "amdgcn-amd-amdhsa--gfx940:sramecc+:xnack-"
     gfx_arch_details = re.search('amd.*', arch_info)
     if gfx_arch_details is None:
         return 0
