@@ -78,16 +78,16 @@ def _fwd_kernel(
     qk_scale = sm_scale * 1.44269504
     # load q: it will stay in SRAM throughout
     q = tl.load(Q_block_ptr)
-    q = (q * qk_scale).to(tl.float16)
+    q = (q * qk_scale).to(tl.float8e4b15)
     # loop over k, v and update accumulator
     lo = 0
     hi = P_SEQ + (start_m + 1) * BLOCK_M if IS_CAUSAL else N_CTX + P_SEQ
     for start_n in range(lo, hi, BLOCK_N):
         # -- load k, v --
-        k = tl.load(K_block_ptr)
-        v = tl.load(V_block_ptr)
+        k = tl.load(K_block_ptr).to(tl.float8e4b15)
+        v = tl.load(V_block_ptr).to(tl.float8e4b15)
         # -- compute qk ---
-        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float16)
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float8e4b15)
         if IS_CAUSAL:
             qk = tl.where(P_SEQ + offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
         qk += tl.dot(q, k)
@@ -98,7 +98,7 @@ def _fwd_kernel(
         # -- scale and update acc --
         acc_scale = l_i * 0 + alpha  # workaround some compiler bug
         acc *= acc_scale[:, None]
-        acc += tl.dot(p.to(tl.float16), v)
+        acc += tl.dot(p.to(tl.float8e4b15), v)
         # -- update m_i and l_i --
         l_i = l_i * alpha + tl.sum(p, 1)
         m_i = m_i_new
@@ -717,4 +717,4 @@ def bench_flash_attention(BATCH, H, N_CTX, D_HEAD, causal, mode, provider, dtype
 
 
 # only works on post-Ampere GPUs right now
-bench_flash_attention.run(save_path='.', print_data=True)
+#bench_flash_attention.run(save_path='.', print_data=True)
