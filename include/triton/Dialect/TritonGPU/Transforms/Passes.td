@@ -102,9 +102,9 @@ def TritonAMDGPUAccelerateMatmul : Pass<"tritonamdgpu-accelerate-matmul", "mlir:
     Option<"matrixCoreVersion", "matrix-core-version",
            "int32_t", /*default*/"0",
            "device matrix core version">,
-    Option<"matrixInstructionSize", "matrix-instructio-size",
+    Option<"matrixInstructionSize", "matrix-instruction-size",
            "int32_t", /*default*/"0",
-           "enforce matrix intrucion MN size">
+           "enforce matrix instruction MN size">
   ];
 }
 
