@@ -28,6 +28,7 @@ def get_full_tuning_space():
     # other values in the future
     num_stage_range = [1, 0]
     waves_per_eu_range = [0,1,2,3,4]
+    matrix_instr_nonkdim_range = [16, 32]
 
     for block_m in block_mn_range:
         for block_n in block_mn_range:
@@ -37,7 +38,8 @@ def get_full_tuning_space():
                         for split_k in split_k_range:
                             for num_stages in num_stage_range:
                                 for waves_per_eu in waves_per_eu_range:
-                                    configs.append({'BLOCK_SIZE_M': block_m, 'BLOCK_SIZE_N': block_n, 'BLOCK_SIZE_K': block_k, 'GROUP_SIZE_M': group_m, 'SPLIT_K': split_k, 'num_warps': num_warps, 'num_stages': num_stages, 'waves_per_eu': waves_per_eu})
+                                    for matrix_instr_nonkdim in matrix_instr_nonkdim_range:
+                                        configs.append({'BLOCK_SIZE_M': block_m, 'BLOCK_SIZE_N': block_n, 'BLOCK_SIZE_K': block_k, 'GROUP_SIZE_M': group_m, 'SPLIT_K': split_k, 'num_warps': num_warps, 'num_stages': num_stages, 'waves_per_eu': waves_per_eu, 'matrix_instr_nonkdim': matrix_instr_nonkdim})
 
     return configs
 
@@ -45,25 +47,18 @@ def get_full_tuning_space():
 def prune_configs(M, N, K, configs):
     pruned_configs = []
 
-    ## TODO: improve how we deal with mfma16 vs mfma32
-    ## after it becomes a tuning parameter
-    mfma_type = os.getenv('MFMA_TYPE')
-    if mfma_type == '16':
-        mfma = 16
-    else:
-        mfma = 32
-
     for config in configs:
         BLOCK_SIZE_M = config.get("BLOCK_SIZE_M")
         BLOCK_SIZE_N = config.get("BLOCK_SIZE_N")
         BLOCK_SIZE_K = config.get("BLOCK_SIZE_K")
         SPLIT_K = config.get("SPLIT_K")
         GROUP_M = config.get("GROUP_SIZE_M")
-        if BLOCK_SIZE_M < mfma or BLOCK_SIZE_N < mfma:
+        matrix_instr_nonkdim = config.get("matrix_instr_nonkdim")
+        if BLOCK_SIZE_M < matrix_instr_nonkdim or BLOCK_SIZE_N < matrix_instr_nonkdim:
             continue
-        if M <= mfma and BLOCK_SIZE_M != mfma:
+        if M <= matrix_instr_nonkdim and BLOCK_SIZE_M != matrix_instr_nonkdim:
             continue
-        if N <= mfma and BLOCK_SIZE_N != mfma:
+        if N <= matrix_instr_nonkdim and BLOCK_SIZE_N != matrix_instr_nonkdim:
             continue
         # skip large split_k when not necessary
         if SPLIT_K != 1 and not need_split_k(M, N, K):
@@ -104,12 +99,13 @@ def read_config(config):
     num_warps = config.get('num_warps')
     num_stages = config.get('num_stages')
     waves_per_eu = config.get('waves_per_eu')
-    return block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu
+    matrix_instr_nonkdim = config.get('matrix_instr_nonkdim')
+    return block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, matrix_instr_nonkdim
 
 
 def gen_kernel_and_configStr_from_config(M, N, K, config):
-    block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu = read_config(config)
-    configStr = f"M{M}_N{N}_K{K}_BM{block_m}_BN{block_n}_BK{block_k}_GM{group_m}_SK{split_k}_nW{num_warps}_nS{num_stages}_EU{waves_per_eu}"
+    block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, matrix_instr_nonkdim = read_config(config)
+    configStr = f"M{M}_N{N}_K{K}_BM{block_m}_BN{block_n}_BK{block_k}_GM{group_m}_SK{split_k}_nW{num_warps}_nS{num_stages}_EU{waves_per_eu}_MI{matrix_instr_nonkdim}"
 
     matmul_def_str = f"""
 def matmul_{configStr}(a, b, c, M, N, K, am, ak, bk, bn, cm, cn, warmup=False):
@@ -130,6 +126,7 @@ def matmul_{configStr}(a, b, c, M, N, K, am, ak, bk, bn, cm, cn, warmup=False):
             num_warps = {num_warps},
             num_stages = {num_stages},
             waves_per_eu = {waves_per_eu},
+            matrix_instr_nonkdim = {matrix_instr_nonkdim},
             grid=(1,)
         )
     else:
@@ -144,7 +141,8 @@ def matmul_{configStr}(a, b, c, M, N, K, am, ak, bk, bn, cm, cn, warmup=False):
             SPLIT_K = {split_k},
             num_warps = {num_warps},
             num_stages = {num_stages},
-            waves_per_eu = {waves_per_eu}
+            waves_per_eu = {waves_per_eu},
+            matrix_instr_nonkdim = {matrix_instr_nonkdim}
         )
     return c
 
@@ -271,7 +269,7 @@ def extract_kernel_time(M, N, K, config, gpuid):
 
 
 def profile_batch_kernels(M, N, K, gpuid):
-    os.environ['ROCR_VISIBLE_DEVICES'] = str(gpuid)
+    # os.environ['ROCR_VISIBLE_DEVICES'] = str(gpuid)
     run_bash_command(f"rocprof --stats -o results-{gpuid}.csv python generated_kernel{M}{N}{K}-{gpuid}.py")
 
 
@@ -334,7 +332,7 @@ def tune_gemm_config(M, N, K, configs, verbose=False, num_threads=16, ngpus = 1)
     return minTime, bestConfig, compile_time, profile_time, post_time
 
 
-def matmul(a, b, c, block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu):
+def matmul(a, b, c, block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, matrix_instr_nonkdim):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     assert a.is_contiguous(), "Matrix A must be contiguous"
@@ -361,19 +359,20 @@ def matmul(a, b, c, block_m, block_n, block_k, group_m, split_k, num_warps, num_
         num_warps = num_warps,
         num_stages = num_stages,
         waves_per_eu = waves_per_eu,
+        matrix_instr_nonkdim = matrix_instr_nonkdim,
     )
     return c
 
 
 def test_correctness(M, N, K, config, verbose, datatype = torch.float16):
-    block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu = read_config(config)
+    block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, matrix_instr_nonkdim = read_config(config)
 
     torch.manual_seed(0)
     a = torch.randn((M, K), device='cuda', dtype=datatype)
     b = torch.randn((K, N), device='cuda', dtype=datatype)
     # Allocates output.
     c = torch.zeros((M, N), device=a.device, dtype=a.dtype)
-    triton_output = matmul(a, b, c, block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu)
+    triton_output = matmul(a, b, c, block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, matrix_instr_nonkdim)
     torch_output = torch.matmul(a, b)
     #print(f"triton_output={triton_output}")
     #print(f"torch_output={torch_output}")
