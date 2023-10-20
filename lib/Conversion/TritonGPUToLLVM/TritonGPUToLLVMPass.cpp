@@ -911,8 +911,7 @@ private:
 
         if (maxBitWidth < 16)
           promoteType = builder.getF16Type();
-
-        if (maxBitWidth < 32)
+        else if (maxBitWidth < 32)
           promoteType = builder.getF32Type();
 #endif
       } else {
