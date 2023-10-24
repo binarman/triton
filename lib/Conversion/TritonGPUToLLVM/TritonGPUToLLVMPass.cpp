@@ -897,7 +897,7 @@ private:
                          .getEncoding()
                          .dyn_cast<MfmaEncodingAttr>()) {
         Type BElType =
-            dotOp.getA().getType().cast<RankedTensorType>().getElementType();
+            dotOp.getB().getType().cast<RankedTensorType>().getElementType();
 
         auto maxBitWidth = std::max(AElType.getIntOrFloatBitWidth(),
                                     BElType.getIntOrFloatBitWidth());
@@ -911,7 +911,7 @@ private:
 
         if (maxBitWidth < 16)
           promoteType = builder.getF16Type();
-        else if (maxBitWidth < 32)
+        else if (maxBitWidth <= 32)
           promoteType = builder.getF32Type();
 #endif
       } else {
