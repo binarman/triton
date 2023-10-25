@@ -1,7 +1,7 @@
 // RUN: triton-opt %s -split-input-file --convert-triton-gpu-to-llvm="target=rocdl" 2>/dev/null | FileCheck --check-prefixes=CHECK,GCN %s
 
 module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 4 : i32} {
-  // CHECK: llvm.func @test_empty_kernel_THIS_SHOULD_FAIL(%arg0: i64, %arg1: !llvm.ptr<f16, 1>)
+  // CHECK: llvm.func @test_empty_kernel(%arg0: i64, %arg1: !llvm.ptr<f16, 1>)
   // Here the 128 comes from the 4 in module attribute multiples 32
   // PTX: nvvm.kernel = 1 : ui1, nvvm.maxntid = [128 : i32]
   tt.func @test_empty_kernel(%lb : index, %A : !tt.ptr<f16>) {
