@@ -1041,8 +1041,11 @@ static void hoistConvertOnTopOfExt(ConvertLayoutOp convertOp) {
     if (isExtOp(op)) {
       SetVector<Value> tempSlice;
       DenseMap<Value, Attribute> tempLayout;
+      std::optional<Attribute> srcEncoding = inferSrcEncoding(op, layout[v]);
+      if (!srcEncoding)
+        return;
       LogicalResult result = getRematerializableSlice(
-          op->getOperand(0), layout[v], tempSlice, tempLayout);
+          op->getOperand(0), *srcEncoding, tempSlice, tempLayout);
       // If we can rematerialize the rest of the ext slice we can ignore this
       // ext as it won't need a convert.
       if (result.succeeded()) {
