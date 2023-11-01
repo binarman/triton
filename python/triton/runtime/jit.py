@@ -276,13 +276,13 @@ class JITFunction(KernelInterface[T]):
         constants = dict(zip(self.constexprs, constexpr_key))
         return constants
 
-    def _call_hook(self, key, signature, device, constants, num_warps, num_ctas, num_stages, waves_per_eu, matrix_instr_nonkdim, enable_warp_specialization, extern_libs, configs):
+    def _call_hook(self, key, signature, device, constants, num_warps, num_ctas, num_stages, enable_warp_specialization, extern_libs, configs):
         if JITFunction.cache_hook is None:
             return False
         name = self.fn.__name__
         module = self.fn.__module__
         arg_reprs = ', '.join([f'{name}: {ty}' for name, ty in zip(self.arg_names, key[1])])
-        repr = f"{name}[num_warps={num_warps}, num_ctas={num_ctas}, num_stages={num_stages}, waves_per_eu={waves_per_eu}, matrix_instr_nonkdim={matrix_instr_nonkdim}, enable_warp_specialization={enable_warp_specialization}]({arg_reprs})"
+        repr = f"{name}[num_warps={num_warps}, num_ctas={num_ctas}, num_stages={num_stages}, enable_warp_specialization={enable_warp_specialization}]({arg_reprs})"
         key = str(key)
 
         class LegacyCompiler:
@@ -292,7 +292,7 @@ class JITFunction(KernelInterface[T]):
                 pass
 
         kwargs = dict(signature=signature, device=device, constants=constants,
-                      num_warps=num_warps, num_ctas=num_ctas, num_stages=num_stages, waves_per_eu=waves_per_eu, enable_warp_specialization=enable_warp_specialization, extern_libs=extern_libs,
+                      num_warps=num_warps, num_ctas=num_ctas, num_stages=num_stages, enable_warp_specialization=enable_warp_specialization, extern_libs=extern_libs,
                       configs=configs)
 
         return JITFunction.cache_hook(key=key, repr=repr, fn=LegacyCompiler(module, name), compile={
@@ -364,7 +364,7 @@ class JITFunction(KernelInterface[T]):
 
         src = f"""
 import triton
-def {self.fn.__name__}({args_signature}grid=None, num_warps=None, num_ctas=1, num_stages=None, waves_per_eu=0, matrix_instr_nonkdim=0, enable_warp_specialization=False, extern_libs=None, stream=None, warmup=False, device=None, device_type=None):
+def {self.fn.__name__}({args_signature}grid=None, num_warps=None, num_ctas=1, num_stages=None, enable_warp_specialization=False, extern_libs=None, stream=None, warmup=False, device=None, device_type=None):
     from ..compiler import compile, CompiledKernel, get_arch_default_num_warps, get_arch_default_num_stages
     sig_key = {f'{sig_keys},' if len(sig_keys) > 0 else ()}
     constexpr_key = {f'{constexpr_keys},' if len(constexpr_keys) > 0 else ()}
@@ -406,7 +406,7 @@ def {self.fn.__name__}({args_signature}grid=None, num_warps=None, num_ctas=1, nu
     if num_stages is None:
         num_stages = get_arch_default_num_stages(device_type)
 
-    key = (version_key, sig_key, constexpr_key, spec_key, num_warps, num_ctas, num_stages, waves_per_eu, matrix_instr_nonkdim, enable_warp_specialization, self.debug)
+    key = (version_key, sig_key, constexpr_key, spec_key, num_warps, num_ctas, num_stages, enable_warp_specialization, self.debug)
     if not extern_libs is None:
       key = (key, tuple(extern_libs.items()))
 
@@ -434,8 +434,8 @@ def {self.fn.__name__}({args_signature}grid=None, num_warps=None, num_ctas=1, nu
       for i, arg in constants.items():
         if callable(arg):
           raise TypeError(f"Callable constexpr at index {{i}} is not supported")
-      if not self._call_hook(key, signature, device, constants, num_warps, num_ctas, num_stages, waves_per_eu, matrix_instr_nonkdim, enable_warp_specialization, extern_libs, configs):
-        bin = compile(self, signature=signature, device=device, constants=constants, num_warps=num_warps, num_ctas=num_ctas, num_stages=num_stages, waves_per_eu=waves_per_eu, matrix_instr_nonkdim=matrix_instr_nonkdim, enable_warp_specialization=enable_warp_specialization, extern_libs=extern_libs, configs=configs, debug=self.debug, device_type=device_type)
+      if not self._call_hook(key, signature, device, constants, num_warps, num_ctas, num_stages, enable_warp_specialization, extern_libs, configs):
+        bin = compile(self, signature=signature, device=device, constants=constants, num_warps=num_warps, num_ctas=num_ctas, num_stages=num_stages, enable_warp_specialization=enable_warp_specialization, extern_libs=extern_libs, configs=configs, debug=self.debug, device_type=device_type)
         # Create tensormaps and append to args
         args = bin.assemble_tensormap_to_arg(args)
         if not warmup:
@@ -459,6 +459,13 @@ def {self.fn.__name__}({args_signature}grid=None, num_warps=None, num_ctas=1, nu
         exec(src, scope)
         return scope[self.fn.__name__]
 
+    def __add_tuning_parameter(self, tuning_parameter_name, default_val):
+        self.arg_names += [tuning_parameter_name]
+        self.arg_defaults += [default_val]
+        self.has_defaults = any(v != inspect._empty for v in self.arg_defaults)
+        self.__annotations__[tuning_parameter_name] = "constexpr"
+
+
     def __init__(self, fn, version=None, do_not_specialize=None, debug=None, noinline=None):
         self.fn = fn
         self.module = fn.__module__
@@ -468,6 +475,7 @@ def {self.fn.__name__}({args_signature}grid=None, num_warps=None, num_ctas=1, nu
         self.arg_names = [v.name for v in signature.parameters.values()]
         self.arg_defaults = [v.default for v in signature.parameters.values()]
         self.has_defaults = any(v != inspect._empty for v in self.arg_defaults)
+
         # function source code (without decorators)
         self.src = textwrap.dedent(inspect.getsource(fn))
         self.src = self.src[self.src.find("def"):]
@@ -482,8 +490,15 @@ def {self.fn.__name__}({args_signature}grid=None, num_warps=None, num_ctas=1, nu
         self.noinline = noinline
         # annotations
         self.__annotations__ = {name: _normalize_ty(ty) for name, ty in fn.__annotations__.items()}
+
+        from triton.language.semantic import is_hip
+        if is_hip():
+            self.__add_tuning_parameter("waves_per_eu", default_val=0)
+            self.__add_tuning_parameter("matrix_instr_nonkdim", default_val=0)
+
         # index of constexprs
         self.constexprs = [self.arg_names.index(name) for name, ty in self.__annotations__.items() if 'constexpr' in ty]
+        print("self.constexprs", self.constexprs, [name for name, ty in self.__annotations__.items() if 'constexpr' in ty], flush=True)
         # specialization hints
         regular_args = [arg for i, arg in enumerate(self.arg_names) if i not in self.constexprs]
         self.do_not_specialize = [] if do_not_specialize is None else do_not_specialize
