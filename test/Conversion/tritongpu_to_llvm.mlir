@@ -1096,6 +1096,29 @@ module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 4 :
 
 // -----
 
+#shared = #triton_gpu.shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
+#blocked = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [2, 16], warpsPerCTA = [1, 4], order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
+#dot_operand_a = #triton_gpu.dot_op<{opIdx=0, parent=#blocked}>
+#dot_operand_b = #triton_gpu.dot_op<{opIdx=1, parent=#blocked}>
+module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 4 : i32} {
+  // CHECK-LABEL: matmul_fma_fp16_fp32
+  tt.func @matmul_fma_fp16_fp32(%ptr:!tt.ptr<f32> {tt.divisibility = 16 : i32},
+  %a:tensor<32x16xf16, #shared>, %b:tensor<16x32xf16, #shared>) {
+    %cst = arith.constant dense<0.000000e+00> : tensor<32x32xf32, #blocked>
+    %a_mat = triton_gpu.convert_layout %a : (tensor<32x16xf16, #shared>) -> tensor<32x16xf16, #dot_operand_a>
+    %b_mat = triton_gpu.convert_layout %b : (tensor<16x32xf16, #shared>) -> tensor<16x32xf16, #dot_operand_b>
+
+    %dot = tt.dot %a_mat, %b_mat, %cst {allowTF32 = true, maxNumImpreciseAcc = 0 : i32, transA = false, transB = false} : tensor<32x16xf16, #dot_operand_a> * tensor<16x32xf16, #dot_operand_b> -> tensor<32x32xf32, #blocked>
+
+    %ptr1 = tt.splat %ptr : (!tt.ptr<f32>) -> tensor<32x1x!tt.ptr<f32>, #blocked>
+    %ptr2 = tt.broadcast %ptr1 : (tensor<32x1x!tt.ptr<f32>, #blocked>) -> tensor<32x32x!tt.ptr<f32>, #blocked>
+    tt.store %ptr2, %dot : tensor<32x32xf32, #blocked>
+    tt.return
+  }
+}
+
+// -----
+
 #blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [4], order = [0], CTAsPerCGA = [1], CTASplitNum = [1], CTAOrder = [0]}>
 module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 4 : i32} {
   // CHECK-LABEL: atomic_add_f32
