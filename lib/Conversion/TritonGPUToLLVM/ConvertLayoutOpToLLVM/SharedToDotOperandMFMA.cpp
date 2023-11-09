@@ -507,24 +507,19 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
               offsets[m * loadsPerThread * numRepK + k * loadsPerThread + loadId];
           Value loadAddress = bitcast(gep(smemPtrTy, smemBase, loadOffset),
                                       getShemPtrTy(loadVecTy));
-          Value vectorValue = load(loadAddress);
-          if (numOfElems > 1) {
+          Value loadedValue = load(loadAddress);
+          if (loadsPerThread > 1) {
             for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
               Value elemVal =
-                  extract_element(aElemTy, vectorValue, i32_val(elemId));
+                  extract_element(aElemTy, loadedValue, i32_val(elemId));
               elemVal = bitcast(elemVal, resElemTy);
               valVec = insert_element(vecTy, valVec, elemVal,
                                       i32_val(loadId * elemsPerLoad + elemId));
             }
           } else {
-            valVec = extract_element(aElemTy, vectorValue, i32_val(0));
-            valVec = bitcast(valVec, resElemTy);
+            valVec = loadedValue;
           }
         }
-        if (aElemTy == i8_ty && numOfElems == 4)
-          valVec = bitcast(valVec, i32_ty);
-        if (aElemTy == i8_ty && numOfElems == 8)
-          valVec = bitcast(valVec, i64_ty);
         ha.push_back(valVec);
       }
     }
@@ -551,24 +546,19 @@ Value loadA(ConversionPatternRewriter &rewriter, Location loc, Value thread,
                                      k * loadsPerThread + loadId];
           Value loadAddress = bitcast(gep(smemPtrTy, smemBase, loadOffset),
                                       getShemPtrTy(loadVecTy));
-          Value vectorValue = load(loadAddress);
-          if (numOfElems > 1) {
+          Value loadedValue = load(loadAddress);
+          if (loadsPerThread > 1) {
             for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
               Value elemVal =
-                  extract_element(aElemTy, vectorValue, i32_val(elemId));
+                  extract_element(aElemTy, loadedValue, i32_val(elemId));
               elemVal = bitcast(elemVal, resElemTy);
               valVec = insert_element(vecTy, valVec, elemVal,
                                       i32_val(loadId * elemsPerLoad + elemId));
             }
           } else {
-            valVec = extract_element(aElemTy, vectorValue, i32_val(0));
-            valVec = bitcast(valVec, resElemTy);
+            valVec = loadedValue;
           }
         }
-        if (aElemTy == i8_ty && numOfElems == 4)
-          valVec = bitcast(valVec, i32_ty);
-        if (aElemTy == i8_ty && numOfElems == 8)
-          valVec = bitcast(valVec, i64_ty);
         ha.push_back(valVec);
       }
     }
@@ -657,24 +647,19 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
               offsets[n * loadsPerThread * numRepK + k * loadsPerThread + loadId];
           Value loadAddress = bitcast(gep(smemPtrTy, smemBase, loadOffset),
                                       getShemPtrTy(loadVecTy));
-          Value vectorValue = load(loadAddress);
-          if (numOfElems > 1) {
+          Value loadedValue = load(loadAddress);
+          if (loadsPerThread > 1) {
             for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
               Value elemVal =
-                  extract_element(bElemTy, vectorValue, i32_val(elemId));
+                  extract_element(bElemTy, loadedValue, i32_val(elemId));
               elemVal = bitcast(elemVal, resElemTy);
               valVec = insert_element(vecTy, valVec, elemVal,
                                       i32_val(loadId * elemsPerLoad + elemId));
             }
           } else {
-            valVec = extract_element(bElemTy, vectorValue, i32_val(0));
-            valVec = bitcast(valVec, resElemTy);
+            valVec = loadedValue;
           }
         }
-        if (bElemTy == i8_ty && numOfElems == 4)
-          valVec = bitcast(valVec, i32_ty);
-        if (bElemTy == i8_ty && numOfElems == 8)
-          valVec = bitcast(valVec, i64_ty);
         hb.push_back(valVec);
       }
     }
@@ -699,24 +684,19 @@ Value loadB(ConversionPatternRewriter &rewriter, Location loc, Value thread,
                                      k * loadsPerThread + loadId];
           Value loadAddress = bitcast(gep(smemPtrTy, smemBase, loadOffset),
                                       getShemPtrTy(loadVecTy));
-          Value vectorValue = load(loadAddress);
-          if (numOfElems > 1) {
+          Value loadedValue = load(loadAddress);
+          if (loadsPerThread > 1) {
             for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
               Value elemVal =
-                  extract_element(bElemTy, vectorValue, i32_val(elemId));
+                  extract_element(bElemTy, loadedValue, i32_val(elemId));
               elemVal = bitcast(elemVal, resElemTy);
               valVec = insert_element(vecTy, valVec, elemVal,
                                       i32_val(loadId * elemsPerLoad + elemId));
             }
           } else {
-            valVec = extract_element(bElemTy, vectorValue, i32_val(0));
-            valVec = bitcast(valVec, resElemTy);
+            valVec = loadedValue;
           }
         }
-        if (bElemTy == i8_ty && numOfElems == 4)
-          valVec = bitcast(valVec, i32_ty);
-        if (bElemTy == i8_ty && numOfElems == 8)
-          valVec = bitcast(valVec, i64_ty);
         hb.push_back(valVec);
       }
     }
