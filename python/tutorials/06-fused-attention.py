@@ -157,17 +157,6 @@ def _attn_fwd(
 ):
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
-    qkv_offset = off_hz * stride_qh
-    Q_block_ptr = tl.make_block_ptr(
-        base=Q + qkv_offset,
-    BLOCK_M: tl.constexpr,
-    BLOCK_DMODEL: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    STAGE: tl.constexpr,
-    pre_load_v: tl.constexpr,
-):
-    start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
     off_z = off_hz // H
     off_h = off_hz % H
     qvk_offset = off_z.to(tl.int64) * stride_qz + off_h.to(tl.int64) * stride_qh
@@ -247,24 +236,15 @@ def _attn_fwd(
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * N_CTX + offs_m
     tl.store(m_ptrs, m_i + tl.math.log2(l_i))
-    # write back O
-    O_block_ptr = tl.make_block_ptr(
-        base=Out + qkv_offset,
-        shape=(N_CTX, BLOCK_DMODEL),
-        strides=(stride_om, stride_on),
-        offsets=(start_m * BLOCK_M, 0),
-        block_shape=(BLOCK_M, BLOCK_DMODEL),
-        order=(1, 0)
-    )
     tl.store(O_block_ptr, acc.to(Out.type.element_ty))
 
 
 @triton.jit
-def _bwd_preprocess(
-    Out, DO,
-    NewDO, Delta,
-    BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr,
-):
+def _attn_bwd_preprocess(O, DO,  #
+                         NewDO, Delta,  #
+                         Z, H, N_CTX,  #
+                         BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr,  #
+                         ):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     off_hz = tl.program_id(1)
     off_n = tl.arange(0, D_HEAD)
@@ -750,11 +730,14 @@ class _attention(torch.autograd.Function):
         else:
             BLOCK = 128
         q, k, v, o, L = ctx.saved_tensors
+        assert do.is_contiguous()
+        assert q.stride() == k.stride() == v.stride() == o.stride() == do.stride()
         do = do.contiguous()
         dq = torch.zeros_like(q, dtype=torch.float32)
         # dk = torch.empty_like(k, dtype=torch_dtype)
         dk = torch.empty_like(k)
         dv = torch.empty_like(v)
+        BATCH, N_HEAD, N_CTX = q.shape[:3]
         delta = torch.empty_like(L)
         do_scaled = torch.empty_like(do)
         # Figure out what BLOCK size fwd used and adjust num_blocks accordingly.
@@ -764,10 +747,11 @@ class _attention(torch.autograd.Function):
         # Alternatively we could compute a new grid but this keeps it consistent
         # with fwd and easier to reason about.
         block_scale = (q.shape[2] // ctx.grid[0]) // BLOCK
-        _bwd_preprocess[(ctx.grid[0] * ctx.grid[1], )](
-            o, do,
-            do_scaled, delta,
-            BLOCK_M=block_scale * BLOCK, D_HEAD=ctx.BLOCK_DMODEL,
+        _attn_bwd_preprocess[(ctx.grid[0] * ctx.grid[1], )](
+            o, do,  #
+            do_scaled, delta,  #
+            BATCH, N_HEAD, N_CTX,  #
+            BLOCK_M=block_scale * BLOCK, D_HEAD=ctx.BLOCK_DMODEL,  #
         )
         if not ctx.split_kernel:
             _bwd_kernel[(ctx.grid[1],)](
