@@ -1670,6 +1670,7 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                            [64, 32, 32, 2],
                                            [256, 32, 32, 2],
                                            [256, 32, 32, 4],
+                                           [16, 16, 64, 1],
                                            ]
                           for allow_tf32 in [False, True]
                           for col_a in [True, False]
@@ -1789,6 +1790,13 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
         y = numpy_random((N, K), dtype_str=in_dtype, rs=rs).T
     else:
         y = numpy_random((K, N), dtype_str=in_dtype, rs=rs)
+    for i in range(M):
+        for k in range(K):
+            x[i, k] = 1.0
+    for i in range(N):
+        for k in range(K):
+            y[k, i] = 0.0
+    y[0, 0] = 1.0
     w = numpy_random((N, N), dtype_str=in_dtype, rs=rs)
     if 'int' not in in_dtype:
         x *= .1
@@ -1870,6 +1878,9 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
         z_ref = np.matmul(z_ref, w)
     # compare
     # print(z_ref[:,0], z_tri[:,0])
+    print("diff:\n", z_ref - to_numpy(z_tri))
+    print("ref:\n", z_ref)
+    print("tri:\n", to_numpy(z_tri))
     if in_dtype == 'float32':
         # XXX: Somehow there's a larger difference when we use float32
         np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=0.01, atol=1e-3)

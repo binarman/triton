@@ -262,6 +262,7 @@ private:
                            multiDimCTAInRepId[1]);
       multiDimOffset[0] = add(multiDimBase[0], i32_val(offsets[elemId][0]));
       multiDimOffset[1] = add(multiDimBase[1], i32_val(offsets[elemId][1]));
+      printValues(loc, rewriter, "mfma offsets [0, 1]:", {multiDimOffset[0], multiDimOffset[1]});
       return multiDimOffset;
     }
 #endif
@@ -355,8 +356,10 @@ private:
             valVec = insert_element(vecTy, valVec, currVal, i32_val(v));
           }
           store(valVec, ptr);
+          printValues(loc, rewriter, "storing cvt value (ptr, value): ", {ptr, valVec});
         } else {
           Value valVec = load(ptr);
+          printValues(loc, rewriter, "read cvt value (ptr, value): ", {ptr, valVec});
           for (unsigned v = 0; v < vec; ++v) {
             Value currVal = extract_element(llvmElemTy, valVec, i32_val(v));
             if (isInt1)
