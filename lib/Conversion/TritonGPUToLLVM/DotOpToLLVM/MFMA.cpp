@@ -350,22 +350,6 @@ struct DotOpMFMAConversionHelper {
     return reducedAcc;
   }
 
-  void printValue(std::string prefix, Value v) const {
-    auto ctx = v.getContext();
-    std::vector<Value> values;
-    auto vTy = v.getType();
-    if (auto vecTy = dyn_cast<VectorType>(vTy)) {
-      auto elemTy = vecTy.getElementType();
-      for (int i = 0; i < vecTy.getNumElements(); ++i) {
-        values.push_back(extract_element(elemTy, v, i32_val(i)));
-      }
-    } else {
-      values.push_back(v);
-    }
-    auto prefixAttr = mlir::StringAttr::get(ctx, prefix);
-    rewriter.create<triton::PrintOp>(loc, prefixAttr, values);
-  }
-
   // Conduct the Dot conversion.
   LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor) const {
     auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
@@ -422,16 +406,12 @@ struct DotOpMFMAConversionHelper {
         }
 
         for (size_t k = 0; k < numRepK; k++) {
-          printValue("Arg A (k: " + std::to_string(k) + ", m: " + std::to_string(m) + ") ", ha[{m, k}]);
-          printValue("Arg B (k: " + std::to_string(k) + ", n: " + std::to_string(n) + ") ", hb[{n, k}]);
           acc =
               mfmaLayout.getIsTransposed()
                   ? generateMFMAOp(mfmaInstrDescr, hb[{n, k}], ha[{m, k}], acc)
                   : generateMFMAOp(mfmaInstrDescr, ha[{m, k}], hb[{n, k}], acc);
         }
-        printValue("Acc no reduce (m: " + std::to_string(m) + ", n: " + std::to_string(n) + ") ", acc);
         acc = reduceSubBlocks(subBlocks, acc);
-        printValue("Acc reduced (m: " + std::to_string(m) + ", n: " + std::to_string(n) + ") ", acc);
         for (unsigned v = 0; v < elemsPerVec; ++v) {
           fc[m * numRepN * elemsPerVec + n * elemsPerVec + v] =
               extract_element(dstElemTy, acc, i32_val(v));

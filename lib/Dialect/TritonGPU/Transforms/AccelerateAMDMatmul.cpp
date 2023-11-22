@@ -105,7 +105,15 @@ public:
     if (enforcedNonKDim != 0) {
       nonKDim = enforcedNonKDim;
     } else {
-      nonKDim = 4;
+      nonKDim = -1;
+      int minSize = std::min(resShape[0], resShape[1]);
+      if (minSize >= 32)
+        nonKDim = 32;
+      if (minSize >= 16 && minSize < 32)
+        nonKDim = 16;
+      if (minSize < 16)
+        nonKDim = 4;
+      assert(nonKDim != -1);
     }
     switch (nonKDim) {
     case 32:

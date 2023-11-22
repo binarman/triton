@@ -1644,7 +1644,7 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                                       ('float8e4m3fnuz', 'float32'),
                                                       ('float16', 'float32'),
                                                       ('float32', 'float32')]
-                          for non_k_dim in [0, 16, 32]
+                          for non_k_dim in [0, 4, 16, 32]
                           if not (allow_tf32 and (in_dtype in ['float16']))] +
 
                          [(*shape_nw, col_a, col_b, 'none', allow_tf32, in_dtype, out_dtype, non_k_dim)
@@ -1670,14 +1670,17 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                            [64, 32, 32, 2],
                                            [256, 32, 32, 2],
                                            [256, 32, 32, 4],
-                                           [16, 16, 64, 1],
+                                           [32, 8, 128, 4],
+                                           [8, 32, 128, 2],
+                                           [4, 32, 64, 4],
+                                           [32, 4, 64, 2],
                                            ]
                           for allow_tf32 in [False, True]
                           for col_a in [True, False]
                           for col_b in [True, False]
                           for in_dtype in ['int8', 'bfloat16', 'float16', 'float32']
                           for out_dtype in [None]
-                          for non_k_dim in [0, 16, 32]])
+                          for non_k_dim in [0, 4, 16, 32]])
 def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, out_dtype, non_k_dim, device='cuda'):
     capability = torch.cuda.get_device_capability()
 
@@ -1698,6 +1701,12 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
                 out_dtype = "int32"
         if non_k_dim == 32 and (M < 32 or N < 32):
             pytest.skip("incompatible non_k_dim == 32 with MN sizes")
+        if non_k_dim == 16 and (M < 16 or N < 16):
+            pytest.skip("incompatible non_k_dim == 16 with MN sizes")
+        if non_k_dim == 4 and (K < 64):
+            pytest.skip("incompatible non_k_dim == 4 with K size")
+        if non_k_dim == 4 and (M > 16 or N > 16):
+            pytest.skip("skipping lage matrices for non_k_dim == 4 to speedup testing")
 
     if capability[0] < 7:
         pytest.skip("Only test tl.dot() on devices with sm >= 70")
@@ -1878,9 +1887,6 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
         z_ref = np.matmul(z_ref, w)
     # compare
     # print(z_ref[:,0], z_tri[:,0])
-    print("diff:\n", z_ref - to_numpy(z_tri))
-    print("ref:\n", z_ref)
-    print("tri:\n", to_numpy(z_tri))
     if in_dtype == 'float32':
         # XXX: Somehow there's a larger difference when we use float32
         np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=0.01, atol=1e-3)
