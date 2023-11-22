@@ -18,7 +18,7 @@ import multiprocessing
 def get_full_tuning_space():
     configs = []
 
-    block_mn_range = [16, 32, 64, 128, 256]
+    block_mn_range = [4, 16, 32, 64, 128, 256]
     block_k_range = [16, 32, 64, 128, 256]
     split_k_range = [1, 2, 4, 5, 6, 8, 10, 12, 16, 18, 24]
     num_warps_range = [1, 2, 4, 8]
@@ -45,7 +45,9 @@ def get_full_tuning_space():
 def prune_configs(M, N, K, configs):
     pruned_configs = []
 
-    if M < 32 or N < 32:
+    if M < 16 or N < 16:
+        mfma = 4
+    elif M < 32 or N < 32:
         mfma = 16
     else:
         mfma = 32
@@ -54,6 +56,8 @@ def prune_configs(M, N, K, configs):
         BLOCK_SIZE_M = config.get("BLOCK_SIZE_M")
         BLOCK_SIZE_N = config.get("BLOCK_SIZE_N")
         BLOCK_SIZE_K = config.get("BLOCK_SIZE_K")
+        if mfma == 4 and BLOCK_SIZE_K < 64:
+            continue
         SPLIT_K = config.get("SPLIT_K")
         GROUP_M = config.get("GROUP_SIZE_M")
         if BLOCK_SIZE_M < mfma or BLOCK_SIZE_N < mfma:
