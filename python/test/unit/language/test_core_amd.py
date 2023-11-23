@@ -1799,13 +1799,6 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
         y = numpy_random((N, K), dtype_str=in_dtype, rs=rs).T
     else:
         y = numpy_random((K, N), dtype_str=in_dtype, rs=rs)
-    for i in range(M):
-        for k in range(K):
-            x[i, k] = 1.0
-    for i in range(N):
-        for k in range(K):
-            y[k, i] = 0.0
-    y[0, 0] = 1.0
     w = numpy_random((N, N), dtype_str=in_dtype, rs=rs)
     if 'int' not in in_dtype:
         x *= .1

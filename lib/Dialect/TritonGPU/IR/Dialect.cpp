@@ -993,7 +993,7 @@ DotOperandEncodingAttr::getMFMAElemsPerInstr() const {
   int64_t nonKDim = mfmaEncoding.getNonKDim();
   assert(nonKDim == 32 || nonKDim == 16 || nonKDim == 4);
   int64_t kWidth = getKWidth();
-  constexpr int waveSize = 64;  // MFMA is used on wave64 architectures only
+  constexpr int waveSize = 64; // MFMA is used on wave64 architectures only
   int kGroups = waveSize / nonKDim;
   int64_t kDim = kWidth * kGroups;
   if (getOpIdx() == 0)

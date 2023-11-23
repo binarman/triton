@@ -250,7 +250,7 @@ public:
     // in mfma 32x32 case argument matrix groups elements in 2 groups
     // in mfma 16x16 case argument matrix groups elements in 4 groups
     // in mfma 4x4 case arguemnt matrix groups in 16 groups
-    switch (nonKDim){
+    switch (nonKDim) {
     case 32:
       kWidth /= 2;
       break;
