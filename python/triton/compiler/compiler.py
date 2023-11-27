@@ -37,6 +37,7 @@ CUDA_DEFAULT_WARP_SIZE = 32
 class CudaTargetDescriptor:
     capability: int
     num_warps: int
+    enable_fp_fusion: bool
 
 
 def _is_cuda(target):
@@ -67,8 +68,7 @@ def ttir_compute_capability_rewrite(mod, target):
     if _is_cuda(target):
         pm.add_rewrite_tensor_pointer_pass(target.capability, False)
     elif is_hip():
-        capability = 90
-        pm.add_rewrite_tensor_pointer_pass(capability, True)
+        pm.add_rewrite_tensor_pointer_pass(target["capability"], True)
     else:
         assert(False, "unsupported target")
     pm.run(mod)
@@ -120,14 +120,14 @@ def optimize_ttgir(mod, num_stages, num_warps, num_ctas, target,
         pm.add_tritongpu_accelerate_matmul_pass(capability)
     # TODO change interface of accelerate_matmul_pass
     if is_hip():
-        matrix_core_version = gpu_matrix_core_version()
+        matrix_core_version = target["matrix_core_version"]
         matrix_inst_size = matrix_inst_type
         pm.add_tritonamdgpu_accelerate_matmul_pass(matrix_core_version, matrix_inst_size)
     pm.add_tritongpu_remove_layout_conversions_pass()
     if optimize_epilogue:
         pm.add_tritongpu_optimize_epilogue_pass()
     pm.add_tritongpu_optimize_dot_operands_pass()
-    if num_stages == 0 and is_hip() and gpu_matrix_core_version() != 0:
+    if num_stages == 0 and is_hip() and target["matrix_core_version"] != 0:
         pm.add_tritongpu_stream_pipeline_pass()
         pm.add_canonicalizer_pass()
     ws_enabled = False
@@ -147,6 +147,7 @@ def optimize_ttgir(mod, num_stages, num_warps, num_ctas, target,
         pm.add_tritongpu_wspipeline_pass(num_stages, num_warps, capability)
         pm.add_tritongpu_wsmutex_pass(capability)
         pm.add_tritongpu_wsmaterialization_pass(capability)
+        pm.add_licm_pass()
         pm.add_cse_pass()
     else:
         if is_hip():
@@ -190,7 +191,7 @@ def ttgir_to_llir(mod, extern_libs, target, tma_infos, waves_per_eu=0):
     if _is_cuda(target):
         return translate_triton_gpu_to_llvmir(mod, target.capability, tma_infos, runtime.TARGET.NVVM, waves_per_eu)
     else:
-        return translate_triton_gpu_to_llvmir(mod, 0, TMAInfos(), runtime.TARGET.ROCDL, waves_per_eu)
+        return translate_triton_gpu_to_llvmir(mod, target["capability"], TMAInfos(), runtime.TARGET.ROCDL, waves_per_eu)
 
 
 # PTX translation
@@ -220,7 +221,7 @@ def llir_to_ptx(mod: Any, target: CudaTargetDescriptor, ptx_version: int = None)
     if ptx_version is None:
         _, cuda_version = path_to_ptxas()
         ptx_version = ptx_get_version(cuda_version)
-    return translate_llvmir_to_ptx(mod, target.capability, ptx_version)
+    return translate_llvmir_to_ptx(mod, target.capability, ptx_version, target.enable_fp_fusion)
 
 
 def ptx_to_cubin(ptx: str, target: CudaTargetDescriptor):
@@ -231,7 +232,7 @@ def ptx_to_cubin(ptx: str, target: CudaTargetDescriptor):
     :return: str
     '''
     ptxas, _ = path_to_ptxas()
-    return compile_ptx_to_cubin(ptx, ptxas, target.capability)
+    return compile_ptx_to_cubin(ptx, ptxas, target.capability, target.enable_fp_fusion)
 
 
 # ------------------------------------------------------------------------------
@@ -349,8 +350,6 @@ def is_hip():
         raise ImportError("Triton requires PyTorch to be installed")
     return torch.version.hip is not None
 
-from ..language.semantic import gpu_matrix_core_version
-
 def get_cuda_capability(capability):
     if capability is None:
         device = get_current_device()
@@ -409,6 +408,7 @@ def compile(fn, **kwargs):
     num_stages = kwargs.get("num_stages", get_arch_default_num_stages(device_type, capability=capability))
     waves_per_eu = kwargs.get("waves_per_eu", 0)
     matrix_instr_nonkdim = kwargs.get("matrix_instr_nonkdim", 0)
+    enable_fp_fusion = kwargs.get("enable_fp_fusion", True)
     # TODO[shuhaoj]: Default should be to enable warp specialization once possible
     enable_warp_specialization = kwargs.get("enable_warp_specialization", False)
     # TODO[shuhaoj]: persistent can be decoupled with warp specialization
@@ -431,7 +431,7 @@ def compile(fn, **kwargs):
     # build architecture descriptor
     if device_type == "cuda":
         _device_backend = get_backend(device_type)
-        target = CudaTargetDescriptor(capability=get_cuda_capability(capability), num_warps=num_warps)
+        target = CudaTargetDescriptor(capability=get_cuda_capability(capability), num_warps=num_warps, enable_fp_fusion=enable_fp_fusion)
     else:
         _device_backend = get_backend(device_type)
         assert _device_backend
