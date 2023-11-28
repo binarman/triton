@@ -73,6 +73,7 @@ public:
         mfmaVersion(mfmaVersion), enforcedNonKDim(nonKDim) {}
 
   bool isChainDot(tt::DotOp &dotOp) const {
+    return true;
     auto filter = [&dotOp](Operation *op) {
       return op->getParentRegion() == dotOp->getParentRegion();
     };
