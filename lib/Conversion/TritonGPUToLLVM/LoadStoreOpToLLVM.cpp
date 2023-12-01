@@ -317,6 +317,26 @@ struct LoadOpConversion
   }
 };
 
+static void printValues(Location loc, ConversionPatternRewriter &rewriter, std::string prefix, const std::vector<Value> &vs) {
+  auto ctx = loc.getContext();
+  std::vector<Value> values;
+  for (const auto &v: vs) {
+    auto vTy = v.getType();
+    if (auto vecTy = dyn_cast<VectorType>(vTy)) {
+      auto elemTy = vecTy.getElementType();
+      for (int i = 0; i < vecTy.getNumElements(); ++i) {
+        values.push_back(extract_element(elemTy, v, i32_val(i)));
+      }
+    } else if (vTy.isa<LLVM::LLVMPointerType>()) {
+      values.push_back(ptrtoint(i32_ty, v));
+    } else {
+      values.push_back(v);
+    }
+  }
+  auto prefixAttr = mlir::StringAttr::get(ctx, prefix);
+  rewriter.create<triton::PrintOp>(loc, prefixAttr, values);
+}
+
 struct StoreOpConversion
     : public ConvertTritonGPUOpToLLVMPattern<triton::StoreOp>,
       public LoadStoreConversionBase {
@@ -408,6 +428,8 @@ struct StoreOpConversion
         llWord = bitcast(llWord, valArgTy);
 #ifdef USE_ROCM
         Value maskVal = llMask ? and_(mask, maskElems[vecStart]) : mask;
+        auto threadId = getThreadId(rewriter, loc);
+        printValues(loc, rewriter, "store value (tid, ptr, value, mask): ", {threadId, ptrElems[vecStart + wordIdx * wordNElems], llWord, maskVal});
         rewriter.create<scf::IfOp>(loc, maskVal,
                                      [&](OpBuilder &builder, Location loc){
                                        auto storeOp = builder.create<LLVM::StoreOp>(loc, llWord, ptrElems[vecStart + wordIdx * wordNElems]);
