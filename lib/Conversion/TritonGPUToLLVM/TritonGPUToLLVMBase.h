@@ -579,14 +579,22 @@ public:
       auto threadsPerWarp = triton::gpu::getThreadsPerWarp(layout);
       auto warpsPerCTA = triton::gpu::getWarpsPerCTA(layout);
       auto order = triton::gpu::getOrder(layout);
+      auto warpsOrder = order;
+      auto threadsOrder = order;
+      if (layout.dyn_cast<triton::gpu::MfmaEncodingAttr>()) {
+        warpsOrder[0] = 0;
+        warpsOrder[1] = 1;
+        threadsOrder[0] = 1;
+        threadsOrder[1] = 0;
+      }
       auto shapePerCTATile = triton::gpu::getShapePerCTATile(layout, shape);
       Value warpSize = i32_val(triton::gpu::getWarpSize(layout));
       Value laneId = urem(tid, warpSize);
       Value warpId = udiv(tid, warpSize);
       SmallVector<Value> multiDimWarpId =
-          delinearize(rewriter, loc, warpId, warpsPerCTA, order);
+          delinearize(rewriter, loc, warpId, warpsPerCTA, warpsOrder);
       SmallVector<Value> multiDimThreadId =
-          delinearize(rewriter, loc, laneId, threadsPerWarp, order);
+          delinearize(rewriter, loc, laneId, threadsPerWarp, threadsOrder);
       for (unsigned dim = 0; dim < rank; ++dim) {
         // if there is no data replication across threads on this dimension
         if (shape[dim] >= shapePerCTATile[dim])
