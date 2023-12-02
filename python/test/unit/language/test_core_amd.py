@@ -2013,6 +2013,7 @@ def get_variant_golden(a, b):
 
 @pytest.mark.parametrize('SIZE_M,SIZE_N,SIZE_K,NUM_WARPS,BLOCK_SIZE_M,BLOCK_SIZE_N,BLOCK_SIZE_K,NUM_STAGES', [
     [64, 32, 128, 4, 64, 32, 64, 0],
+    [4, 16, 128, 4, 4, 16, 64, 1],
     [64, 32, 128, 4, 64, 32, 64, 2]
 ])
 def test_gemm(SIZE_M, SIZE_N, SIZE_K, NUM_WARPS, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, NUM_STAGES):

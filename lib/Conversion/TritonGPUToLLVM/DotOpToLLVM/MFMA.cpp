@@ -292,9 +292,12 @@ struct DotOpMFMAConversionHelper {
     return descr;
   }
 
-  Value reduceSubBlocks(int numSubBlocks, Value acc) const {
+  Value processSubBlocks(int numSubBlocks, Value acc, bool reduceSubBlocks,
+                         bool zeroSubBlocks) const {
     assert((numSubBlocks & (numSubBlocks - 1)) == 0 &&
            "numSubBlocks in not pow 2!");
+    if (numSubBlocks == 1)
+      return acc;
     constexpr int waveSize = 64;
     int subBlockSize = waveSize / numSubBlocks;
     Value laneId = getThreadId();
@@ -307,21 +310,56 @@ struct DotOpMFMAConversionHelper {
     for (int i = 0; i < numScalars; ++i)
       accScalar[i] = extract_element(elemType, acc, i32_val(i));
 
-    while (subBlockSize < waveSize) {
-      for (int i = 0; i < numScalars; ++i) {
-        Value other_acc =
-            mlir::LLVM::shflSync(loc, rewriter, accScalar[i], subBlockSize);
-        if (elemType.isInteger(32))
-          accScalar[i] = add(accScalar[i], other_acc);
-        else
-          accScalar[i] = fadd(accScalar[i], other_acc);
+    if (reduceSubBlocks) {
+      while (subBlockSize < waveSize) {
+        for (int i = 0; i < numScalars; ++i) {
+          Value other_acc =
+              mlir::LLVM::shflSync(loc, rewriter, accScalar[i], subBlockSize);
+          if (elemType.isInteger(32))
+            accScalar[i] = add(accScalar[i], other_acc);
+          else
+            accScalar[i] = fadd(accScalar[i], other_acc);
+        }
+        subBlockSize *= 2;
       }
-      subBlockSize *= 2;
     }
+    if (zeroSubBlocks) {
+      Value zero;
+      if (elemType.isInteger(32))
+        zero = i32_val(0);
+      else
+        zero = f32_val(0.0);
+      auto cond = icmp_ult(laneId, i32_val(subBlockSize));
+      for (int i = 0; i < numScalars; ++i)
+        accScalar[i] = select(cond, accScalar[i], zero);
+    }
+
     Value reducedAcc = undef(vecTy);
     for (int i = 0; i < numScalars; ++i)
       reducedAcc = insert_element(vecTy, reducedAcc, accScalar[i], i32_val(i));
     return reducedAcc;
+  }
+
+  /// @brief MFMA 4x4 is computes 16 matrix mupliplications, this functions adds
+  /// these 16 matrices to get final 4x4 matrix
+  /// @param numSubBlocks
+  /// @param acc
+  /// @return
+  Value reduceSubBlocks(int numSubBlocks, Value acc) const {
+    return processSubBlocks(numSubBlocks, acc, true, false);
+  }
+
+  /// @brief Zeroes out redundant values in all sub-blocks except first one
+  ///
+  /// Every wave in mfma 4x4 layout holds only 4 unique values(scalar or
+  /// vectors) in blocks of 4 consecutive threads, There are 16 copies of these
+  /// 4 values across all threads of the wave. Need to zero out 15 copies to use
+  /// accumulator between dot operations.
+  /// @param numSubBlocks
+  /// @param acc
+  /// @return
+  Value zeroAuxiliarBlocks(int numSubBlocks, Value acc) const {
+    return processSubBlocks(numSubBlocks, acc, false, true);
   }
 
   // Conduct the Dot conversion.
@@ -379,7 +417,7 @@ struct DotOpMFMAConversionHelper {
               vecTy, acc, fc[m * numRepN * elemsPerVec + n * elemsPerVec + v],
               i32_val(v));
         }
-
+        acc = zeroAuxiliarBlocks(subBlocks, acc);
         for (size_t k = 0; k < numRepK; k++) {
           acc =
               mfmaLayout.getIsTransposed()
