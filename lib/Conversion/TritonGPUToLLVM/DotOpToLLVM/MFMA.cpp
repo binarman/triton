@@ -276,8 +276,8 @@ struct DotOpMFMAConversionHelper {
     auto kWidth = aEncoding.getKWidth();
     assert(kWidth == bEncoding.getKWidth());
 
-    auto repA = aEncoding.getMFMARep(aTensorTy.getShape(), elemTy);
-    auto repB = bEncoding.getMFMARep(bTensorTy.getShape(), elemTy);
+    auto repA = aEncoding.getMFMARep(aTensorTy.getShape());
+    auto repB = bEncoding.getMFMARep(bTensorTy.getShape());
 
     assert(repA[1] == repB[0]);
 

@@ -457,7 +457,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   auto mfmaInstrNonK = elemsPerInstr[nonKDimIdx];
   auto mfmaInstrK = elemsPerInstr[kDimIdx];
 
-  auto numReps = encoding.getMFMARep(shape, elemTy);
+  auto numReps = encoding.getMFMARep(shape);
   auto numRepNonK = numReps[nonKDimIdx];
   auto numRepK = numReps[kDimIdx];
 
