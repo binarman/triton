@@ -155,13 +155,34 @@ def matmul_{configStr}(a, b, c, M, N, K, am, ak, bk, bn, cm, cn, warmup=False):
         )
         return c
 
-def try_config_{configStr}(M, N, K, am, ak, bk, bn, cm, cn, dtype):
-    #a = torch.randn((M, K), device='cuda', dtype=dtype)
-    #b = torch.randn((K, N), device='cuda', dtype=dtype)
-    #c = torch.zeros((M, N), device=a.device, dtype=a.dtype)
-    try:
-        matmul_{configStr}(None, None, None, M, N, K, am, ak, bk, bn, cm, cn, True)
+def test_correctness(M, N, K, config, verbose, datatype = torch.float16):
+    block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu = read_config(config)
+
+    torch.manual_seed(0)
+    a = torch.randn((M, K), device='cuda', dtype=datatype)
+    b = torch.randn((K, N), device='cuda', dtype=datatype)
+    # Allocates output.
+    c = torch.zeros((M, N), device=a.device, dtype=a.dtype)
+    triton_output = matmul(a, b, c, block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu)
+    torch_output = torch.matmul(a, b)
+    rtol = 0 if torch.version.hip is None else 1e-2
+    if torch.allclose(triton_output, torch_output, atol=1e-1, rtol=rtol):
         return True
+    else:
+        return False
+
+def try_config_{configStr}(M, N, K, am, ak, bk, bn, cm, cn, dtype):
+    a = torch.randn((M, K), device='cuda', dtype=dtype)
+    b = torch.randn((K, N), device='cuda', dtype=dtype)
+    c = torch.zeros((M, N), device=a.device, dtype=a.dtype)
+    try:
+        torch_output = torch.matmul(a, b)
+        triton_output = matmul_{configStr}(a, b, c, M, N, K, am, ak, bk, bn, cm, cn, False)
+        rtol = 0 if torch.version.hip is None else 1e-2
+        if torch.allclose(triton_output, torch_output, atol=1e-1, rtol=rtol):
+            return True
+        else:
+            return False
     except Exception as e:
         print(f'invalid config(compilation): {configStr}: ', e, flush=True)
         return False
@@ -326,11 +347,11 @@ def tune_gemm_config(M, N, K, configs, verbose=0, num_threads=16, gpus = [0]):
         print(f"compile time: {compile_time}", flush=True)
 
     ## profile generated kernels
-    running = [multiprocessing.Process(target=profile_batch_kernels, args=(M,N,K,gpu_id,verbose)) for gpu_id in gpus]
-    for p in running:
-        p.start()
-    for p in running:
-        p.join()
+    # running = [multiprocessing.Process(target=profile_batch_kernels, args=(M,N,K,gpu_id,verbose)) for gpu_id in gpus]
+    # for p in running:
+    #     p.start()
+    # for p in running:
+    #     p.join()
 
     profile_end = datetime.now()
     profile_time = profile_end - compile_end
@@ -340,27 +361,28 @@ def tune_gemm_config(M, N, K, configs, verbose=0, num_threads=16, gpus = [0]):
     ## post process results.csv to get the best config and minTime
     ## TODO: process the file in parallel
     minTime = 1024 * 1024 * 1024
-    thread_pool = multiprocessing.Pool(processes=num_threads)
-    tasks = []
-    idx = 0
-    for config in configs:
-        file_idx = idx % len(gpus)
-        gpu_id = gpus[file_idx]
-        tasks += [thread_pool.apply_async(extract_kernel_time, args=(M, N, K, config, gpu_id))]
-        idx += 1
-    thread_pool.close()
-    thread_pool.join()
+    # thread_pool = multiprocessing.Pool(processes=num_threads)
+    # tasks = []
+    # idx = 0
+    # for config in configs:
+    #     file_idx = idx % len(gpus)
+    #     gpu_id = gpus[file_idx]
+    #     tasks += [thread_pool.apply_async(extract_kernel_time, args=(M, N, K, config, gpu_id))]
+    #     idx += 1
+    # thread_pool.close()
+    # thread_pool.join()
 
-    for task in tasks:
-        config, parsed_outputs = task.get()
-        if parsed_outputs:
-            min_us = int(parsed_outputs[0]) / 1000
-            if min_us < minTime:
-                minTime = min_us
-                bestConfig = config
-        else:
-            min_us = -1
-            print(f"invalid config(post processing): SIZE {M} {N} {K}: {config}", flush=True)
+    # for task in tasks:
+    #     config, parsed_outputs = task.get()
+    #     if parsed_outputs:
+    #         min_us = int(parsed_outputs[0]) / 1000
+    #         if min_us < minTime:
+    #             minTime = min_us
+    #             bestConfig = config
+    #     else:
+    #         min_us = -1
+    #         print(f"invalid config(post processing): SIZE {M} {N} {K}: {config}", flush=True)
+    bestConfig = configs[0]
     post_end = datetime.now()
     post_time = post_end - profile_end
     if verbose:
