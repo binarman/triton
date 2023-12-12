@@ -32,6 +32,26 @@ using namespace mlir::triton;
 
 namespace {
 
+static void printValues(Location loc, ConversionPatternRewriter &rewriter, std::string prefix, const std::vector<Value> &vs) {
+  auto ctx = loc.getContext();
+  std::vector<Value> values;
+  for (const auto &v: vs) {
+    auto vTy = v.getType();
+    if (auto vecTy = dyn_cast<VectorType>(vTy)) {
+      auto elemTy = vecTy.getElementType();
+      for (int i = 0; i < vecTy.getNumElements(); ++i) {
+        values.push_back(extract_element(elemTy, v, i32_val(i)));
+      }
+    } else if (vTy.isa<LLVM::LLVMPointerType>()) {
+      values.push_back(ptrtoint(i32_ty, v));
+    } else {
+      values.push_back(v);
+    }
+  }
+  auto prefixAttr = mlir::StringAttr::get(ctx, prefix);
+  rewriter.create<triton::PrintOp>(loc, prefixAttr, values);
+}
+
 using ::mlir::triton::gpu::DotOperandEncodingAttr;
 using ::mlir::triton::gpu::MfmaEncodingAttr;
 using ::mlir::triton::gpu::SharedEncodingAttr;
@@ -220,7 +240,6 @@ struct DotOpMFMAConversionHelper {
     case 32:
     case 16:
       return 1;
-      break;
     case 4:
       assert(elementType.getIntOrFloatBitWidth() <= 32 &&
              "fp64 is not supported yet");
@@ -418,11 +437,14 @@ struct DotOpMFMAConversionHelper {
               i32_val(v));
         }
         acc = zeroAuxiliarBlocks(subBlocks, acc);
+        Value tid = getThreadId();
+        #define toS(x) (#x + std::to_string(x))
         for (size_t k = 0; k < numRepK; k++) {
           acc =
               mfmaLayout.getIsTransposed()
                   ? generateMFMAOp(mfmaInstrDescr, hb[{n, k}], ha[{m, k}], acc)
                   : generateMFMAOp(mfmaInstrDescr, ha[{m, k}], hb[{n, k}], acc);
+          printValues(loc, rewriter, "MFMA rep " + toS(n) + toS(m) + toS(k) + "(tid, a, b, acc): ", {tid, ha[{m, k}], hb[{n, k}], acc});
         }
         acc = reduceSubBlocks(subBlocks, acc);
         for (unsigned v = 0; v < elemsPerVec; ++v) {
