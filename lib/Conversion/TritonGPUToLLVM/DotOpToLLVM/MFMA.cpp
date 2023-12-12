@@ -234,7 +234,7 @@ struct DotOpMFMAConversionHelper {
     }
     GCNBuilder builder;
     auto &nop = *builder.create("s_nop 16");
-    (*nop)();
+    builder.launch(rewriter, loc, void_ty(valA.getContext()), true);
 
     return Value();
   }
