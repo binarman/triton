@@ -227,7 +227,7 @@ struct DotOpMFMAConversionHelper {
     case 16:{
       auto acc = generateMFMA16Op(mfmaDescr.coreType, valA, valB, valC);
       GCNBuilder builder;
-      auto &nop = *builder.create("s_nop 32");
+      auto &nop = *builder.create("s_nop 32 ;");
       auto operand = builder.newOperand(acc, "h");
       nop(operand);
       auto ll = builder.launch(rewriter, loc, void_ty(valA.getContext()), true);
