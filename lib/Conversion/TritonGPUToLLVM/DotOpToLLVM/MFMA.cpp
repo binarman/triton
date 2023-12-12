@@ -451,7 +451,7 @@ struct DotOpMFMAConversionHelper {
               mfmaLayout.getIsTransposed()
                   ? generateMFMAOp(mfmaInstrDescr, hb[{n, k}], ha[{m, k}], acc)
                   : generateMFMAOp(mfmaInstrDescr, ha[{m, k}], hb[{n, k}], acc);
-          printValues(loc, rewriter, "MFMA rep " + toS(n) + toS(m) + toS(k) + "(tid, a, b, acc): ", {tid, ha[{m, k}], hb[{n, k}], acc});
+          // printValues(loc, rewriter, "MFMA rep " + toS(n) + toS(m) + toS(k) + "(tid, a, b, acc): ", {tid, ha[{m, k}], hb[{n, k}], acc});
         }
         acc = reduceSubBlocks(subBlocks, acc);
         for (unsigned v = 0; v < elemsPerVec; ++v) {
