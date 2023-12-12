@@ -229,7 +229,8 @@ struct DotOpMFMAConversionHelper {
       GCNBuilder builder;
       auto &nop = *builder.create("s_nop 32");
       nop();
-      builder.launch(rewriter, loc, void_ty(valA.getContext()), true);
+      auto nop = builder.launch(rewriter, loc, void_ty(valA.getContext()), true);
+      llvm::errs() << "nop: " << nop << "\n";
       return acc;
       break;
     }
