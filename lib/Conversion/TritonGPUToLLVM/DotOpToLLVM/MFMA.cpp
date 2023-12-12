@@ -224,17 +224,20 @@ struct DotOpMFMAConversionHelper {
     case 32:
       return generateMFMA32Op(mfmaDescr.coreType, valA, valB, valC);
       break;
-    case 16:
-      return generateMFMA16Op(mfmaDescr.coreType, valA, valB, valC);
+    case 16:{
+      auto acc = generateMFMA16Op(mfmaDescr.coreType, valA, valB, valC);
+      GCNBuilder builder;
+      auto &nop = *builder.create("s_nop 32");
+      nop();
+      builder.launch(rewriter, loc, void_ty(valA.getContext()), true);
+      return acc;
       break;
+    }
     case 4:
       return generateMFMA4Op(mfmaDescr.coreType, valA, valB, valC);
     default:
       llvm::report_fatal_error("MFMA nonkDim size is not supported");
     }
-    GCNBuilder builder;
-    auto &nop = *builder.create("s_nop 16");
-    builder.launch(rewriter, loc, void_ty(valA.getContext()), true);
 
     return Value();
   }
