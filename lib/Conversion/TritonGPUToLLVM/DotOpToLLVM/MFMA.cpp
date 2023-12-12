@@ -232,6 +232,10 @@ struct DotOpMFMAConversionHelper {
     default:
       llvm::report_fatal_error("MFMA nonkDim size is not supported");
     }
+    GCNBuilder builder;
+    auto &nop = *builder.create("s_nop 16");
+    (*nop)();
+
     return Value();
   }
 
