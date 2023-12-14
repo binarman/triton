@@ -203,6 +203,9 @@ public:
       return failure();
 
     auto CTALayout = ttg::getCTALayout(oldRetType.getEncoding());
+    assert(CTALayout.getCTAsPerCGA().size() == 2);
+    assert(CTALayout.getCTAsPerCGA()[0] == 1);
+    assert(CTALayout.getCTAsPerCGA()[1] == 1);
 
     // get MFMA encoding for the given number of warps
     auto retShape = oldRetType.getShape();
@@ -224,7 +227,7 @@ public:
 
     bool isTransposed = isChainDot(dotOp);
     mfmaEnc = ttg::MfmaEncodingAttr::get(oldRetType.getContext(), nonKDim,
-                                         warpsPerTile, isTransposed, CTALayout);
+                                         warpsPerTile, isTransposed);
 
     auto newRetType =
         RankedTensorType::get(retShape, oldRetType.getElementType(), mfmaEnc);
