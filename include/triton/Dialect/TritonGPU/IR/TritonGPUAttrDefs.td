@@ -158,7 +158,10 @@ compared to 1*64 when the hasLeadingOffset is false.
             int vecSize = ((typeWidthInBit == 16) ? 64 : 32 ) / typeWidthInBit;
             int maxPhase = SIMDWidth / perPhase;
             // TODO (zhanglx): figure out better parameters for mfma4
-            if (mfmaEnc.getNonKDim() == 4 )
+            auto mDim = mfmaEnc.getMDim();
+            auto nDim = mfmaEnc.getNDim();
+            auto nonKDim = dotOpEnc.getOpIdx() == 0 ? mDim : nDim;
+            if (nonKDim == 4 )
                maxPhase = 4;
 
             return get(context, vecSize, perPhase, maxPhase, order, CTALayout);
@@ -765,7 +768,8 @@ V [ 0,4,8...60   1,5...61     2,6...62     3,7...63    ]   [ 128,132...188  129,
 
   let parameters = (
     ins
-    "unsigned":$nonKDim,
+    "unsigned":$MDim,
+    "unsigned":$NDim,
     ArrayRefParameter<"unsigned">:$warpsPerCTA,
     "bool":$isTransposed
   );
