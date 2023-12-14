@@ -1681,7 +1681,9 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                            [8, 32, 128, 2],
                                            [4, 32, 64, 4],
                                            [32, 4, 64, 2],
-                                           [16, 4, 64, 8]
+                                           [16, 4, 64, 8],
+                                           [64, 4, 16, 1],
+                                           [4, 64, 16, 1],
                                            ]
                           for allow_tf32 in [False, True]
                           for col_a in [True, False]
@@ -1905,11 +1907,11 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
         if backend.get_matrix_core_version() > 0:
             ttgir = pgm.asm['ttgir']
             if non_k_dim == 16:
-                assert "#triton_gpu.mfma<{nonKDim = 16" in ttgir
-                assert "#triton_gpu.mfma<{nonKDim = 32" not in ttgir
+                assert "#triton_gpu.mfma<{mDim = 16, nDim = 16" in ttgir
+                assert "#triton_gpu.mfma<{mDim = 32, nDim = 32" not in ttgir
             elif non_k_dim == 32:
-                assert "#triton_gpu.mfma<{nonKDim = 32" in ttgir
-                assert "#triton_gpu.mfma<{nonKDim = 16" not in ttgir
+                assert "#triton_gpu.mfma<{mDim = 32, nDim = 32" in ttgir
+                assert "#triton_gpu.mfma<{mDim = 16, nDim = 16" not in ttgir
         gcn = pgm.asm['amdgcn']
         if backend.get_matrix_core_version() == 3 and effective_in_dtype == tl.float8e5b16:
             assert "v_mfma_f32_32x32x16_bf8_bf8" in gcn or "v_mfma_f32_16x16x32_bf8_bf8" in gcn
@@ -2709,7 +2711,7 @@ class MfmaLayout:
         self.cta_order = str(cta_order)
 
     def __str__(self):
-        return f"#{GPU_DIALECT}.mfma<{{nonKDim = {self.non_k_dim}, warpsPerCTA = {self.warps_per_cta}, isTransposed = {self.is_transposed}, CTAsPerCGA={self.ctas_per_cga}, CTASplitNum={self.cta_split_num}, CTAOrder={self.cta_order}}}>"
+        return f"#{GPU_DIALECT}.mfma<{{mDim = {self.non_k_dim}, nDim = {self.non_k_dim}, warpsPerCTA = {self.warps_per_cta}, isTransposed = {self.is_transposed}, CTAsPerCGA={self.ctas_per_cga}, CTASplitNum={self.cta_split_num}, CTAOrder={self.cta_order}}}>"
 
 
 class BlockedLayout:

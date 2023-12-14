@@ -30,6 +30,27 @@
 using namespace mlir;
 using namespace mlir::triton;
 
+static void printValues(Location loc, ConversionPatternRewriter &rewriter,
+                        std::string prefix, const std::vector<Value> &vs) {
+  auto ctx = loc.getContext();
+  std::vector<Value> values;
+  for (const auto &v : vs) {
+    auto vTy = v.getType();
+    if (auto vecTy = dyn_cast<VectorType>(vTy)) {
+      auto elemTy = vecTy.getElementType();
+      for (int i = 0; i < vecTy.getNumElements(); ++i) {
+        values.push_back(extract_element(elemTy, v, i32_val(i)));
+      }
+    } else if (vTy.isa<LLVM::LLVMPointerType>()) {
+      values.push_back(ptrtoint(i32_ty, v));
+    } else {
+      values.push_back(v);
+    }
+  }
+  auto prefixAttr = mlir::StringAttr::get(ctx, prefix);
+  rewriter.create<triton::PrintOp>(loc, prefixAttr, values);
+}
+
 namespace {
 
 using ::mlir::triton::gpu::DotOperandEncodingAttr;
@@ -235,8 +256,11 @@ struct DotOpMFMAConversionHelper {
     return Value();
   }
 
-  int getNumSubmatrices(Type elementType, int nonKDim) const {
-    switch (nonKDim) {
+  int getNumSubmatrices(Type elementType, int mDim, int nDim) const {
+    if (mDim == 64 && nDim == 4 || mDim == 4 && nDim == 64)
+      return 1;
+    assert(mDim == nDim);
+    switch (mDim) {
     case 32:
     case 16:
       return 1;
@@ -264,7 +288,7 @@ struct DotOpMFMAConversionHelper {
     auto bElemTy = bTensorTy.getElementType();
 
     auto dotOpEncoding = aTensorTy.getEncoding().cast<DotOperandEncodingAttr>();
-    auto mfmaEncoding = dotOpEncoding.getParent().cast<MfmaEncodingAttr>();
+    auto mfmaLayout = dotOpEncoding.getParent().cast<MfmaEncodingAttr>();
     if (aElemTy.isFloat8E4M3FNUZ() && bElemTy.isFloat8E4M3FNUZ())
       return MatrixCoreType::FP32_FP8_FP8_FP32;
     if (aElemTy.isFloat8E4M3FNUZ() && bElemTy.isFloat8E5M2FNUZ())
@@ -278,7 +302,11 @@ struct DotOpMFMAConversionHelper {
     if (aElemTy.isF32())
       return MatrixCoreType::FP32_FP32_FP32_FP32;
     if (aElemTy.isBF16()) {
-      auto nonKDim = mfmaEncoding.getNonKDim();
+      unsigned mDim = mfmaLayout.getMDim();
+      unsigned nDim = mfmaLayout.getNDim();
+      assert((mDim == nDim && (mDim == 32 || mDim == 16 || mDim == 4)) ||
+             (mDim == 64 && nDim == 4) || (mDim == 4 && nDim == 64));
+      unsigned nonKDim = std::min(mDim, nDim);
       auto kWidth = dotOpEncoding.getKWidth();
       if ((nonKDim == 32 || nonKDim == 16 || nonKDim == 4) && kWidth == 4) {
         return MatrixCoreType::FP32_BF16_BF16_FP32_1K;
@@ -289,7 +317,11 @@ struct DotOpMFMAConversionHelper {
       }
     }
     if (aElemTy.isInteger(8)) {
-      auto nonKDim = mfmaEncoding.getNonKDim();
+      unsigned mDim = mfmaLayout.getMDim();
+      unsigned nDim = mfmaLayout.getNDim();
+      assert((mDim == nDim && (mDim == 32 || mDim == 16 || mDim == 4)) ||
+             (mDim == 64 && nDim == 4) || (mDim == 4 && nDim == 64));
+      unsigned nonKDim = std::min(mDim, nDim);
       auto kWidth = dotOpEncoding.getKWidth();
       if ((nonKDim == 32 || nonKDim == 16 || nonKDim == 4) && kWidth == 8) {
         return MatrixCoreType::INT32_INT8_INT8_INT32_CDNA3;
@@ -308,7 +340,11 @@ struct DotOpMFMAConversionHelper {
     auto tensorTy = op.getD().getType().cast<RankedTensorType>();
     auto encoding = tensorTy.getEncoding().cast<MfmaEncodingAttr>();
     descr.coreType = getMatrixCoreTypeFromDot(op);
-    descr.size = encoding.getNonKDim();
+    auto mDim = encoding.getMDim();
+    auto nDim = encoding.getNDim();
+    assert((mDim == nDim && (mDim == 32 || mDim == 16 || mDim == 4)) ||
+           (mDim == 64 && nDim == 4) || (mDim == 4 && nDim == 64));
+    descr.size = std::min(nDim, mDim);
     return descr;
   }
 
@@ -385,8 +421,10 @@ struct DotOpMFMAConversionHelper {
   // Conduct the Dot conversion.
   LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor) const {
     auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
-    auto nonKDim = mfmaLayout.getNonKDim();
-    assert(nonKDim == 32 || nonKDim == 16 || nonKDim == 4);
+    auto mDim = mfmaLayout.getMDim();
+    auto nDim = mfmaLayout.getNDim();
+    assert((mDim == nDim && (mDim == 32 || mDim == 16 || mDim == 4)) ||
+           (mDim == 64 && nDim == 4) || (mDim == 4 && nDim == 64));
     auto mfmaInstrDescr = getMatrixInstrDescr(op);
 
     Value a = op.getA();
@@ -428,8 +466,8 @@ struct DotOpMFMAConversionHelper {
     // compute number of output elements that each thread holds for one MFMA
     // instruction. subBlocks
     const int subBlocks =
-        getNumSubmatrices(aTensorTy.getElementType(), nonKDim);
-    auto elemsPerVec = nonKDim * nonKDim * subBlocks / warpSize;
+        getNumSubmatrices(aTensorTy.getElementType(), mDim, nDim);
+    auto elemsPerVec = mDim * nDim * subBlocks / warpSize;
 
     auto vecTy = vec_ty(dstElemTy, elemsPerVec);
     for (int m = 0; m < numRepM; ++m) {
@@ -446,6 +484,12 @@ struct DotOpMFMAConversionHelper {
               mfmaLayout.getIsTransposed()
                   ? generateMFMAOp(mfmaInstrDescr, hb[{n, k}], ha[{m, k}], acc)
                   : generateMFMAOp(mfmaInstrDescr, ha[{m, k}], hb[{n, k}], acc);
+          Value tid = getThreadId();
+#define s(x) (#x + std::to_string(x))
+          printValues(loc, rewriter,
+                      "MFMA op " + s(m) + ", " + s(n) + ", " + s(k) +
+                          "(tid, A, B, acc): ",
+                      {tid, ha[{m, k}], hb[{n, k}], acc});
         }
         acc = reduceSubBlocks(subBlocks, acc);
         for (unsigned v = 0; v < elemsPerVec; ++v) {
