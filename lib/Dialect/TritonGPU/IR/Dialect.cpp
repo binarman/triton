@@ -321,8 +321,15 @@ SmallVector<unsigned> getContigPerThread(Attribute layout) {
   if (auto mmaLayout = layout.dyn_cast<MmaEncodingAttr>()) {
     assert(mmaLayout.isVolta() || mmaLayout.isAmpere() || mmaLayout.isHopper());
     return {1, 2};
-  } else if (layout.isa<MfmaEncodingAttr>()) {
-    return {1, 1};
+  } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
+    auto mDim = mfmaLayout.getMDim();
+    auto nDim = mfmaLayout.getNDim();
+    assert((mDim == nDim && (mDim == 32 || mDim == 16 || mDim == 4)) ||
+           (mDim == 64 && nDim == 4) || (mDim == 4 && nDim == 64));
+    if (mfmaLayout.getIsTransposed())
+      return {1, 4};
+    else
+      return {4, 1};
   } else if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
     auto parentLayout = sliceLayout.getParent();
     return getContigPerThread(parentLayout);
@@ -491,7 +498,10 @@ SmallVector<unsigned> getOrder(Attribute layout) {
   } else if (auto mmaLayout = layout.dyn_cast<MmaEncodingAttr>()) {
     return {1, 0};
   } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
-    return {1, 0};
+    if (mfmaLayout.getIsTransposed())
+      return {0, 1};
+    else
+      return {1, 0};
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
     return {1, 0};
   } else if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
