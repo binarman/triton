@@ -2972,6 +2972,9 @@ def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
     if torch.version.hip is not None and _get_warp_size() == 64:
         if src_layout.is_transposed and axis == 0:
             pytest.skip("Reduce along axis 0 is not supported in transposed mfma layout")
+    if src_layout is MfmaLayout:
+        if src_layout.m_dim < M or src_layout.n_dim < N:
+            pytest.skip("incompatible MN dimensions")
     rdims_2d = f"1x{N}" if axis == 0 else f"{M}x1"
     rdims_1d = f"{N}" if axis == 0 else f"{M}"
     store_range = "%7" if axis == 0 else "%1"
