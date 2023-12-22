@@ -1682,8 +1682,8 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                            [4, 32, 64, 4],
                                            [32, 4, 64, 2],
                                            [16, 4, 64, 8],
-                                           [64, 4, 16, 1],
-                                           [4, 64, 16, 1],
+                                           [128, 4, 128, 4],
+                                           [4, 128, 64, 8],
                                            ]
                           for allow_tf32 in [False, True]
                           for col_a in [True, False]
@@ -2960,9 +2960,6 @@ else:
 @pytest.mark.parametrize("src_layout", layouts)
 @pytest.mark.parametrize("axis", [0, 1])
 def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
-    if is_hip():
-        pytest.skip("Skiping test_reduce_layouts for now.")
-
     if torch.version.hip is not None and _get_warp_size() == 64:
         if src_layout.is_transposed and axis == 0:
             pytest.skip("Reduce along axis 0 is not supported in transposed mfma layout")
