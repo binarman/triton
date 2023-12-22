@@ -2950,7 +2950,7 @@ if torch.version.hip is not None and _get_warp_size() == 64:
         MfmaLayout(m_dim=64, n_dim=4, warps_per_cta=[4, 1], is_transposed=True, ctas_per_cga=[1, 1], cta_split_num=[1, 1], cta_order=[1, 0]),
         MfmaLayout(m_dim=64, n_dim=4, warps_per_cta=[2, 2], is_transposed=False, ctas_per_cga=[1, 1], cta_split_num=[1, 1], cta_order=[1, 0]),
         MfmaLayout(m_dim=4, n_dim=64, warps_per_cta=[4, 1], is_transposed=True, ctas_per_cga=[1, 1], cta_split_num=[1, 1], cta_order=[1, 0]),
-        MfmaLayout(m_dim=4, n_dim=64, warps_per_cta=[2, 2], is_transposed=False, ctas_per_cga=[1, 1], cta_split_num=[1, 1], cta_order=[1, 0]),
+        MfmaLayout(m_dim=4, n_dim=64, warps_per_cta=[4, 1], is_transposed=False, ctas_per_cga=[1, 1], cta_split_num=[1, 1], cta_order=[1, 0]),
     ]
     shapes = [[128, 32], [128, 128], [32, 128], [64, 64]]
 else:
