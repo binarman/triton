@@ -2969,8 +2969,8 @@ else:
 @pytest.mark.parametrize("src_layout", layouts)
 @pytest.mark.parametrize("axis", [0, 1])
 def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
-    if src_layout is MfmaLayout:
-        if src_layout.m_dim > M or src_layout.n_dim > N:
+    if type(src_layout) is MfmaLayout:
+        if int(src_layout.m_dim) > M or int(src_layout.n_dim) > N:
             pytest.skip("M or N dimension is smaller than mfma tile size")
     rdims_2d = f"1x{N}" if axis == 0 else f"{M}x1"
     rdims_1d = f"{N}" if axis == 0 else f"{M}"
