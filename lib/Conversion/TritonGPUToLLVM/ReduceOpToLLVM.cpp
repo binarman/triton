@@ -324,8 +324,8 @@ private:
         helper.getThreadOffsetOnReductionAxis();
 
     auto loc = op.getLoc();
-    std::vector<Value> values{threadId};
-    values.insert(values.end(), acc.begin(), acc.end());
+    std::vector<Value> values;
+    values.insert(values.end(), accs.begin(), accs.end());
 
     printValues(loc, rewriter, "before reduction:", values);
 
