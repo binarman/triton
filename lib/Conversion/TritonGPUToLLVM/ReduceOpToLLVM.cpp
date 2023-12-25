@@ -324,7 +324,10 @@ private:
         helper.getThreadOffsetOnReductionAxis();
 
     auto loc = op.getLoc();
-    printValues(loc, rewriter, "before reduction:", accs);
+    std::vector<Value> values{threadId};
+    values.insert(values.end(), acc.begin(), acc.end());
+
+    printValues(loc, rewriter, "before reduction:", values);
 
     for (auto it : accs) {
       const SmallVector<unsigned> &key = it.first;
@@ -333,10 +336,10 @@ private:
       warpReduce(rewriter, op.getLoc(), acc, op, sizeIntraWarps,
                  threadOffsetOnReductionAxis);
 
-      Value threadId = getThreadId(rewriter, loc);
-      std::vector<Value> values{threadId};
-      values.insert(values.end(), pred_acc.begin(), pred_acc.end());
-      values.insert(values.end(), acc.begin(), acc.end());
+      // Value threadId = getThreadId(rewriter, loc);
+      // std::vector<Value> values{threadId};
+      // values.insert(values.end(), pred_acc.begin(), pred_acc.end());
+      // values.insert(values.end(), acc.begin(), acc.end());
       // printValues(loc, rewriter, "reduce (tid, prev acc, reduced acc):", values);
     }
   }
