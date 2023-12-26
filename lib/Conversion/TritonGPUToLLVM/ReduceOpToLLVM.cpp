@@ -468,14 +468,15 @@ private:
     Location loc = op.getLoc();
 
     Value threadId = getThreadId(rewriter, loc);
-    Value warpSize = i32_val(32);
+
+    auto mod = op.getOperation()->getParentOfType<ModuleOp>();
+    auto iWarpSize = triton::gpu::TritonGPUDialect::getThreadsPerWarp(mod);
+    Value warpSize = i32_val(iWarpSize);
     Value laneId = urem(threadId, warpSize);
     Value zero = i32_val(0);
 
-    auto mod = op.getOperation()->getParentOfType<ModuleOp>();
     unsigned numThreads =
-        product<unsigned>(triton::gpu::getWarpsPerCTA(srcLayout)) *
-        triton::gpu::TritonGPUDialect::getThreadsPerWarp(mod);
+        product<unsigned>(triton::gpu::getWarpsPerCTA(srcLayout)) * iWarpSize;
     unsigned elemsPerThread = std::max<unsigned>(elems / numThreads, 1);
     Value threadIsNeeded = icmp_slt(threadId, i32_val(elems));
     Value readOffset = threadId;
@@ -506,7 +507,7 @@ private:
       for (unsigned i = 0; i < op.getNumOperands(); ++i) {
 #if USE_ROCM
         // This barrier is known to be critical for Navi 2x/3x
-        if (i > 0) {//} && wavefront_size == 32) {
+        if (i > 0)  && wavefront_size == 32) {
             GCNBuilder BuilderMemfenceLDS;
             BuilderMemfenceLDS.create<>("s_waitcnt lgkmcnt(0)")->operator()();
             BuilderMemfenceLDS.launch(rewriter, loc, void_ty(rewriter.getContext()));
