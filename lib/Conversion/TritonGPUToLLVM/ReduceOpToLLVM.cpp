@@ -486,6 +486,7 @@ private:
         auto elemPtrTy = getElementPtrType(op, i);
         Value readPtr = gep(elemPtrTy, smemBases[i], readOffset);
         acc[i] = loadShared(rewriter, loc, readPtr, threadIsNeeded);
+        printValues(loc, rewriter, "final reduction load", {acc[i]});
       }
       warpReduce(rewriter, loc, acc, op, sizeInterWarps, 1 /* interleave */);
       // only the first thread in each sizeInterWarps is writing
