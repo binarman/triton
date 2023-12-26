@@ -663,7 +663,7 @@ static void printValues(Location loc, ConversionPatternRewriter &rewriter, std::
 
     conversionId++;
 
-    prinValues(loc, rewriter, "conversions input " + std::to_string(conversionId), vals);
+    printValues(loc, rewriter, "conversions input " + std::to_string(conversionId), vals);
 
 
     for (unsigned repId = 0; repId < accumNumReplicates; ++repId) {
@@ -747,7 +747,7 @@ static void printValues(Location loc, ConversionPatternRewriter &rewriter, std::
       }
     }
 
-    prinValues(loc, rewriter, "conversion output " + std::to_string(conversionId), outVals);
+    printValues(loc, rewriter, "conversion output " + std::to_string(conversionId), outVals);
 
     Value result =
         getTypeConverter()->packLLElements(loc, outVals, rewriter, dstTy);
