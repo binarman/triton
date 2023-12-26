@@ -103,34 +103,38 @@ SmallVector<unsigned> getThreadsPerWarp(Attribute layout) {
       return {8, 4};
   }
   if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
-    unsigned rows = -1, cols = -1;
     unsigned mDim = mfmaLayout.getMDim();
     unsigned nDim = mfmaLayout.getNDim();
     if (mDim == nDim) {
+      unsigned rows = -1, cols = -1;
       if (mDim == 32) {
-        cols = 2;
-        rows = 32;
+        cols = 32;
+        rows = 2;
       } else if (mDim == 16) {
-        cols = 4;
-        rows = 16;
-      } else if (mDim == 4) {
-        cols = 4;
-        rows = 16;
-      }
-    } else {
-      if (mDim == 64 && nDim == 4) {
         cols = 16;
         rows = 4;
-      } else if (mDim == 4 && nDim == 64) {
-        cols = 4;
-        rows = 16;
+      } else if (mDim == 4) {
+        cols = 64;
+        rows = 1;
       }
-    }
-
-    if (mfmaLayout.getIsTransposed()) {
-      return {rows, cols};
+      if (mfmaLayout.getIsTransposed()) {
+        return {cols, rows};
+      } else {
+        return {rows, cols};
+      }
     } else {
-      return {cols, rows};
+      bool vertical = (mDim == 64 && nDim == 4);
+      bool horizontal = (mDim == 4 && nDim == 64);
+      assert(vertical || horizontal);
+      bool transposed = mfmaLayout.getIsTransposed();
+      if (vertical && !transposed)
+        return {16, 4};
+      if (vertical && transposed)
+        return {64, 1};
+      if (horizontal && !transposed)
+        return {1, 64};
+      if (horizontal && transposed)
+        return {4, 16};
     }
   }
   if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
