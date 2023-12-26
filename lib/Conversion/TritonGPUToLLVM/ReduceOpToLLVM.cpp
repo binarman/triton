@@ -445,7 +445,8 @@ private:
 
       SmallVector<Value> writeIdx = indices[key];
       writeIdx[axis] = warpIdAxis;
-      printValues(loc, rewriter, "warp idx axis: ", {warpIdAxis});
+      printValues(loc, rewriter, "writeIdx[0]: ", {writeIdx[0]});
+      printValues(loc, rewriter, "writeIdx[1]: ", {writeIdx[1]});
 
       Value writeOffset =
           linearize(rewriter, loc, writeIdx, smemShape, smemOrder);
