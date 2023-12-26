@@ -444,7 +444,7 @@ private:
       SmallVector<Value> acc = it.second;
 
       SmallVector<Value> writeIdx = indices[key];
-      writeIdx[axis] = i32_val(0);
+      writeIdx[axis] = i32_val(1);
       printValues(loc, rewriter, "writeIdx[0]: ", {writeIdx[0]});
       printValues(loc, rewriter, "writeIdx[1]: ", {writeIdx[1]});
 
