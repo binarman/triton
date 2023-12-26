@@ -451,7 +451,7 @@ private:
         auto elemPtrTy = getElementPtrType(op, i);
         Value writePtr = gep(elemPtrTy, smemBases[i], writeOffset);
         storeShared(rewriter, loc, writePtr, acc[i], laneZero);
-        printValues(loc, rewriter, "store final: ", {acc[i]});
+        printValues(loc, rewriter, "store final: ", {writePtr});
       }
     }
   }
@@ -487,6 +487,7 @@ private:
         auto elemPtrTy = getElementPtrType(op, i);
         Value readPtr = gep(elemPtrTy, smemBases[i], readOffset);
         acc[i] = loadShared(rewriter, loc, readPtr, threadIsNeeded);
+        printValues(loc, rewriter, "load final: ", {readPtr});
       }
       warpReduce(rewriter, loc, acc, op, sizeInterWarps, 1 /* interleave */);
       // only the first thread in each sizeInterWarps is writing
