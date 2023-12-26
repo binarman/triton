@@ -400,11 +400,12 @@ private:
           delinearize(rewriter, loc, warpId, parentWarpsPerCTA, parentOrder);
       multiDimWarpId.erase(multiDimWarpId.begin() + sliceLayout.getDim());
     } else {
-      // #ifdef USE_ROCM
-      // if (isa<MfmaEncodingAttr>(srcLayout)) {
-      //   std::swap(order[0], order[1]);
-      // }
-      // #endif
+      // TODO fix order of mfma layout and remove this workaround
+      #ifdef USE_ROCM
+      if (isa<MfmaEncodingAttr>(srcLayout)) {
+        std::swap(order[0], order[1]);
+      }
+      #endif
       auto warpsPerCTA =
           triton::gpu::getWarpsPerCTAWithUniqueData(srcLayout, srcShape);
       multiDimWarpId = delinearize(rewriter, loc, warpId, warpsPerCTA, order);

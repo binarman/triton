@@ -499,9 +499,9 @@ SmallVector<unsigned> getOrder(Attribute layout) {
     return {1, 0};
   } else if (auto mfmaLayout = layout.dyn_cast<MfmaEncodingAttr>()) {
     if (mfmaLayout.getIsTransposed())
-      return {1, 0};
-    else
       return {0, 1};
+    else
+      return {1, 0};
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
     return {1, 0};
   } else if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
