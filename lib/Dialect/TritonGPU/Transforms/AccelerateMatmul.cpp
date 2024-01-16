@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 2023, Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files
+ * (the "Software"), to deal in the Software without restriction,
+ * including without limitation the rights to use, copy, modify, merge,
+ * publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -48,10 +70,15 @@ warpsPerTileV2(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
   auto filter = [&dotOp](Operation *op) {
     return op->getParentRegion() == dotOp->getParentRegion();
   };
-  auto slices = mlir::getSlice(dotOp, {filter});
+  auto slices = multiRootGetSlice(dotOp, {filter});
   for (Operation *op : slices)
-    if (isa<tt::DotOp>(op) && (op != dotOp))
-      return {(unsigned)numWarps, 1};
+    if (isa<tt::DotOp>(op) && (op != dotOp)) {
+      if (shape[0] >= shape[1]) {
+        return {(unsigned)numWarps, 1};
+      } else {
+        return {1, (unsigned)numWarps};
+      }
+    }
 
   SmallVector<unsigned, 2> ret = {1, 1};
   SmallVector<int64_t, 2> shapePerWarp = {16, 8};
@@ -72,46 +99,6 @@ warpsPerTileV2(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
       ret[1] *= 2;
     }
   } while (true);
-  return ret;
-}
-
-#ifdef USE_ROCM
-SmallVector<unsigned, 2> warpsPerTileMI200(tt::DotOp dotOp,
-                                           const ArrayRef<int64_t> shape,
-                                           int numWarps) {
-  // TODO: needs to be updated with appropriate shapePerWarp etc.
-  auto filter = [&dotOp](Operation *op) {
-    return op->getParentRegion() == dotOp->getParentRegion();
-  };
-  auto slices = mlir::getSlice(dotOp, filter);
-  for (Operation *op : slices)
-    if (isa<tt::DotOp>(op) && (op != dotOp))
-      return {(unsigned)numWarps, 1};
-
-  SmallVector<int64_t, 2> tensorShape = {shape[0], shape[1]};
-  SmallVector<unsigned, 2> ret = {1, 1};
-  SmallVector<int64_t, 2> shapePerWarp = {32, 32};
-  bool changed = false;
-
-  do {
-    changed = false;
-    if (ret[0] * ret[1] >= numWarps)
-      break;
-    if (tensorShape[0] / (shapePerWarp[0] *2 )  / ret[0] >=
-        tensorShape[1] / shapePerWarp[1] / ret[1]) {
-      if (ret[0] < tensorShape[0] / shapePerWarp[0]) {
-        ret[0] *= 2;
-      } else
-        ret[1] *= 2;
-          } else {
-      ret[1] *= 2;
-    }
-  } while (true);
-
-  if (ret[1] * shapePerWarp[1] > tensorShape[1]) {
-    return {ret[1], ret[0]};
-  }
-
   return ret;
 }
 
@@ -139,166 +126,10 @@ warpsPerTileV3(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps,
   return ret;
 }
 
-class BlockedToMFMA : public mlir::RewritePattern {
-  int mfmaVersion;
-public:
-  BlockedToMFMA(mlir::MLIRContext *context, int mfmaVersion)
-      : mlir::RewritePattern(tt::DotOp::getOperationName(), 2, context), mfmaVersion(mfmaVersion) {}
-
-  bool isChainDot(tt::DotOp &dotOp) const {
-    auto filter = [&dotOp](Operation *op) {
-      return op->getParentRegion() == dotOp->getParentRegion();
-    };
-    auto slices = mlir::getSlice(dotOp, filter);
-    for (Operation *op : slices) {
-      if (isa<tt::DotOp>(op) && (op != dotOp))
-        return true;
-    }
-    return false;
-  }
-
-  /// @brief Choose MFMA instruction parameters
-  /// @param dot target dot operation
-  /// @param mfmaVersion
-  /// @param nonKDim
-  /// @return pair {nonKDim, kDim} sizes of one MFMA instruction arguments
-  std::pair<int64_t, int64_t> chooseMfmaDimensions(tt::DotOp dot,
-                                                   int mfmaVersion,
-                                                   int64_t nonKDim) const {
-    // number of matrix elements along k dim per one MFMA intruction
-    int64_t kDim = -1;
-    auto opType = dot.getA().getType().cast<RankedTensorType>();
-    auto elemType = opType.getElementType();
-    if (nonKDim == 32) {
-      if (elemType.isF32())
-        kDim = 2;
-      if (elemType.isF16())
-        kDim = 8;
-      if (elemType.isBF16()) {
-        if (mfmaVersion == 1)
-          kDim = 4;
-        if (mfmaVersion == 2)
-          kDim = 8;
-      }
-      if (elemType.isInteger(8))
-        kDim = 8;
-    } else {
-      if (elemType.isF32())
-        kDim = 4;
-      if (elemType.isF16())
-        kDim = 16;
-      if (elemType.isBF16()) {
-        if (mfmaVersion == 1)
-          kDim = 8;
-        if (mfmaVersion == 2)
-          kDim = 16;
-      }
-      if (elemType.isInteger(8))
-        kDim = 16;
-    }
-    assert(kDim != -1);
-    return {nonKDim, kDim};
-  }
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::Operation *op,
-                  mlir::PatternRewriter &rewriter) const override {
-    auto dotOp = cast<tt::DotOp>(op);
-
-    auto oldRetType = dotOp.getResult().getType().cast<RankedTensorType>();
-    if (!oldRetType.getEncoding() ||
-        !oldRetType.getEncoding().isa<ttg::BlockedEncodingAttr>())
-      return failure();
-
-    // TODO replace with nonKDim with some heuristic in chooseMfmaDimensions
-    // function
-    int64_t externalNonKDim = 32;
-
-    const char *mfmaType = std::getenv("MFMA_TYPE");
-    if (mfmaType) {
-      externalNonKDim = std::stol(mfmaType);
-      assert(externalNonKDim == 32 || externalNonKDim == 16);
-    }
-
-    if (!supportMFMA(dotOp, externalNonKDim))
-      return failure();
-
-    auto CTALayout = ttg::getCTALayout(oldRetType.getEncoding());
-
-    // get MFMA encoding for the given number of warps
-    auto retShape = oldRetType.getShape();
-    auto mod = op->getParentOfType<mlir::ModuleOp>();
-    int numWarps = ttg::TritonGPUDialect::getNumWarps(mod);
-
-    // operands
-    Value a = dotOp.getA();
-    Value b = dotOp.getB();
-    auto oldAType = a.getType().cast<RankedTensorType>();
-    auto oldBType = b.getType().cast<RankedTensorType>();
-    auto ctx = oldAType.getContext();
-
-    ttg::MfmaEncodingAttr mfmaEnc;
-
-    auto [nonKDim, kDim] =
-        chooseMfmaDimensions(dotOp, mfmaVersion, externalNonKDim);
-
-    auto warpsPerTile = warpsPerTileMI200(dotOp, retShape, numWarps);
-
-    bool isTransposed = isChainDot(dotOp);
-    mfmaEnc = ttg::MfmaEncodingAttr::get(oldRetType.getContext(), nonKDim,
-                                         warpsPerTile, isTransposed, CTALayout);
-
-    auto newRetType =
-        RankedTensorType::get(retShape, oldRetType.getElementType(), mfmaEnc);
-
-    // convert accumulator
-    auto oldAcc = dotOp.getOperand(2);
-    auto newAcc = rewriter.create<ttg::ConvertLayoutOp>(
-        oldAcc.getLoc(), newRetType, oldAcc);
-    auto oldAOrder = oldAType.getEncoding()
-                         .cast<ttg::DotOperandEncodingAttr>()
-                         .getParent()
-                         .cast<ttg::BlockedEncodingAttr>()
-                         .getOrder();
-    auto oldBOrder = oldBType.getEncoding()
-                         .cast<ttg::DotOperandEncodingAttr>()
-                         .getParent()
-                         .cast<ttg::BlockedEncodingAttr>()
-                         .getOrder();
-
-    // kWidth is a number of consecutive elements per one instruction per one thread
-    auto kWidth = kDim;
-    // in mfma 32x32 case argument matrix groups elements in 2 groups
-    // in mfma 16x16 case argument matrix groups elements in 4 groups
-    if (nonKDim == 32) {
-      kWidth /= 2;
-    } else {
-      assert(nonKDim == 16);
-      kWidth /= 4;
-    }
-    auto newAType = RankedTensorType::get(
-        oldAType.getShape(), oldAType.getElementType(),
-        ttg::DotOperandEncodingAttr::get(ctx, 0, mfmaEnc, kWidth));
-    auto newBType = RankedTensorType::get(
-        oldBType.getShape(), oldBType.getElementType(),
-        ttg::DotOperandEncodingAttr::get(ctx, 1, mfmaEnc, kWidth));
-    a = rewriter.create<ttg::ConvertLayoutOp>(a.getLoc(), newAType, a);
-    b = rewriter.create<ttg::ConvertLayoutOp>(b.getLoc(), newBType, b);
-    auto newDot = rewriter.create<tt::DotOp>(
-        dotOp.getLoc(), newRetType, a, b, newAcc, dotOp.getAllowTF32());
-
-    rewriter.replaceOpWithNewOp<ttg::ConvertLayoutOp>(
-        op, oldRetType, newDot.getResult());
-    return success();
-  }
-};
-#endif
-
 class BlockedToMMA : public mlir::RewritePattern {
   int computeCapability;
   mutable int mmaV1Counter{}; // used to generate ID for MMAv1 encoding
-  mutable llvm::SmallVector<llvm::SetVector<Operation *>> dotOpSetVector;
-  mutable llvm::SmallVector<unsigned> mmaV3InstrNs;
+  mutable llvm::DenseMap<Operation *, unsigned> dotOpInstNs;
 
   static bool bwdFilter(Operation *op) {
     return op->getNumOperands() == 1 &&
@@ -307,18 +138,37 @@ class BlockedToMMA : public mlir::RewritePattern {
                 mlir::TypeID::get<arith::ArithDialect>());
   }
 
-  // finds the first different value bitwidth in the chain of
-  // shape-preserving unary ops  that x depends on
+  // Finds the first different bitwidth in the chain of shape-preserving
+  // unary ops that x depends on.
+  // There are two primary scenarios:
+  // (1) Upcasting: A sequence such as loading an fp16, followed by arithmetic
+  // operations, then bitcasting to fp32, and finally computing in fp32.
+  // (2) Downcasting: This might involve loading an fp32, performing arithmetic
+  // operations, bitcasting to fp16, and finally computing in fp16.
+  // In the upcasting scenario, element reordering converts the original
+  // elements distribution to the order of higher precision primitives. As a
+  // result, kwidth can be the bitwidth of the lower precision primitive.
+  // Conversely, in the downcasting scenario, no reordering is performed,
+  // making it directory use the lower precision primitive.
   static int computeOrigBitWidth(Value x) {
     int finalBitWidth = getElementTypeOrSelf(x).getIntOrFloatBitWidth();
     int origBitWidth = finalBitWidth;
     SetVector<Operation *> slice;
-    mlir::getBackwardSlice(x, &slice, bwdFilter);
-    Operation *firstOp = slice.empty() ? nullptr : *slice.begin();
-    if (firstOp)
-      if (Value arg = firstOp->getOperand(0))
-        if (RankedTensorType argTy = arg.getType().dyn_cast<RankedTensorType>())
-          origBitWidth = argTy.getElementType().getIntOrFloatBitWidth();
+    mlir::BackwardSliceOptions opt;
+    opt.omitBlockArguments = true;
+    opt.filter = bwdFilter;
+    getBackwardSlice(x, &slice, opt);
+    for (auto op : slice) {
+      if (Value arg = op->getOperand(0))
+        if (RankedTensorType argTy =
+                arg.getType().dyn_cast<RankedTensorType>()) {
+          auto argBitWidth = argTy.getElementType().getIntOrFloatBitWidth();
+          if (argBitWidth != origBitWidth) {
+            origBitWidth = std::min<int>(origBitWidth, argBitWidth);
+            break;
+          }
+        }
+    }
     return origBitWidth;
   }
 
@@ -341,40 +191,11 @@ public:
     }
   }
 
-  unsigned getMmaV3InstrN(tt::DotOp dotOp, unsigned currN) const {
-    auto type = dotOp.getResult().getType().cast<RankedTensorType>();
-    if (type.getEncoding().isa<MmaEncodingAttr>())
-      return currN;
-    for (size_t i = 0; i < dotOpSetVector.size(); ++i) {
-      if (dotOpSetVector[i].count(dotOp.getOperation()) > 0)
-        return mmaV3InstrNs[i];
-    }
-
-    SetVector<Operation *> slices;
-    mlir::getForwardSlice(dotOp.getResult(), &slices);
-    mlir::getBackwardSlice(dotOp.getOperation(), &slices);
-    unsigned N = currN;
-    llvm::SetVector<Operation *> dotOpSet;
-    for (Operation *iter : slices) {
-      if (auto nextDotOp = dyn_cast<tt::DotOp>(iter)) {
-        auto type = nextDotOp.getResult().getType().cast<RankedTensorType>();
-        auto AType = nextDotOp.getOperand(0).getType().cast<RankedTensorType>();
-        auto shapePerCTA = ttg::getShapePerCTA(type);
-        auto instrShape = mmaVersionToInstrShape(3, shapePerCTA, AType);
-        dotOpSet.insert(iter);
-        if (instrShape[1] < N)
-          N = instrShape[1];
-      }
-    }
-    mmaV3InstrNs.push_back(N);
-    dotOpSetVector.push_back(dotOpSet);
-    return N;
-  }
-
   static Value getMMAv3Operand(Value v, mlir::PatternRewriter &rewriter,
                                int opIdx) {
-    auto cvtOp = dyn_cast_or_null<ttg::ConvertLayoutOp>(v.getDefiningOp());
-    auto arg = cvtOp.getSrc();
+    Value arg = v;
+    if (auto cvtOp = v.getDefiningOp<ttg::ConvertLayoutOp>())
+      arg = cvtOp.getSrc();
     auto argType = arg.getType().cast<RankedTensorType>();
     auto eltType = argType.getElementType();
     assert(argType.getEncoding() && "unexpected tensor type");
@@ -428,9 +249,6 @@ public:
 
     auto instrShape =
         mmaVersionToInstrShape(versionMajor, retShapePerCTA, AType);
-    if (versionMajor == 3)
-      instrShape[1] = getMmaV3InstrN(dotOp, instrShape[1]);
-
     // operands
     Value a = dotOp.getA();
     Value b = dotOp.getB();
@@ -441,8 +259,11 @@ public:
     if (versionMajor == 1) {
       SetVector<Operation *> aBwdSlices, bBwdSlices;
       auto isCvt = [](Operation *op) { return isa<ConvertLayoutOp>(op); };
-      getBackwardSlice(a, &aBwdSlices, {isCvt});
-      getBackwardSlice(b, &bBwdSlices, {isCvt});
+      mlir::BackwardSliceOptions opt;
+      opt.omitBlockArguments = true;
+      opt.filter = isCvt;
+      getBackwardSlice(a, &aBwdSlices, opt);
+      getBackwardSlice(b, &bBwdSlices, opt);
       // get the source of the first conversion found in slices
       auto getCvtArgOrder = [](Operation *op) {
         return cast<ConvertLayoutOp>(op)
@@ -511,7 +332,8 @@ public:
     }
     // convert dot instruction
     auto newDot = rewriter.create<tt::DotOp>(dotOp.getLoc(), newRetType, a, b,
-                                             newAcc, dotOp.getAllowTF32());
+                                             newAcc, dotOp.getAllowTF32(),
+                                             dotOp.getMaxNumImpreciseAcc());
 
     rewriter.replaceOpWithNewOp<ttg::ConvertLayoutOp>(op, oldRetType,
                                                       newDot.getResult());
@@ -535,14 +357,7 @@ public:
     ModuleOp m = getOperation();
 
     mlir::RewritePatternSet patterns(context);
-#ifdef USE_ROCM
-    if (computeCapability == 1 || computeCapability == 2) {
-      int mfmaVersion = computeCapability;
-      patterns.add<::BlockedToMFMA>(context, mfmaVersion);
-    }
-#else
     patterns.add<::BlockedToMMA>(context, computeCapability);
-#endif
     if (applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
       signalPassFailure();
     }

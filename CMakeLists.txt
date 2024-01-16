@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.18)
 
+# build third_party backend for upstream and exit
+# TODO: check if this is working in CI
+if(HIP_BACKEND_MODE)
+    message(STATUS "ROCM Third Party Backend Mode is ON")
+    add_subdirectory(python/triton/third_party/hip)
+    return()
+endif()
+
+# stand alone build
 if(POLICY CMP0116)
 # Introduced in cmake 3.20
 # https://cmake.org/cmake/help/latest/policy/CMP0116.html
@@ -202,17 +211,17 @@ include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include) # Tablegen'd files
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/third_party/rocm/lib/libhsa-runtime64.so)
-  set(ROCM_LIBRARIES
-    ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/third_party/rocm/lib/libhsa-runtime64.so
-  )
-elseif(EXISTS "$ENV{ROCM_PATH}/lib/libhsa-runtime64.so" )
+if(EXISTS "$ENV{ROCM_PATH}/lib/libhsa-runtime64.so" )
   set(ROCM_LIBRARIES
     "$ENV{ROCM_PATH}/lib/libhsa-runtime64.so"
   )
 elseif(EXISTS "${ROCM_DEFAULT_DIR}/lib/libhsa-runtime64.so" )
   set(ROCM_LIBRARIES
     "${ROCM_DEFAULT_DIR}/lib/libhsa-runtime64.so"
+  )
+elseif(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/third_party/hip/lib/hsa/libhsa-runtime64.so)
+  set(ROCM_LIBRARIES
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/third_party/hip/lib/hsa/libhsa-runtime64.so
   )
 else()
   message(STATUS "WARNING: Can't find libhsa-runtime64.so")
@@ -229,6 +238,13 @@ set(TRITON_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+
+# TODO: Figure out which target is sufficient to fix errors; triton is
+# apparently not enough. Currently set linking libstdc++fs for all targets
+# to support some old version GCC compilers like 8.3.0.
+if (NOT WIN32 AND NOT APPLE)
+  link_libraries(stdc++fs)
+endif()
 
 if(TRITON_BUILD_PYTHON_MODULE)
   add_library(triton SHARED ${PYTHON_SRC})
@@ -250,7 +266,6 @@ if(TRITON_BUILD_PYTHON_MODULE)
     MLIRLLVMDialect
     MLIRSupport
     MLIRTargetLLVMIRExport
-    MLIRExecutionEngine
     MLIRMathToLLVM
     MLIRNVVMToLLVMIRTranslation
     MLIRROCDLToLLVMIRTranslation
@@ -269,9 +284,6 @@ if(TRITON_BUILD_PYTHON_MODULE)
     target_link_libraries(triton ${ROCM_LIBRARIES} ${LLVM_LIBRARIES} z
       ${TRITON_LIBRARIES}
     )
-    # TODO: Figure out which target is sufficient to fix errors; triton is
-    # apparently not enough
-    link_libraries(stdc++fs)
   endif()
 
   target_link_options(triton PRIVATE ${LLVM_LDFLAGS})

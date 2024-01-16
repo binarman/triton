@@ -1,10 +1,14 @@
 add_mlir_dialect_library(TritonGPUTransforms
   AccelerateMatmul.cpp
+  AccelerateAMDMatmul.cpp
   Coalesce.cpp
   DecomposeConversions.cpp
   OptimizeDotOperands.cpp
   OptimizeEpilogue.cpp
-  Pipeline.cpp
+  OptimizeThreadLocality.cpp
+  Pipeliner/MatmulLoopPipeline.cpp
+  Pipeliner/PipelineExpander.cpp
+  Pipeliner/SoftwarePipeliner.cpp
   Prefetch.cpp
   RemoveLayoutConversions.cpp
   ReorderInstructions.cpp
