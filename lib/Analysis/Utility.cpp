@@ -541,17 +541,37 @@ bool isMmaToDotShortcut(RankedTensorType srcTy, RankedTensorType dstTy) {
 bool isMfmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
   auto srcLayout = srcTy.getEncoding();
   auto dstLayout = dstTy.getEncoding();
-  auto mfmaLayout = srcLayout.cast<triton::gpu::MfmaEncodingAttr>();
+  auto srcMfmaLayout = srcLayout.cast<triton::gpu::MfmaEncodingAttr>();
   auto dotOperandLayout = dstLayout.cast<triton::gpu::DotOperandEncodingAttr>();
+  auto dstParentLayout = dotOperandLayout.getParent().cast<triton::gpu::MfmaEncodingAttr>();
+  if (srcMfmaLayout.getMDim() == 4 &&
+      srcMfmaLayout.getNDim() == 64 &&
+      srcMfmaLayout.getIsTransposed() &&
+      dotOperandLayout.getKWidth() == 4 &&
+      dotOperandLayout.getOpIdx() == 0 &&
+      dstParentLayout.getMDim() == 4 &&
+      dstParentLayout.getNDim() == 4 &&
+      srcMfmaLayout.getWarpsPerCTA()[1] == 1
+      )
+    return true;
+  if (srcMfmaLayout.getMDim() == 64 &&
+      srcMfmaLayout.getNDim() == 4 &&
+      !srcMfmaLayout.getIsTransposed() &&
+      dotOperandLayout.getKWidth() == 4 &&
+      dotOperandLayout.getOpIdx() == 0 &&
+      dstParentLayout.getMDim() == 4 &&
+      dstParentLayout.getNDim() == 4 &&
+      srcMfmaLayout.getWarpsPerCTA()[0] == 1)
+    return true;
   // TODO: Remove the restriction on the warpsPerCTA once chain dot testing is
   // improved. In addition, we can enable this shortcut for regular MFMA
   // layout when opIdx == 1.
-  return mfmaLayout.getWarpsPerCTA()[1] == 1 &&
+  return srcMfmaLayout.getWarpsPerCTA()[1] == 1 &&
          dotOperandLayout.getOpIdx() == 0 &&
          dotOperandLayout.getKWidth() == 4 &&
-         dotOperandLayout.getParent() == mfmaLayout &&
-         (mfmaLayout.getMDim() == 32 || mfmaLayout.getMDim() == 16) &&
-         mfmaLayout.getIsTransposed() &&
+         dotOperandLayout.getParent() == srcMfmaLayout &&
+         (srcMfmaLayout.getMDim() == 32 || srcMfmaLayout.getMDim() == 16) &&
+         srcMfmaLayout.getIsTransposed() &&
          (srcTy.getElementType().isF16() || srcTy.getElementType().isBF16());
 }
 #endif
