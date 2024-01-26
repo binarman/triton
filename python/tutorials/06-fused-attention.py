@@ -58,7 +58,7 @@ def _attn_fwd_inner(acc, l_i, m_i, q,
         if STAGE == 2:
             mask = offs_m[:, None] >= (start_n + offs_n[None, :])
             qk = tl.where(mask, qk, float("-inf"))
-        qk += tl.dot(q, k)
+        qk += tl.dot(q, k, matrix_instr_nonkdim=[4, 64])
         m_ij = tl.maximum(m_i, tl.max(qk, 1))
         qk = qk - m_ij[:, None]
         p = tl.math.exp2(qk)
@@ -67,7 +67,7 @@ def _attn_fwd_inner(acc, l_i, m_i, q,
         acc = acc * alpha[:, None]
         if not pre_load_v:
             v = tl.load(V_block_ptr)
-        acc += tl.dot(p.to(v.dtype), v)
+        acc += tl.dot(p.to(v.dtype), v, matrix_instr_nonkdim=[4, 4])
         # -- update m_i and l_i
         l_ij = tl.sum(p, 1)
         l_i = l_i * alpha + l_ij

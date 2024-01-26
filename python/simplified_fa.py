@@ -55,11 +55,11 @@ def kernel(Q, K, V, Out,
     # -- compute qk ----
     k = tl.load(K_block_ptr)
     v = tl.load(V_block_ptr)
-    qk = tl.dot(q, k)
+    qk = tl.dot(q, k, matrix_instr_nonkdim=[4, 64])
     # add some reduction here
     p = qk
     # -- update output accumulator --
-    acc = tl.dot(p.to(v.dtype), v)
+    acc = tl.dot(p.to(v.dtype), v, matrix_instr_nonkdim=[4, 4])
 
     # epilogue
     tl.store(O_block_ptr, acc.to(Out.type.element_ty))
