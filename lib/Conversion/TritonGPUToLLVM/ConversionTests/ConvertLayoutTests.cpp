@@ -29,6 +29,7 @@
 #include "../ConvertLayoutOpToLLVM.h"
 
 constexpr int threadIdPos = 0;
+constexpr int ldsSize = 65536;
 
 class EliminateThreadId : public mlir::RewritePattern {
 
@@ -188,6 +189,8 @@ TEST(LayoutConversions, MFMAtoShared) {
 
   // for (auto op: threadIds)
   //   op->erase();
+
+  // postprocess generated code, check that all operations are supported, replace arch specific values with function arguments
   SmallVector<Operation *> candidates;
   mlirModule.walk([&candidates](mlir::ROCDL::ThreadIdXOp op) {
     candidates.push_back(op);
@@ -195,10 +198,23 @@ TEST(LayoutConversions, MFMAtoShared) {
   if (mlir::applyOpPatternsAndFold(candidates, std::move(patterns)).failed())
     llvm::errs() << "failed to eliminate threadId operations\n";
 
+  // llvm.mlir.global external @global_smem() {addr_space = 3 : i32} : !llvm.array<0 x i8>
+  mlirModule.walk([&builder, &loc](mlir::LLVM::GlobalOp op) {
+    llvm::errs() << "found symbol" << op.getNameAttr() << "\n";
+    if (op.getNameAttr().str() == "global_smem") {
+      auto ldsType = builder.getType<mlir::LLVM::LLVMArrayType>(builder.getIntegerType(8), ldsSize);
+      op.setGlobalType(ldsType);
+      op.setLinkage(mlir::LLVM::linkage::Linkage::Private);
+      // auto zeroOp = builder.create<mlir::LLVM::ZeroOp>(loc, ldsType);
+      // mlir::Block zeroBlock;
+      // FlatSymbolRefAttr zeroAttr;
+      // op.setInitializer(zeroBlock);
+    }
+    llvm::errs() << "transformed to: " << op << "\n";
+  });
+
   llvm::outs() << "after llvm preparation:\n" << *mlirModule << "\n";
 
-  // postprocess generated code, check that all operations are supported, replace arch specific values with function arguments
-  // TBD
   // Convert llvm mlir to llvm ir
   llvm::LLVMContext llvmContext;
 
@@ -218,6 +234,8 @@ TEST(LayoutConversions, MFMAtoShared) {
   llvm::EngineBuilder interpreterBuilder(std::move(llvmModule));
   interpreterBuilder.setEngineKind(llvm::EngineKind::Kind::Interpreter);
   interpreterBuilder.setErrorStr(&errorMsg);
+  // auto ldsObject = interpreterBuilder.FindGlobalVariableNamed("global_smem");
+  // auto ldsMemory = interpreterBuilder.getMemoryForGV(ldsObject);
 
   std::unique_ptr<llvm::ExecutionEngine> EE(interpreterBuilder.create());
   if (!EE) {
@@ -230,14 +248,24 @@ TEST(LayoutConversions, MFMAtoShared) {
 
   llvm::Function *llvmTestFunction = llvmModulePtr->getFunction(functionName);
 
-  std::vector<int> mem(16, 0xDEADBEEF);
+  // std::vector<int> mem(16, 0xDEADBEEF);
   std::vector<llvm::GenericValue> inputs(2);
   inputs[0].IntVal = llvm::APInt(32, 123, true);
-  inputs[1].PointerVal = mem.data();
+  // inputs[1].PointerVal = mem.data();
+  int elemsPerThread = 64;
+  inputs[1].AggregateVal.resize(elemsPerThread);
+
+  auto *ldsMem = reinterpret_cast<int *>(EE->getPointerToGlobalIfAvailable("global_smem"));
+  for (int i = 0; i < ldsSize/sizeof(int); ++i)
+    ldsMem[i] = 0;
+
+  for (int i = 0; i < elemsPerThread; ++i)
+    inputs[1].AggregateVal[i].FloatVal = 1.0f;
   auto result = EE->runFunction(llvmTestFunction, inputs);
-  llvm::outs() << "returned value: " << result.IntVal.getSExtValue() << "\n";
+  // llvm::outs() << "returned value: " << result.IntVal.getSExtValue() << "\n";
   llvm::outs() << "mem contents:\n";
-  for (int i = 0; i < mem.size(); ++i)
-    llvm::outs() << mem[i] << "\n";
+  // auto *mem = reinterpret_cast<int *>(EE->getGlobalValueAddress("global_smem"));
+  for (int i = 0; i < ldsSize/sizeof(int); ++i)
+    llvm::outs() << ldsMem[i] << "\n";
   SUCCEED();
 }
