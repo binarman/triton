@@ -33,6 +33,7 @@ add_mlir_translation_library(ConvertLayoutTestsLib
 
 add_executable(ConvertLayoutTests ConvertLayoutTests.cpp)
 target_link_libraries(ConvertLayoutTests PRIVATE GTest::gtest_main ConvertLayoutTestsLib)
+target_compile_options(ConvertLayoutTests PRIVATE -fno-rtti)
 
 include(GoogleTest)
 gtest_discover_tests(ConvertLayoutTests)

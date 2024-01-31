@@ -9,6 +9,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
 
+#include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
@@ -29,24 +30,24 @@
 
 constexpr int threadIdPos = 0;
 
-// class EliminateThreadId : public mlir::RewritePattern {
+class EliminateThreadId : public mlir::RewritePattern {
 
-// public:
-//   EliminateThreadId(mlir::MLIRContext *context)
-//       : mlir::RewritePattern(
-//             mlir::ROCDL::ThreadIdXOp::getOperationName(), 1,
-//             context) {}
+public:
+  EliminateThreadId(mlir::MLIRContext *context)
+      : mlir::RewritePattern(
+            mlir::ROCDL::ThreadIdXOp::getOperationName(), 1,
+            context) {}
 
-//   LogicalResult
-//   matchAndRewrite(mlir::Operation *op,
-//                   mlir::PatternRewriter &rewriter) const override {
-//     auto threadIdx = cast<mlir::ROCDL::ThreadIdXOp>(op);
-//     mlir::LLVM::FuncOp func = cast<mlir::LLVM::FuncOp>(op->getBlock()->getParentOp());
-//     auto threadIdArgument = func->getOperand(threadIdPos);
-//     rewriter.replaceOp(op, {threadIdArgument});
-//     return mlir::success();
-//   }
-// };
+  LogicalResult
+  matchAndRewrite(mlir::Operation *op,
+                  mlir::PatternRewriter &rewriter) const override {
+    auto threadIdx = cast<mlir::ROCDL::ThreadIdXOp>(op);
+    auto func = op->getParentOfType<mlir::LLVM::LLVMFuncOp>();
+    auto threadIdArgument = func.getArgument(threadIdPos);
+    rewriter.replaceOp(op, {threadIdArgument});
+    return mlir::success();
+  }
+};
 
 TEST(LayoutConversions, MFMAtoShared) {
   // create mlir module and function
@@ -140,6 +141,7 @@ TEST(LayoutConversions, MFMAtoShared) {
 
   mlir::PassManager pm(ctx.get());
   pm.addPass(mlir::triton::createConvertTritonGPUToLLVMPass(90, mlir::triton::Target::ROCDL, nullptr));
+  pm.addPass(mlir::createCanonicalizerPass());
 
   if (failed(pm.run(mlirModule))) {
     llvm::errs() << "Pass execution failed";
@@ -160,25 +162,40 @@ TEST(LayoutConversions, MFMAtoShared) {
 
   llvm::outs() << "after conversion:\n" << mlirModule << "\n";
 
-  // RewritePatternSet patterns(ctx.get());
-  // patterns.add<EliminateThreadId>(ctx.get());
-  SmallVector<Operation *> threadIds;
-  mlirModule.walk([&threadIds, &builder](mlir::ROCDL::ThreadIdXOp op) {
-    threadIds.push_back(op);
-    mlir::LLVM::FuncOp func = cast<mlir::LLVM::FuncOp>(op->getBlock()->getParentOp());
-    auto threadIdArgument = func->getOperand(threadIdPos);
+  RewritePatternSet patterns(ctx.get());
+  patterns.add<EliminateThreadId>(ctx.get());
 
-    for (auto &use: op.getRes().getUses()){
-      auto owner = use.getOwner();
-      auto opId = use.getOperandNumber();
-      owner->setOperand(opId, threadIdArgument);
-    }
+  // SmallVector<Operation *> threadIds;
+  // mlirModule.walk([&threadIds, &builder](mlir::ROCDL::ThreadIdXOp op) {
+  //   threadIds.push_back(op);
+  //   auto func = op->getParentOfType<mlir::LLVM::LLVMFuncOp>();
+  //   auto threadIdArgument = func.getArgument(threadIdPos);
+
+  //   llvm::errs() << "Op has "
+  //                  << std::distance(op.getRes().getUses().begin(),
+  //                                   op.getRes().getUses().end())
+  //                  << " uses:\n";
+  //   for (Operation *userOp : op->getUsers())
+  //     llvm::errs() << "    - " << userOp->getName() << "\n";
+
+  //   for (OpOperand &use: op->getUses()) {
+  //     auto owner = use.getOwner();
+  //     auto opId = use.getOperandNumber();
+  //     owner->setOperand(opId, threadIdArgument);
+  //   }
+  // });
+
+
+  // for (auto op: threadIds)
+  //   op->erase();
+  SmallVector<Operation *> candidates;
+  mlirModule.walk([&candidates](mlir::ROCDL::ThreadIdXOp op) {
+    candidates.push_back(op);
   });
-  for (auto op: threadIds)
-    op->erase();
-  // if (mlir::applyOpPatternsAndFold(threadIds, std::move(patterns)).failed())
-  //   llvm::errs() << "failed to eliminate threadId\n";
+  if (mlir::applyOpPatternsAndFold(candidates, std::move(patterns)).failed())
+    llvm::errs() << "failed to eliminate threadId operations\n";
 
+  llvm::outs() << "after llvm preparation:\n" << *mlirModule << "\n";
 
   // postprocess generated code, check that all operations are supported, replace arch specific values with function arguments
   // TBD
@@ -193,7 +210,7 @@ TEST(LayoutConversions, MFMAtoShared) {
 
   auto llvmModule = mlir::translateModuleToLLVMIR(mlirModule, llvmContext);
   ASSERT_NE(llvmModule, nullptr);
-  llvm::outs() << *llvmModule << "\n";
+  llvm::outs() << "after llvm translation:\n" << *llvmModule << "\n";
   // interpret llvm ir
   // TBD
   auto llvmModulePtr = llvmModule.get();
