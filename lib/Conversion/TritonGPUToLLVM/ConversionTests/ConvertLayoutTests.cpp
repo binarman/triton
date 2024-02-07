@@ -29,37 +29,17 @@
 #include "../ConvertLayoutOpToLLVM.h"
 
 constexpr int threadIdPos = 0;
+constexpr int waveSize = 64;
 constexpr int ldsSize = 65536;
+constexpr int tensorSize = 1024;
 
-class EliminateThreadId : public mlir::RewritePattern {
-
-public:
-  EliminateThreadId(mlir::MLIRContext *context)
-      : mlir::RewritePattern(
-            mlir::ROCDL::ThreadIdXOp::getOperationName(), 1,
-            context) {}
-
-  LogicalResult
-  matchAndRewrite(mlir::Operation *op,
-                  mlir::PatternRewriter &rewriter) const override {
-    auto threadIdx = cast<mlir::ROCDL::ThreadIdXOp>(op);
-    auto func = op->getParentOfType<mlir::LLVM::LLVMFuncOp>();
-    auto threadIdArgument = func.getArgument(threadIdPos);
-    rewriter.replaceOp(op, {threadIdArgument});
-    return mlir::success();
-  }
-};
-
-TEST(LayoutConversions, MFMAtoShared) {
-  // create mlir module and function
-  auto ctx = std::make_unique<mlir::MLIRContext>();
+mlir::ModuleOp createTestModule(mlir::MLIRContext *ctx, const char *functionName) {
   ctx->getOrLoadDialect<mlir::triton::TritonDialect>();
   ctx->getOrLoadDialect<mlir::triton::gpu::TritonGPUDialect>();
   ctx->getOrLoadDialect<mlir::tensor::TensorDialect>();
   ctx->getOrLoadDialect<mlir::gpu::GPUDialect>();
-  // ctx->getOrLoadDialect<mlir::index::IndexDialect>();
   ctx->getOrLoadDialect<mlir::LLVM::LLVMDialect>();
-  mlir::OpBuilder builder(ctx.get());
+  mlir::OpBuilder builder(ctx);
   mlir::Location loc = builder.getUnknownLoc();
 
   llvm::SmallVector<int64_t> tensorShape{16, 16};
@@ -70,7 +50,7 @@ TEST(LayoutConversions, MFMAtoShared) {
   unsigned mDim = 4;
   unsigned nDim = 4;
   bool isTransposed = false;
-  auto srcLayout = mlir::triton::gpu::MfmaEncodingAttr::get(ctx.get(), versionMajor, versionMinor, warpsPerCTA, mDim, nDim, isTransposed);
+  auto srcLayout = mlir::triton::gpu::MfmaEncodingAttr::get(ctx, versionMajor, versionMinor, warpsPerCTA, mDim, nDim, isTransposed);
   auto srcType = mlir::RankedTensorType::get(tensorShape, elementType, srcLayout);
 
   auto mlirModule = mlir::ModuleOp::create(loc);
@@ -80,21 +60,17 @@ TEST(LayoutConversions, MFMAtoShared) {
 
   auto threadIdTy = builder.getI32Type();
   auto offsetType = builder.getI32Type();
-  auto offsetPtrTy = mlir::LLVM::LLVMPointerType::get(ctx.get(), offsetType, 3);
+  auto offsetPtrTy = mlir::LLVM::LLVMPointerType::get(ctx, offsetType, 3);
   std::vector<mlir::Type> inTypes{threadIdTy, srcType};
-  // auto mlirFuncTy = mlir::LLVM::LLVMFunctionType::get(offsetType, inTypes);
   auto mlirFuncTy = builder.getFunctionType(inTypes, {});
 
-  const std::string functionName = "test_func";
-  // auto mlirFunc = builder.create<mlir::LLVM::LLVMFuncOp>(loc, functionName, mlirFuncTy);
   auto mlirFunc = builder.create<mlir::triton::FuncOp>(loc, functionName, mlirFuncTy);
   mlirModule.push_back(mlirFunc);
+  llvm::errs() << "module created:\n" << mlirModule << "\n";
 
   auto block = mlirFunc.addEntryBlock();
 
   // call function for index compute and generate llvmIR
-
-  // ::mlir::MLIRContext *context, unsigned vec, unsigned perPhase, unsigned maxPhase, ::llvm::ArrayRef<unsigned> order, CTALayoutAttr CTALayout, bool hasLeadingOffset);
   unsigned vecSize = 1;
   unsigned perPhase = 1;
   unsigned maxPhase = 1;
@@ -102,16 +78,14 @@ TEST(LayoutConversions, MFMAtoShared) {
   llvm::SmallVector<unsigned> CTAsPerCGA{1, 1};
   llvm::SmallVector<unsigned> CTASplitNum{1, 1};
   llvm::SmallVector<unsigned> CTAOrder{1, 0};
-  auto CTALayout = mlir::triton::gpu::CTALayoutAttr::get(ctx.get(), CTAsPerCGA, CTASplitNum, CTAOrder);
+  auto CTALayout = mlir::triton::gpu::CTALayoutAttr::get(ctx, CTAsPerCGA, CTASplitNum, CTAOrder);
   bool hasLeadingOffset = false;
-  auto dstLayout = mlir::triton::gpu::SharedEncodingAttr::get(ctx.get(), vecSize, perPhase, maxPhase, order, CTALayout, hasLeadingOffset);
+  auto dstLayout = mlir::triton::gpu::SharedEncodingAttr::get(ctx, vecSize, perPhase, maxPhase, order, CTALayout, hasLeadingOffset);
   auto dstType = mlir::RankedTensorType::get(tensorShape, elementType, dstLayout);
 
   auto elementAttr = builder.getFloatAttr(elementType, 0);
   auto denseAttr = mlir::DenseElementsAttr::get(srcType, elementAttr);
-  // auto dummyTensorInput = builder.create<mlir::arith::ConstantOp>(loc, denseAttr);
   auto inputTensor = block->getArgument(1);
-  // block->push_back(dummyTensorInput);
 
   auto convertLayout = builder.create<mlir::triton::gpu::ConvertLayoutOp>(loc, dstType, inputTensor);
   block->push_back(convertLayout);
@@ -119,123 +93,89 @@ TEST(LayoutConversions, MFMAtoShared) {
   auto returnOp = builder.create<mlir::triton::ReturnOp>(loc);
   block->push_back(returnOp);
 
-  // void populateConvertLayoutOpToLLVMPatterns(
-  //   TritonGPUToLLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-  //   int numWarps, ModuleAxisInfoAnalysis &axisInfoAnalysis,
-  //   ModuleAllocation &allocation,
-  //   ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo &indexCacheInfo,
-  //   PatternBenefit benefit);
-  // mlir::LowerToLLVMOptions option(ctx.get());
-  // TritonGPUToLLVMTypeConverter typeConverter(ctx.get(), option);
-  // RewritePatternSet patterns(ctx.get());
-  // int numWarps = 1;
-  // mlir::ModuleAxisInfoAnalysis axisInfoAnalysis(mlirModule);
-  // mlir::ModuleAllocation allocation(mlirModule);
-  // ConvertTritonGPUOpToLLVMPatternBase::IndexCacheInfo indexCacheInfo;
-  // int benefit = 1;
-  // populateConvertLayoutOpToLLVMPatterns(typeConverter, patterns, numWarps, axisInfoAnalysis, allocation, indexCacheInfo, benefit);
+  llvm::errs() << "module filled:\n" << mlirModule << "\n";
 
-  // if (failed(applyPartialConversion(mlirModule, convTarget, std::move(patterns))))
-  //   FAIL();
+  return mlirModule;
+}
 
-  llvm::outs() << "before conversion:\n" << mlirModule << "\n";
-
-  mlir::PassManager pm(ctx.get());
+void convertTTGToLLVM(mlir::ModuleOp &mod) {
+  auto ctx = mod.getContext();
+  mlir::PassManager pm(ctx);
   pm.addPass(mlir::triton::createConvertTritonGPUToLLVMPass(90, mlir::triton::Target::ROCDL, nullptr));
   pm.addPass(mlir::createCanonicalizerPass());
 
-  if (failed(pm.run(mlirModule))) {
-    llvm::errs() << "Pass execution failed";
+  if (failed(pm.run(mod))) {
+    llvm::errs() << "Pass execution failed\n";
+    return;
+  }
+}
+
+void replaceGPUSpecificEntities(mlir::ModuleOp &mod) {
+  class EliminateThreadId : public mlir::RewritePattern {
+
+  public:
+    EliminateThreadId(mlir::MLIRContext *context)
+        : mlir::RewritePattern(
+              mlir::ROCDL::ThreadIdXOp::getOperationName(), 1,
+              context) {}
+
+    LogicalResult
+    matchAndRewrite(mlir::Operation *op,
+                    mlir::PatternRewriter &rewriter) const override {
+      auto threadIdx = cast<mlir::ROCDL::ThreadIdXOp>(op);
+      auto func = op->getParentOfType<mlir::LLVM::LLVMFuncOp>();
+      auto threadIdArgument = func.getArgument(threadIdPos);
+      rewriter.replaceOp(op, {threadIdArgument});
+      return mlir::success();
+    }
+  };
+
+  auto ctx = mod.getContext();
+  mlir::OpBuilder builder(ctx);
+  mlir::Location loc = mod.getLoc();
+
+  RewritePatternSet patterns(ctx);
+  patterns.add<EliminateThreadId>(ctx);
+
+  SmallVector<Operation *> candidates;
+  mod.walk([&candidates](mlir::ROCDL::ThreadIdXOp op) {
+    candidates.push_back(op);
+  });
+  if (mlir::applyOpPatternsAndFold(candidates, std::move(patterns)).failed()) {
+    llvm::errs() << "failed to eliminate threadId operations\n";
     return;
   }
 
-  // create test example for now
-  // auto returnValue = builder.create<mlir::LLVM::ConstantOp>(loc, offsetType, mlir::IntegerAttr::get(offsetType, 42));
-  // block->push_back(returnValue);
-
-  // auto addr = builder.create<mlir::LLVM::ZeroOp>(loc, offsetPtrTy);
-  // block->push_back(addr);
-  // auto store = builder.create<mlir::LLVM::StoreOp>(loc, returnValue, mlirFunc.getArgument(1));
-  // block->push_back(store);
-
-  // auto returnOp = builder.create<mlir::LLVM::ReturnOp>(loc, returnValue);
-  // block->push_back(returnOp);
-
-  llvm::outs() << "after conversion:\n" << mlirModule << "\n";
-
-  RewritePatternSet patterns(ctx.get());
-  patterns.add<EliminateThreadId>(ctx.get());
-
-  // SmallVector<Operation *> threadIds;
-  // mlirModule.walk([&threadIds, &builder](mlir::ROCDL::ThreadIdXOp op) {
-  //   threadIds.push_back(op);
-  //   auto func = op->getParentOfType<mlir::LLVM::LLVMFuncOp>();
-  //   auto threadIdArgument = func.getArgument(threadIdPos);
-
-  //   llvm::errs() << "Op has "
-  //                  << std::distance(op.getRes().getUses().begin(),
-  //                                   op.getRes().getUses().end())
-  //                  << " uses:\n";
-  //   for (Operation *userOp : op->getUsers())
-  //     llvm::errs() << "    - " << userOp->getName() << "\n";
-
-  //   for (OpOperand &use: op->getUses()) {
-  //     auto owner = use.getOwner();
-  //     auto opId = use.getOperandNumber();
-  //     owner->setOperand(opId, threadIdArgument);
-  //   }
-  // });
-
-
-  // for (auto op: threadIds)
-  //   op->erase();
-
-  // postprocess generated code, check that all operations are supported, replace arch specific values with function arguments
-  SmallVector<Operation *> candidates;
-  mlirModule.walk([&candidates](mlir::ROCDL::ThreadIdXOp op) {
-    candidates.push_back(op);
-  });
-  if (mlir::applyOpPatternsAndFold(candidates, std::move(patterns)).failed())
-    llvm::errs() << "failed to eliminate threadId operations\n";
-
-  // llvm.mlir.global external @global_smem() {addr_space = 3 : i32} : !llvm.array<0 x i8>
-  mlirModule.walk([&builder, &loc](mlir::LLVM::GlobalOp op) {
-    llvm::errs() << "found symbol" << op.getNameAttr() << "\n";
+  mod.walk([&builder, &loc](mlir::LLVM::GlobalOp op) {
     if (op.getNameAttr().str() == "global_smem") {
       auto ldsType = builder.getType<mlir::LLVM::LLVMArrayType>(builder.getIntegerType(8), ldsSize);
       op.setGlobalType(ldsType);
       op.setLinkage(mlir::LLVM::linkage::Linkage::Private);
-      // auto zeroOp = builder.create<mlir::LLVM::ZeroOp>(loc, ldsType);
-      // mlir::Block zeroBlock;
-      // FlatSymbolRefAttr zeroAttr;
-      // op.setInitializer(zeroBlock);
     }
-    llvm::errs() << "transformed to: " << op << "\n";
   });
+}
 
-  llvm::outs() << "after llvm preparation:\n" << *mlirModule << "\n";
-
-  // Convert llvm mlir to llvm ir
-  llvm::LLVMContext llvmContext;
+std::unique_ptr<llvm::Module> convertMLIRToLLVMIR(mlir::ModuleOp &mod, llvm::LLVMContext &llvmCtx) {
+  auto mlirCtx = mod.getContext();
 
   mlir::DialectRegistry registry;
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
 
-  ctx->appendDialectRegistry(registry);
+  mlirCtx->appendDialectRegistry(registry);
 
-  auto llvmModule = mlir::translateModuleToLLVMIR(mlirModule, llvmContext);
-  ASSERT_NE(llvmModule, nullptr);
-  llvm::outs() << "after llvm translation:\n" << *llvmModule << "\n";
+  auto llvmModule = mlir::translateModuleToLLVMIR(mod, llvmCtx);
+  assert(llvmModule.get() != nullptr);
+  return std::move(llvmModule);
+}
+
+void RunInterpreter(std::unique_ptr<llvm::Module> mod, const char *functionName) {
   // interpret llvm ir
-  // TBD
-  auto llvmModulePtr = llvmModule.get();
+  auto llvmModulePtr = mod.get();
   std::string errorMsg;
-  llvm::EngineBuilder interpreterBuilder(std::move(llvmModule));
+  llvm::EngineBuilder interpreterBuilder(std::move(mod));
   interpreterBuilder.setEngineKind(llvm::EngineKind::Kind::Interpreter);
   interpreterBuilder.setErrorStr(&errorMsg);
-  // auto ldsObject = interpreterBuilder.FindGlobalVariableNamed("global_smem");
-  // auto ldsMemory = interpreterBuilder.getMemoryForGV(ldsObject);
 
   std::unique_ptr<llvm::ExecutionEngine> EE(interpreterBuilder.create());
   if (!EE) {
@@ -248,24 +188,44 @@ TEST(LayoutConversions, MFMAtoShared) {
 
   llvm::Function *llvmTestFunction = llvmModulePtr->getFunction(functionName);
 
-  // std::vector<int> mem(16, 0xDEADBEEF);
   std::vector<llvm::GenericValue> inputs(2);
-  inputs[0].IntVal = llvm::APInt(32, 123, true);
-  // inputs[1].PointerVal = mem.data();
+  // todo adjust to llvm func signature
   int elemsPerThread = 64;
   inputs[1].AggregateVal.resize(elemsPerThread);
 
-  auto *ldsMem = reinterpret_cast<int *>(EE->getPointerToGlobalIfAvailable("global_smem"));
-  for (int i = 0; i < ldsSize/sizeof(int); ++i)
-    ldsMem[i] = 0;
+  // Initizlize LDS
+  auto *ldsMem = reinterpret_cast<char *>(EE->getPointerToGlobalIfAvailable("global_smem"));
+  std::fill(ldsMem, ldsMem + ldsSize, 0xcc);
 
-  for (int i = 0; i < elemsPerThread; ++i)
-    inputs[1].AggregateVal[i].FloatVal = 1.0f;
-  auto result = EE->runFunction(llvmTestFunction, inputs);
-  // llvm::outs() << "returned value: " << result.IntVal.getSExtValue() << "\n";
-  llvm::outs() << "mem contents:\n";
-  // auto *mem = reinterpret_cast<int *>(EE->getGlobalValueAddress("global_smem"));
-  for (int i = 0; i < ldsSize/sizeof(int); ++i)
-    llvm::outs() << ldsMem[i] << "\n";
+  for (int threadId = 0; threadId < waveSize; ++threadId) {
+    inputs[0].IntVal = llvm::APInt(32, threadId, true);
+
+    for (int i = 0; i < elemsPerThread; ++i)
+      inputs[1].AggregateVal[i].FloatVal = threadId * elemsPerThread + i;
+    auto result = EE->runFunction(llvmTestFunction, inputs);
+    llvm::outs() << "mem contents:\n";
+    for (int i = 0; i < tensorSize; ++i)
+      if (ldsMem[i] == 0xcc)
+        llvm::outs() << "_";
+      else
+        llvm::outs() << "*";
+    llvm::outs() << "\n";
+  }
+}
+
+TEST(LayoutConversions, MFMAtoShared) {
+  const std::string functionName = "test_func";
+  mlir::MLIRContext mlirCtx;
+  auto mlirModule = createTestModule(&mlirCtx, functionName.c_str());
+
+  convertTTGToLLVM(mlirModule);
+
+  replaceGPUSpecificEntities(mlirModule);
+
+  llvm::LLVMContext llvmCtx;
+
+  std::unique_ptr<llvm::Module> llvmModule = convertMLIRToLLVMIR(mlirModule, llvmCtx);
+
+  RunInterpreter(std::move(llvmModule), functionName.c_str());
   SUCCEED();
 }
