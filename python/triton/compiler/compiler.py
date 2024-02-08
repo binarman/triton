@@ -78,7 +78,7 @@ def optimize_ttir(mod, target):
     pm = ir.pass_manager(mod.context)
     pm.enable_debug()
     pm.add_inliner_pass()
-    pm.add_triton_combine_pass()
+    # pm.add_triton_combine_pass()
     pm.add_canonicalizer_pass()
     pm.add_reorder_broadcast_pass()
     pm.add_cse_pass()
