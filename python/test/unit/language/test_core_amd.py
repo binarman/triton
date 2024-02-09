@@ -1965,7 +1965,6 @@ def test_fa_chain(M, N, K):
                Y, stride_yk, stride_yn,
                W, stride_wn, stride_wl,
                Z, stride_zm, stride_zn,
-               in_dtype: tl.constexpr,
                out_dtype: tl.constexpr,
                BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):
         off_m = tl.arange(0, BLOCK_M)
@@ -1993,6 +1992,7 @@ def test_fa_chain(M, N, K):
     effective_in_dtype = tl.float16
     in_dtype = "float16"
 
+    rs = RandomState(17)
     x = numpy_random((M, K), dtype_str=in_dtype, rs=rs)
     y = numpy_random((K, N), dtype_str=in_dtype, rs=rs)
     w = numpy_random((N, N), dtype_str=in_dtype, rs=rs)
@@ -2018,7 +2018,6 @@ def test_fa_chain(M, N, K):
                          y_tri, y_tri.stride(0), y_tri.stride(1),
                          w_tri, w_tri.stride(0), w_tri.stride(1),
                          z_tri, z_tri.stride(0), z_tri.stride(1),
-                         effective_in_dtype,
                          out_dtype,
                          BLOCK_M=M, BLOCK_K=K, BLOCK_N=N,
                          num_warps=4)
