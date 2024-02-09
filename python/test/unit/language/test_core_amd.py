@@ -1956,25 +1956,28 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
         assert 'mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16' in ptx
 
 
-@pytest.mark.parametrize("M, N, K", [(16, 64, 128), (4, 64, 128)])
-def test_fa_chain(M, N, K):
+# 
+# dot1 (MxK) x (KxN) -> (MxN)
+# dot2 (MxN) x (NxL) -> (MxL)
+@pytest.mark.parametrize("M, N, K, L", [(16, 64, 128, 32), (4, 64, 128, 32)])
+def test_fa_chain(M, N, K, L):
 
     # triton kernel
     @triton.jit
     def kernel(X, stride_xm, stride_xk,
                Y, stride_yk, stride_yn,
                W, stride_wn, stride_wl,
-               Z, stride_zm, stride_zn,
+               Z, stride_zm, stride_zl,
                out_dtype: tl.constexpr,
-               BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):
+               BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr, BLOCK_L: tl.constexpr):
         off_m = tl.arange(0, BLOCK_M)
         off_n = tl.arange(0, BLOCK_N)
-        off_l = tl.arange(0, BLOCK_N)
+        off_l = tl.arange(0, BLOCK_L)
         off_k = tl.arange(0, BLOCK_K)
         Xs = X + off_m[:, None] * stride_xm + off_k[None, :] * stride_xk
         Ys = Y + off_k[:, None] * stride_yk + off_n[None, :] * stride_yn
         Ws = W + off_n[:, None] * stride_wn + off_l[None, :] * stride_wl
-        Zs = Z + off_m[:, None] * stride_zm + off_n[None, :] * stride_zn
+        Zs = Z + off_m[:, None] * stride_zm + off_n[None, :] * stride_zl
         x = tl.load(Xs)
         y = tl.load(Ys)
 
@@ -1995,7 +1998,7 @@ def test_fa_chain(M, N, K):
     rs = RandomState(17)
     x = numpy_random((M, K), dtype_str=in_dtype, rs=rs)
     y = numpy_random((K, N), dtype_str=in_dtype, rs=rs)
-    w = numpy_random((N, N), dtype_str=in_dtype, rs=rs)
+    w = numpy_random((N, L), dtype_str=in_dtype, rs=rs)
 
     x *= .1
     y *= .1
@@ -2016,7 +2019,7 @@ def test_fa_chain(M, N, K):
                          w_tri, w_tri.stride(0), w_tri.stride(1),
                          z_tri, z_tri.stride(0), z_tri.stride(1),
                          out_dtype,
-                         BLOCK_M=M, BLOCK_K=K, BLOCK_N=N,
+                         BLOCK_M=M, BLOCK_K=K, BLOCK_N=N, BLOCK_L=L,
                          num_warps=4)
     # torch result
     z_ref = np.matmul(x, y)
