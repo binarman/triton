@@ -1977,7 +1977,7 @@ def test_fa_chain(M, N, K, L):
         Xs = X + off_m[:, None] * stride_xm + off_k[None, :] * stride_xk
         Ys = Y + off_k[:, None] * stride_yk + off_n[None, :] * stride_yn
         Ws = W + off_n[:, None] * stride_wn + off_l[None, :] * stride_wl
-        Zs = Z + off_m[:, None] * stride_zm + off_n[None, :] * stride_zl
+        Zs = Z + off_m[:, None] * stride_zm + off_l[None, :] * stride_zl
         x = tl.load(Xs)
         y = tl.load(Ys)
 
@@ -1992,7 +1992,6 @@ def test_fa_chain(M, N, K, L):
         z = tl.dot(z.to(w.dtype), w, out_dtype=out_dtype)
         tl.store(Zs, z)
     # input
-    effective_in_dtype = tl.float16
     in_dtype = "float16"
 
     rs = RandomState(17)
