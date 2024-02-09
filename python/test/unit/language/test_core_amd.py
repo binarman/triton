@@ -1959,7 +1959,7 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
 # 
 # dot1 (MxK) x (KxN) -> (MxN)
 # dot2 (MxN) x (NxL) -> (MxL)
-@pytest.mark.parametrize("M, N, K, L", [(16, 64, 128, 32), (4, 64, 128, 32)])
+@pytest.mark.parametrize("M, N, K, L", [(16, 64, 128, 32), (4, 64, 128, 32), (4, 64, 128, 64)])
 def test_fa_chain(M, N, K, L):
 
     # triton kernel
