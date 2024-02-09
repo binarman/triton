@@ -2007,7 +2007,7 @@ def test_fa_chain(M, N, K, L):
     y_tri = to_triton(y, device=device)
     w_tri = to_triton(w, device=device)
     # triton result
-    z = 1 + numpy_random((M, N), dtype_str=in_dtype, rs=rs) * .1
+    z = 1 + numpy_random((M, L), dtype_str=in_dtype, rs=rs) * .1
 
     z_tri = to_triton(z, device=device)
 
