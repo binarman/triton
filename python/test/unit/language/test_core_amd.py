@@ -2005,14 +2005,11 @@ def test_fa_chain(M, N, K):
     y_tri = to_triton(y, device=device)
     w_tri = to_triton(w, device=device)
     # triton result
-    if out_dtype == 'int8':
-        z = 1 + numpy_random((M, N), dtype_str='int32', rs=rs)
-    else:
-        z = 1 + numpy_random((M, N), dtype_str=in_dtype, rs=rs) * .1
+    z = 1 + numpy_random((M, N), dtype_str=in_dtype, rs=rs) * .1
 
     z_tri = to_triton(z, device=device)
 
-    out_dtype = tl.float16
+    out_dtype = tl.float32
 
     pgm = kernel[(1, 1)](x_tri, x_tri.stride(0), x_tri.stride(1),
                          y_tri, y_tri.stride(0), y_tri.stride(1),
