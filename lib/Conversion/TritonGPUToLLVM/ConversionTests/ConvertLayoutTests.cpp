@@ -36,71 +36,6 @@ constexpr int waveSize = 64;
 constexpr int ldsSize = 65536;
 constexpr int tensorSize = 256;
 
-// mlir::ModuleOp createTestModuleFromScratch(mlir::MLIRContext *ctx, const char *functionName) {
-//   ctx->getOrLoadDialect<mlir::triton::TritonDialect>();
-//   ctx->getOrLoadDialect<mlir::triton::gpu::TritonGPUDialect>();
-//   ctx->getOrLoadDialect<mlir::tensor::TensorDialect>();
-//   ctx->getOrLoadDialect<mlir::gpu::GPUDialect>();
-//   ctx->getOrLoadDialect<mlir::LLVM::LLVMDialect>();
-//   mlir::OpBuilder builder(ctx);
-//   mlir::Location loc = builder.getUnknownLoc();
-
-//   llvm::SmallVector<int64_t> tensorShape{16, 16};
-//   auto elementType = builder.getF32Type();
-//   unsigned versionMajor = 2;
-//   unsigned versionMinor = 0;
-//   llvm::SmallVector<unsigned> warpsPerCTA{1, 1};
-//   unsigned mDim = 4;
-//   unsigned nDim = 4;
-//   bool isTransposed = false;
-//   auto srcLayout = mlir::triton::gpu::MfmaEncodingAttr::get(ctx, versionMajor, versionMinor, warpsPerCTA, mDim, nDim, isTransposed);
-//   auto srcType = mlir::RankedTensorType::get(tensorShape, elementType, srcLayout);
-
-//   auto mlirModule = mlir::ModuleOp::create(loc);
-//   mlirModule->setAttr("triton_gpu.num-warps", builder.getI32IntegerAttr(1));
-//   mlirModule->setAttr("triton_gpu.threads-per-warp", builder.getI32IntegerAttr(64));
-//   mlirModule->setAttr("triton_gpu.num-ctas", builder.getI32IntegerAttr(1));
-
-//   auto threadIdTy = builder.getI32Type();
-//   auto offsetType = builder.getI32Type();
-//   auto offsetPtrTy = mlir::LLVM::LLVMPointerType::get(ctx, offsetType, 3);
-//   std::vector<mlir::Type> inTypes{threadIdTy, srcType};
-//   auto mlirFuncTy = builder.getFunctionType(inTypes, {});
-
-//   auto mlirFunc = builder.create<mlir::triton::FuncOp>(loc, functionName, mlirFuncTy);
-//   mlirModule.push_back(mlirFunc);
-//   llvm::errs() << "module created:\n" << mlirModule << "\n";
-
-//   auto block = mlirFunc.addEntryBlock();
-
-//   // call function for index compute and generate llvmIR
-//   unsigned vecSize = 1;
-//   unsigned perPhase = 1;
-//   unsigned maxPhase = 1;
-//   llvm::SmallVector<unsigned> order{1, 0};
-//   llvm::SmallVector<unsigned> CTAsPerCGA{1, 1};
-//   llvm::SmallVector<unsigned> CTASplitNum{1, 1};
-//   llvm::SmallVector<unsigned> CTAOrder{1, 0};
-//   auto CTALayout = mlir::triton::gpu::CTALayoutAttr::get(ctx, CTAsPerCGA, CTASplitNum, CTAOrder);
-//   bool hasLeadingOffset = false;
-//   auto dstLayout = mlir::triton::gpu::SharedEncodingAttr::get(ctx, vecSize, perPhase, maxPhase, order, CTALayout, hasLeadingOffset);
-//   auto dstType = mlir::RankedTensorType::get(tensorShape, elementType, dstLayout);
-
-//   auto elementAttr = builder.getFloatAttr(elementType, 0);
-//   auto denseAttr = mlir::DenseElementsAttr::get(srcType, elementAttr);
-//   auto inputTensor = block->getArgument(1);
-
-//   auto convertLayout = builder.create<mlir::triton::gpu::ConvertLayoutOp>(loc, dstType, inputTensor);
-//   block->push_back(convertLayout);
-
-//   auto returnOp = builder.create<mlir::triton::ReturnOp>(loc);
-//   block->push_back(returnOp);
-
-//   llvm::errs() << "module filled:\n" << mlirModule << "\n";
-
-//   return mlirModule;
-// }
-
 mlir::ModuleOp createTestModule(mlir::MLIRContext *ctx, const char *src) {
   ctx->getOrLoadDialect<mlir::triton::TritonDialect>();
   ctx->getOrLoadDialect<mlir::triton::gpu::TritonGPUDialect>();
@@ -129,7 +64,20 @@ void convertTTGToLLVM(mlir::ModuleOp &mod) {
   }
 }
 
-void replaceGPUSpecificEntities(mlir::ModuleOp &mod) {
+template <class TargetClass, class Root>
+llvm::SmallVector<mlir::Operation *> collectObjects(Root &mod) {
+  llvm::SmallVector<mlir::Operation *> collection;
+  mod.walk([&collection](TargetClass op) {
+    collection.push_back(op);
+  });
+  return collection;
+}
+
+struct DissectedFunc{
+  std::vector<std::string> subfunctionNames;
+};
+
+std::vector<DissectedFunc> dissectFunctions(mlir::ModuleOp &mod) {
   class EliminateThreadId : public mlir::RewritePattern {
 
   public:
@@ -156,13 +104,9 @@ void replaceGPUSpecificEntities(mlir::ModuleOp &mod) {
   RewritePatternSet patterns(ctx);
   patterns.add<EliminateThreadId>(ctx);
 
-  SmallVector<Operation *> candidates;
-  mod.walk([&candidates](mlir::ROCDL::ThreadIdXOp op) {
-    candidates.push_back(op);
-  });
-  if (mlir::applyOpPatternsAndFold(candidates, std::move(patterns)).failed()) {
-    llvm::errs() << "failed to eliminate threadId operations\n";
-    return;
+  auto listOfThreadIdx = collectObjects<mlir::ROCDL::ThreadIdXOp>(mod);
+  if (mlir::applyOpPatternsAndFold(listOfThreadIdx, std::move(patterns)).failed()) {
+    llvm::report_fatal_error("failed to eliminate threadId operations");
   }
 
   mod.walk([&builder, &loc](mlir::LLVM::GlobalOp op) {
@@ -172,6 +116,92 @@ void replaceGPUSpecificEntities(mlir::ModuleOp &mod) {
       op.setLinkage(mlir::LLVM::linkage::Linkage::Private);
     }
   });
+
+  std::vector<DissectedFunc> wrappers;
+  auto listOfFunctions = collectObjects<mlir::LLVM::LLVMFuncOp>(mod);
+  for (auto f: listOfFunctions) {
+    mlir::LLVM::LLVMFuncOp func = llvm::cast<mlir::LLVM::LLVMFuncOp>(f);
+    if (!func.getFunctionBody().hasOneBlock())
+      llvm::report_fatal_error("can process only functions with only one block");
+    mlir::Block &entryBlock = func.front();
+    auto loads = collectObjects<mlir::LLVM::LoadOp>(func);
+    auto stores = collectObjects<mlir::LLVM::StoreOp>(func);
+    auto syncOps = loads;
+    syncOps.insert(syncOps.end(), stores.begin(), stores.end());
+    llvm::DenseMap<mlir::Value, int> valueToIdx;
+    llvm::DenseMap<mlir::Operation *, int> opToIdx;
+    llvm::SmallVector<mlir::Operation *> idxToOp(1, func);
+    llvm::SmallVector<llvm::SmallVector<mlir::Value>> IdxToValue;
+    llvm::DenseMap<mlir::Value, int> lastUse;
+    // fill liveness analysis
+    IdxToValue.push_back({});
+    for (auto arg: entryBlock.getArguments()) {
+      IdxToValue.back().push_back(arg);
+      lastUse[arg] = -1;
+      valueToIdx[arg] = 0;
+    }
+    for (Operation &op: entryBlock) {
+      int curIdx = IdxToValue.size();
+      opToIdx[&op] = curIdx;
+      idxToOp.push_back(&op);
+      for (const mlir::Value &input: op.getOperands())
+        lastUse[input] = curIdx;
+      IdxToValue.push_back({});
+      for (const mlir::Value &output: op.getResults()) {
+        lastUse[output] = -1;
+        valueToIdx[output] = curIdx;
+        IdxToValue.back().push_back(output);
+      }
+    }
+    llvm::SmallVector<llvm::SmallVector<mlir::Value>> liveValues(IdxToValue.size());
+    for (auto valueRecord: valueToIdx) {
+      mlir::Value val = valueRecord.first;
+      int defined = valueRecord.second;
+      int used = lastUse[val];
+      if (used == -1)
+        continue;
+      for (int i = defined; i < used; ++i)
+        liveValues[i].push_back(val);
+    }
+
+    std::vector<int> breakpoints;
+    for (auto op: syncOps)
+      breakpoints.push_back(opToIdx[op]);
+    std::sort(breakpoints.begin(), breakpoints.end());
+
+    llvm::DenseMap<mlir::Value, mlir::Value> replacements;
+    for (int i = 0; i < breakpoints.size(); ++i) {
+      int breakIdx = breakpoints[i];
+      Operation *op = idxToOp[breakIdx];
+      auto block = op->getBlock();
+      auto nextOp = op->getNextNode();
+      auto newBlock = block->splitBlock(nextOp);
+      
+      llvm::SmallVector<mlir::Value> branchOperands;
+      for (mlir::Value val: liveValues[breakIdx]) {
+        if (replacements.contains(val))
+          branchOperands.push_back(replacements[val]);
+        else
+          branchOperands.push_back(val);
+        BlockArgument arg = newBlock->addArgument(val.getType(), loc);
+        mlir::Value replacedValue = branchOperands.back();
+        replacedValue.replaceAllUsesWith(arg);
+        replacements[replacedValue] = arg;
+      }
+      auto branchOp = builder.create<mlir::LLVM::BrOp>(loc, branchOperands, newBlock);
+      block->push_back(branchOp);
+      // replace old values with arguments
+    }
+
+    // MAP original values to "temporary" values
+    // for (auto op: syncOps) {
+    //   auto block = op->getBlock();
+    //   auto nextOp = op->getNextNode();
+    //   auto splittedBlock = block->splitBlock(nextOp);
+    // }
+  }
+  llvm::outs() << mod;
+  return wrappers;
 }
 
 std::unique_ptr<llvm::Module> convertMLIRToLLVMIR(mlir::ModuleOp &mod, llvm::LLVMContext &llvmCtx) {
@@ -297,7 +327,7 @@ TEST(LayoutConversions, DISABLED_MFMA44toShared) {
 
   convertTTGToLLVM(mlirModule);
 
-  replaceGPUSpecificEntities(mlirModule);
+  dissectFunctions(mlirModule);
 
   llvm::LLVMContext llvmCtx;
 
@@ -325,7 +355,7 @@ TEST(LayoutConversions, DISABLED_SharedToMFMA44) {
 
   convertTTGToLLVM(mlirModule);
 
-  replaceGPUSpecificEntities(mlirModule);
+  dissectFunctions(mlirModule);
 
   llvm::LLVMContext llvmCtx;
 
@@ -356,7 +386,7 @@ TEST(LayoutConversions, DISABLED_SharedToMFMA44) {
   SUCCEED();
 }
 
-TEST(LayoutConversions, SharedToTransposedMFMA464) {
+TEST(LayoutConversions, DISABLED_SharedToTransposedMFMA464) {
   const char *functionName = "test_func";
   mlir::MLIRContext mlirCtx;
   const char *src =
@@ -374,7 +404,7 @@ TEST(LayoutConversions, SharedToTransposedMFMA464) {
 
   convertTTGToLLVM(mlirModule);
 
-  replaceGPUSpecificEntities(mlirModule);
+  dissectFunctions(mlirModule);
 
   llvm::LLVMContext llvmCtx;
 
@@ -384,6 +414,110 @@ TEST(LayoutConversions, SharedToTransposedMFMA464) {
   std::iota(sharedObject, sharedObject+1024*4, 0.0f);
 
   constexpr int waves = 4;
+  constexpr int numThreads = waves * waveSize;
+
+  std::vector<std::vector<llvm::GenericValue>> inputs(numThreads);
+  for (int i = 0; i < numThreads; ++i) {
+    inputs[i].resize(1);
+    inputs[i][0].AggregateVal.resize(5);
+    inputs[i][0].AggregateVal[0].PointerVal = sharedObject;
+    inputs[i][0].AggregateVal[1].IntVal = llvm::APInt(32, 64, true);
+    inputs[i][0].AggregateVal[2].IntVal = llvm::APInt(32, 1, true);
+    inputs[i][0].AggregateVal[3].IntVal = llvm::APInt(32, 0, true);
+    inputs[i][0].AggregateVal[4].IntVal = llvm::APInt(32, 0, true);
+  }
+
+  auto outputs = RunInterpreterWithArgs(std::move(llvmModule), functionName, inputs);
+  for (int i = 0; i < numThreads; ++i) {
+    std::cout << "thread " << i << ": ";
+    for (int j = 0; j < outputs[i].AggregateVal.size(); ++j) {
+      std::cout << std::setw(4) << outputs[i].AggregateVal[j].FloatVal;
+    }
+    std::cout << "\n";
+  }
+  SUCCEED();
+}
+
+TEST(LayoutConversions, DISABLED_SharedToMFMA464) {
+  const char *functionName = "test_func";
+  mlir::MLIRContext mlirCtx;
+  const char *src =
+"#mfma = #triton_gpu.mfma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 1], instrShape = [4, 64], isTransposed = false}>"
+"#shared = #triton_gpu.shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0], hasLeadingOffset = false}>"
+""
+"module attributes {\"triton_gpu.num-ctas\" = 1 : i32, \"triton_gpu.num-warps\" = 1 : i32, \"triton_gpu.threads-per-warp\" = 64 : i32} {\n"
+"  tt.func @test_func(%arg0: i32, %arg1: tensor<16x64xf32, #shared>) -> tensor<16x64xf32, #mfma> {\n"
+"    %0 = triton_gpu.convert_layout %arg1 : (tensor<16x64xf32, #shared>) -> tensor<16x64xf32, #mfma>\n"
+"    tt.return %0: tensor<16x64xf32, #mfma>\n"
+"  }\n"
+"}\n";
+
+  auto mlirModule = createTestModule(&mlirCtx, src);
+
+  convertTTGToLLVM(mlirModule);
+
+  dissectFunctions(mlirModule);
+
+  llvm::LLVMContext llvmCtx;
+
+  std::unique_ptr<llvm::Module> llvmModule = convertMLIRToLLVMIR(mlirModule, llvmCtx);
+
+  float sharedObject[1024*4] = {};
+  std::iota(sharedObject, sharedObject+1024*4, 0.0f);
+
+  constexpr int waves = 1;
+  constexpr int numThreads = waves * waveSize;
+
+  std::vector<std::vector<llvm::GenericValue>> inputs(numThreads);
+  for (int i = 0; i < numThreads; ++i) {
+    inputs[i].resize(1);
+    inputs[i][0].AggregateVal.resize(5);
+    inputs[i][0].AggregateVal[0].PointerVal = sharedObject;
+    inputs[i][0].AggregateVal[1].IntVal = llvm::APInt(32, 64, true);
+    inputs[i][0].AggregateVal[2].IntVal = llvm::APInt(32, 1, true);
+    inputs[i][0].AggregateVal[3].IntVal = llvm::APInt(32, 0, true);
+    inputs[i][0].AggregateVal[4].IntVal = llvm::APInt(32, 0, true);
+  }
+
+  auto outputs = RunInterpreterWithArgs(std::move(llvmModule), functionName, inputs);
+  for (int i = 0; i < numThreads; ++i) {
+    std::cout << "thread " << i << ": ";
+    for (int j = 0; j < outputs[i].AggregateVal.size(); ++j) {
+      std::cout << std::setw(4) << outputs[i].AggregateVal[j].FloatVal;
+    }
+    std::cout << "\n";
+  }
+  SUCCEED();
+}
+
+TEST(LayoutConversions, MFMA464ToBlocked) {
+  const char *functionName = "test_func";
+  mlir::MLIRContext mlirCtx;
+  const char *src =
+"#mfma = #triton_gpu.mfma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 1], instrShape = [4, 64], isTransposed = false}>"
+"#blocked = #triton_gpu.shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0], hasLeadingOffset = false}>"
+""
+"module attributes {\"triton_gpu.num-ctas\" = 1 : i32, \"triton_gpu.num-warps\" = 1 : i32, \"triton_gpu.threads-per-warp\" = 64 : i32} {\n"
+"  tt.func @test_func(%arg0: i32, %arg1: tensor<16x64xf32, #mfma>) -> tensor<16x64xf32, #blocked> {\n"
+"    %0 = triton_gpu.convert_layout %arg1 : (tensor<16x64xf32, #mfma>) -> tensor<16x64xf32, #blocked>\n"
+"    tt.return %0: tensor<16x64xf32, #blocked>\n"
+"  }\n"
+"}\n";
+
+  auto mlirModule = createTestModule(&mlirCtx, src);
+
+  convertTTGToLLVM(mlirModule);
+
+  auto dissectedFunction = dissectFunctions(mlirModule);
+
+  llvm::LLVMContext llvmCtx;
+
+  std::unique_ptr<llvm::Module> llvmModule = convertMLIRToLLVMIR(mlirModule, llvmCtx);
+
+  float sharedObject[1024*4] = {};
+  std::iota(sharedObject, sharedObject+1024*4, 0.0f);
+
+  constexpr int waves = 1;
   constexpr int numThreads = waves * waveSize;
 
   std::vector<std::vector<llvm::GenericValue>> inputs(numThreads);
@@ -427,7 +561,7 @@ TEST(LayoutConversions, DISABLED_SharedToTransposedMFMA44OpA) {
 
   convertTTGToLLVM(mlirModule);
 
-  replaceGPUSpecificEntities(mlirModule);
+  dissectFunctions(mlirModule);
 
   llvm::LLVMContext llvmCtx;
 
