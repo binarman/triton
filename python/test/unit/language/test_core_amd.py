@@ -1665,6 +1665,18 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                           for non_k_dim in [0, 4, 16, 32]
                           if not (allow_tf32 and (in_dtype in ['float16']))] +
 
+                         [(*shape, 1, False, False, epilogue, allow_tf32, in_dtype, out_dtype, non_k_dim, 1)
+                          for shape in [(64, 16, 16), (16, 64, 16)]
+                          for epilogue in ['none', 'trans', 'add-matrix', 'chain-dot', 'softmax']
+                          for allow_tf32 in [False]
+                          for in_dtype, out_dtype in [('float16', 'float16'),
+                                                      ('bfloat16', 'float32'),
+                                                      ('float8e5m2fnuz', 'float32'),
+                                                      ('float8e4m3fnuz', 'float32'),
+                                                      ('float16', 'float32'),
+                                                      ('float32', 'float32')]
+                          for non_k_dim in [0, 464, 644]] +
+
                          [(*shape_nw, col_a, col_b, 'none', allow_tf32, in_dtype, out_dtype, non_k_dim, kpack)
                           for shape_nw in [[128, 128, 32, 2],
                                            [128, 16, 32, 4],
@@ -1728,6 +1740,9 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, allow_tf32, in_dtype, o
             pytest.skip("incompatible non_k_dim == 4 with K size")
         if non_k_dim == 4 and (M > 16 or N > 16):
             pytest.skip("skipping large matrices for non_k_dim == 4 to speedup testing")
+        if (non_k_dim == 464 and N < 64) or (non_k_dim == 644 and M < 64):
+            pytest.skip(f"skipping non_k_dim={non_k_dim} specific test with incompatible matrix sizes")
+
 
     if capability[0] < 7:
         pytest.skip("Only test tl.dot() on devices with sm >= 70")
