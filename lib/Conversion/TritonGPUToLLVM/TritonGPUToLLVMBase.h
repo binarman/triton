@@ -1221,7 +1221,7 @@ private:
     if (mfmaLayout.getIsTransposed()) {
       multiDimBase[1] =
           add(mul(i32_val(4), udiv(laneId, i32_val(mDim))), offWarp1);
-      multiDimBase[0] = add(urem(laneId, i32_val(nDim)), offWarp0);
+      multiDimBase[0] = add(urem(laneId, i32_val(mDim)), offWarp0);
     } else {
       multiDimBase[0] =
           add(mul(i32_val(4), udiv(laneId, i32_val(nDim))), offWarp0);
