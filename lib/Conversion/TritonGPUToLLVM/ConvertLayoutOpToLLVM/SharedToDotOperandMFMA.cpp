@@ -493,12 +493,28 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
     //   3. non k-major + swizzling is enabled <-- for testing purpose only
     //
     // In this path, it requires a 2-step method to compute the offsets.
+
+    // Check that swizzling is supported:
+    // algorithm reuses index computations between tile repetition along non k
+    // dim, addresses of rows over nonKDim can not be processed correctly
     if (opIdx == 0) {
+      // check that swizzling pattern fits into one mfma tile
+      assert(order[0] == 0 ||
+             sharedLayout.getMaxPhase() * sharedLayout.getPerPhase() <=
+                 mfmaInstrNonK);
+      assert(order[0] == 1 ||
+             sharedLayout.getMaxPhase() * sharedLayout.getVec() <= mfmaInstrK);
       offsets = computeOffsetsAType(
           rewriter, loc, elemsPerInstr, spatialWaveId, lane, warpsPerGroupNonK,
           numOfElems, numReps, smemObj, sharedLayout, mDim, mfmaInstrK);
     } else {
       assert(opIdx == 1);
+      // check that swizzling pattern fits into one mfma tile
+      assert(order[0] == 1 ||
+             sharedLayout.getMaxPhase() * sharedLayout.getPerPhase() <=
+                 mfmaInstrNonK);
+      assert(order[0] == 0 ||
+             sharedLayout.getMaxPhase() * sharedLayout.getVec() <= mfmaInstrK);
       offsets = computeOffsetsBType(
           rewriter, loc, elemsPerInstr, spatialWaveId, lane, warpsPerGroupNonK,
           numOfElems, numReps, smemObj, sharedLayout, nDim, mfmaInstrK);

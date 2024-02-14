@@ -152,8 +152,15 @@ compared to 1*64 when the hasLeadingOffset is false.
             auto mDim = mfmaEnc.getMDim();
             auto nDim = mfmaEnc.getNDim();
             auto nonKDim = dotOpEnc.getOpIdx() == 0 ? mDim : nDim;
-            if (4 == nonKDim)
-               maxPhase = 4;
+            // limit maxPhase and perPhase so full maxPhase*perPhase fits into one MFMA tile.
+            // One load operation loads elements of only one tile,
+            // it is meaningless to swizzle between tiles.
+            if (maxPhase * perPhase > nonKDim) {
+              maxPhase = std::max(1u, nonKDim / perPhase);
+              // just cleanup, for unswizzled case
+              if (maxPhase == 1)
+                perPhase = 1;
+            }
             assert(maxPhase > 0);
 
             return get(context, vecSize, perPhase, maxPhase, order, CTALayout);
