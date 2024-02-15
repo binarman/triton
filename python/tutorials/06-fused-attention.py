@@ -59,22 +59,22 @@ def _attn_fwd_inner(acc, l_i, m_i, q,
             mask = offs_m[:, None] >= (start_n + offs_n[None, :])
             qk = tl.where(mask, qk, float("-inf"))
         qk += tl.dot(q, k, matrix_instr_nonkdim=[4, 64])
-        tl.device_print("qk1", qk)
+        #tl.device_print("qk1", qk)
         m_ij = tl.maximum(m_i, tl.max(qk, 1))
-        tl.device_print("m_ij", m_ij)
+        #tl.device_print("m_ij", m_ij)
         qk = qk - m_ij[:, None]
-        tl.device_print("qk2", qk)
+        #tl.device_print("qk2", qk)
         p = tl.math.exp2(qk)
-        tl.device_print("p", p)
+        #tl.device_print("p", p)
         # -- update output accumulator --
         alpha = tl.math.exp2(m_i - m_ij)
-        tl.device_print("alpha", alpha)
+        #tl.device_print("alpha", alpha)
         acc = acc * alpha[:, None]
-        tl.device_print("acc1", acc)
+        #tl.device_print("acc1", acc)
         if not pre_load_v:
             v = tl.load(V_block_ptr)
         acc += tl.dot(p.to(v.dtype), v, matrix_instr_nonkdim=[4, 4])
-        tl.device_print("acc2", acc)
+        #tl.device_print("acc2", acc)
         # -- update m_i and l_i
         l_ij = tl.sum(p, 1)
         l_i = l_i * alpha + l_ij
