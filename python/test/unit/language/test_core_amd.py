@@ -3040,6 +3040,7 @@ if torch.version.hip is not None and _get_warp_size() == 64:
     layouts = [
         MfmaLayout(version=(2,0), warps_per_cta=[4, 1], instr_shape=[32,32], is_transposed=True),
         MfmaLayout(version=(2,0), warps_per_cta=[2, 2], instr_shape=[32,32], is_transposed=False),
+        MfmaLayout(version=(2,0), warps_per_cta=[4, 1], instr_shape=[4,64], is_transposed=True),
     ]
     shapes = [[128, 32], [128, 128], [32, 128], [64, 64]]
 else:
@@ -3058,9 +3059,6 @@ else:
 @pytest.mark.parametrize("src_layout", layouts)
 @pytest.mark.parametrize("axis", [0, 1])
 def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
-    if is_hip():
-        pytest.skip("Skiping test_reduce_layouts for now.")
-
     if torch.version.hip is not None and _get_warp_size() == 64:
         if src_layout.is_transposed and axis == 0:
             pytest.skip("Reduce along axis 0 is not supported in transposed mfma layout")
@@ -3109,8 +3107,8 @@ def test_reduce_layouts(M, N, src_layout, axis, device='cuda'):
         kernel = triton.compile(f.name)
 
     rs = RandomState(17)
-    x = rs.randint(0, 4, (M, N)).astype('float32')
-    x = (x.view('uint32') & np.uint32(0xffffe000)).view('float32')
+    x = rs.randint(0, 256, (M, N)).astype('float32')
+    #x = (x.view('uint32') & np.uint32(0xffffe000)).view('float32')
 
     if axis == 0:
         z = np.zeros((1, N)).astype('float32')

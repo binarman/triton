@@ -1267,7 +1267,7 @@ def dot(lhs: tl.tensor, rhs: tl.tensor, acc: tl.tensor, allow_tf32: bool, max_nu
             and rhs.shape[1].value >= 16, \
             f"All values in both first input shape ({lhs.shape}) and second input shape ({rhs.shape}) must be >= 16!"
     if is_hip():
-        assert lhs.shape[0].value >= 4 and lhs.shape[1].value >= 16 \
+        assert lhs.shape[0].value >= 4 and lhs.shape[1].value >= 4 \
             and rhs.shape[1].value >= 4, \
             f"All values in both first input shape ({lhs.shape}) and second input shape ({rhs.shape}) must be >= 4!"
 

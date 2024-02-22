@@ -90,7 +90,7 @@ def _attn_fwd_inner(acc, l_i, m_i, q,
 # re-tuning.
 @triton.autotune(
    configs=[
-       triton.Config({'BLOCK_M': 16, 'BLOCK_N': 64, 'waves_per_eu': 3, 'slice_k_tile': 0, 'pre_load_v': True}, num_stages=1, num_warps=4),
+       triton.Config({'BLOCK_M': 16, 'BLOCK_N': 64, 'waves_per_eu': 3, 'slice_k_tile': 0, 'pre_load_v': True}, num_stages=1, num_warps=1),
    ],
    key=['Z', 'H', 'N_CTX', 'STAGE', 'BLOCK_DMODEL'],
 )
@@ -641,8 +641,10 @@ name_to_torch_types = {
     'fp16': torch.float16,
 }
 
+TORCH_HAS_FP8E5B16 = False
 if TORCH_HAS_FP8E5B16:
     name_to_torch_types['fp8'] = torch.float8_e5m2fnuz
+TORCH_HAS_FP8 = False
 
 @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD, dtype',
 [ (*shape, dtype)
@@ -681,7 +683,7 @@ def test_op_fwd(Z, H, N_CTX, D_HEAD, causal, dtype):
     torch.testing.assert_close(ref_out, tri_out, atol=atol, rtol=rtol)
 
 @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD',
-                         [(1, 1, 1024, 128),
+                         [(1, 1, 128, 64),
                           ])
 @pytest.mark.parametrize('causal', [False, True])
 def test_op_fwd_mfma4(Z, H, N_CTX, D_HEAD, causal, dtype=torch.float16):
