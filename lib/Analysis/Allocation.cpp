@@ -254,12 +254,14 @@ private:
   template <BufferT::BufferKind T>
   void maybeAddScratchBuffer(Operation *op, unsigned bytes,
                              unsigned alignment) {
+    llvm::outs() << "add buffer:" << *op << "\n   bytes:" << bytes << "\n   align:" << alignment << "\n";
     if (bytes > 0)
       allocation->addBuffer<T>(op, bytes, alignment);
   }
 
   template <BufferT::BufferKind T>
   void maybeAddScratchBuffer(Operation *op, unsigned bytes) {
+    llvm::outs() << "add buffer:" << *op << "\n   bytes:" << bytes << "\n";
     if (bytes > 0)
       allocation->addBuffer<T>(op, bytes);
   }

@@ -566,6 +566,26 @@ private:
     return success();
   }
 
+  static void printValues(Location loc, ConversionPatternRewriter &rewriter, std::string prefix, const std::vector<Value> &vs) {
+    auto ctx = loc.getContext();
+    std::vector<Value> values;
+    for (const auto &v: vs) {
+      auto vTy = v.getType();
+      if (auto vecTy = dyn_cast<VectorType>(vTy)) {
+        auto elemTy = vecTy.getElementType();
+        for (int i = 0; i < vecTy.getNumElements(); ++i) {
+          values.push_back(extract_element(elemTy, v, i32_val(i)));
+        }
+      } else if (vTy.isa<LLVM::LLVMPointerType>()) {
+        values.push_back(ptrtoint(i32_ty, v));
+      } else {
+        values.push_back(v);
+      }
+    }
+    auto prefixAttr = mlir::StringAttr::get(ctx, prefix);
+    rewriter.create<triton::PrintOp>(loc, prefixAttr, values);
+  }
+
   // blocked/mma -> blocked/mma.
   // Data padding in shared memory to avoid bank conflict.
   LogicalResult
