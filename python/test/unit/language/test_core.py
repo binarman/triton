@@ -4328,8 +4328,11 @@ def test_convert2d(M, N, src_layout, interm_layout, dst_layout, dtype, device):
     %13 = triton_gpu.convert_layout %11 : tensor<{M}x{N}xf16, #src> -> tensor<{M}x{N}xf16, #dst>
     """ if interm_layout is None else f"""
     %15 = triton_gpu.convert_layout %9 : tensor<{M}x{N}xi32, #src> -> tensor<{M}x{N}xi32, #interm>
+    gpu.barrier
     %16 = triton_gpu.convert_layout %15 : tensor<{M}x{N}xi32, #interm> -> tensor<{M}x{N}xi32, #src>
+    gpu.barrier
     %17 = triton_gpu.convert_layout %11 : tensor<{M}x{N}xf16, #src> -> tensor<{M}x{N}xf16, #interm>
+    gpu.barrier
     %18 = triton_gpu.convert_layout %17 : tensor<{M}x{N}xf16, #interm> -> tensor<{M}x{N}xf16, #src>
 
     %12 = triton_gpu.convert_layout %16 : tensor<{M}x{N}xi32, #src> -> tensor<{M}x{N}xi32, #dst>
