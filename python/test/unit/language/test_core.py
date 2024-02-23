@@ -4371,10 +4371,10 @@ def test_convert2d(M, N, src_layout, interm_layout, dst_layout, dtype, device):
         f.flush()
         # target = triton.runtime.driver.active.get_current_target()
         # backend = triton.compiler.make_backend(target)
-        # additional_options = 
-        options = backend.parse_options({"first_compilation_stage": "llir"})
+        # additional_options = {"first_compilation_stage": "llir"}
+        # options = backend.parse_options(additional_options)
 
-        kernel = triton.compile(f.name, options=options)
+        kernel = triton.compile(f.name, options={"first_compilation_stage": "llir"})
     kernel[(1, 1, 1)](x.data_ptr(), z.data_ptr())
 
     assert torch.equal(z, x)
