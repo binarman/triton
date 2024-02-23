@@ -245,7 +245,7 @@ private:
         // alignment to 1024 can ensure the correctness. 
         if (bytes > 256)
           kAlignment = 1024;
-        llvm::outs() << "add shared layout buffer:" << *op << "\n   bytes:" << bytes << "\n   align:" << kAlignment << "\n";
+        llvm::errs() << "add shared layout buffer:" << *op << "\n   bytes:" << bytes << "\n   align:" << kAlignment << "\n";
         allocation->addBuffer<BufferT::BufferKind::Explicit>(result, bytes,
                                                              kAlignment);
       }
@@ -255,14 +255,14 @@ private:
   template <BufferT::BufferKind T>
   void maybeAddScratchBuffer(Operation *op, unsigned bytes,
                              unsigned alignment) {
-    llvm::outs() << "add scratch buffer:" << *op << "\n   bytes:" << bytes << "\n   align:" << alignment << "\n";
+    llvm::errs() << "add scratch buffer:" << *op << "\n   bytes:" << bytes << "\n   align:" << alignment << "\n";
     if (bytes > 0)
       allocation->addBuffer<T>(op, bytes, alignment);
   }
 
   template <BufferT::BufferKind T>
   void maybeAddScratchBuffer(Operation *op, unsigned bytes) {
-    llvm::outs() << "add scratch buffer:" << *op << "\n   bytes:" << bytes << "\n";
+    llvm::errs() << "add scratch buffer:" << *op << "\n   bytes:" << bytes << "\n";
     if (bytes > 0)
       allocation->addBuffer<T>(op, bytes);
   }
