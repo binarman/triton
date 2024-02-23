@@ -566,6 +566,7 @@ private:
     return success();
   }
 
+/*
   static void printValues(Location loc, ConversionPatternRewriter &rewriter, std::string prefix, const std::vector<Value> &vs) {
     auto ctx = loc.getContext();
     std::vector<Value> values;
@@ -584,7 +585,7 @@ private:
     }
     auto prefixAttr = mlir::StringAttr::get(ctx, prefix);
     rewriter.create<triton::PrintOp>(loc, prefixAttr, values);
-  }
+  }*/
 
   // blocked/mma -> blocked/mma.
   // Data padding in shared memory to avoid bank conflict.
