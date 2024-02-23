@@ -4369,10 +4369,10 @@ def test_convert2d(M, N, src_layout, interm_layout, dst_layout, dtype, device):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.ttgir') as f:
         f.write(ir)
         f.flush()
-        target = triton.runtime.driver.active.get_current_target()
-        backend = triton.compiler.make_backend(target)
-        additional_options = {"first_compilation_stage": "llir"}
-        options = backend.parse_options(additional_options)
+        # target = triton.runtime.driver.active.get_current_target()
+        # backend = triton.compiler.make_backend(target)
+        # additional_options = 
+        options = backend.parse_options({"first_compilation_stage": "llir"})
 
         kernel = triton.compile(f.name, options=options)
     kernel[(1, 1, 1)](x.data_ptr(), z.data_ptr())
