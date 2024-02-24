@@ -690,7 +690,7 @@ private:
         if (srcLayout.isa<MfmaEncodingAttr>() && srcLayout.cast<MfmaEncodingAttr>().getNDim() == 64){
           std::vector<Value> values;
           values.insert(values.end(), vals.begin(), vals.end());
-          printValues(loc, rewriter, "store replica " + std::to_string(repId), values);
+          //printValues(loc, rewriter, "store replica " + std::to_string(repId), values);
         }
 
         if (isSrcMmaV1)
