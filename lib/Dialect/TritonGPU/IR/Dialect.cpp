@@ -321,8 +321,11 @@ SmallVector<unsigned> getContigPerThread(Attribute layout) {
   if (auto mmaLayout = layout.dyn_cast<MmaEncodingAttr>()) {
     assert(mmaLayout.isVolta() || mmaLayout.isAmpere() || mmaLayout.isHopper());
     return {1, 2};
-  } else if (layout.isa<MfmaEncodingAttr>()) {
-    return {1, 1};
+  } else if (auto mfmalayout = layout.dyn_cast<MfmaEncodingAttr>()) {
+    if (mfmaLayout.getIsTransposed())
+      return {1, 4};
+    else
+      return {4, 1};
   } else if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
     auto parentLayout = sliceLayout.getParent();
     return getContigPerThread(parentLayout);
