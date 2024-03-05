@@ -106,14 +106,6 @@ module attributes {"triton_gpu.compute-capability" = 0 : i32, "triton_gpu.num-ct
     %82 = tt.splat %27 : (i64) -> tensor<64x1xi64, #blocked1>
     %83 = tt.splat %26 : (!tt.ptr<f16, 1>) -> tensor<64x1x!tt.ptr<f16, 1>, #blocked1>
     %84 = tt.broadcast %51 : (tensor<1x128xi64, #blocked1>) -> tensor<64x128xi64, #blocked1>
-
-    tensor<16xf32, #triton_gpu.slice<{dim = 1, parent = #mfma}>>, // 2
-    tensor<16xf32, #triton_gpu.slice<{dim = 1, parent = #mfma}>>, // 2
-    tensor<16x128xf32, #mfma1>, i64, i64,                         // 16x128/4/4/4*4 = 128
-    tensor<16xf32, #triton_gpu.slice<{dim = 1, parent = #mfma}>>) // 2
-    %72 tensor<16x128xf16, #triton_gpu.dot_op<{opIdx = 0, parent = #mfma, kWidth = 4}>> // 16x128/4/4/4*2 = 64
-    cst_4 #triton_gpu.dot_op<{opIdx = 0, parent = #mfma, kWidth = 4}>>  // 16x128/4/4/4*2 = 64
-
     %85:6 = scf.for %arg28 = %3 to %6 step %c64_i32 iter_args(%arg29 = %cst_0, %arg30 = %cst, %arg31 = %cst_5, %arg32 = %21, %arg33 = %21, %arg34 = %cst) -> (tensor<16xf32, #triton_gpu.slice<{dim = 1, parent = #mfma}>>, tensor<16xf32, #triton_gpu.slice<{dim = 1, parent = #mfma}>>, tensor<16x128xf32, #mfma1>, i64, i64, tensor<16xf32, #triton_gpu.slice<{dim = 1, parent = #mfma}>>)  : i32 {
       %109 = tt.splat %arg32 : (i64) -> tensor<64xi64, #triton_gpu.slice<{dim = 0, parent = #blocked3}>>
       %110 = arith.addi %109, %79 : tensor<64xi64, #triton_gpu.slice<{dim = 0, parent = #blocked3}>>

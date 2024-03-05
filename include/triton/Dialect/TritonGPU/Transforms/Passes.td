@@ -105,6 +105,19 @@ def TritonGPUAccelerateMatmul : Pass<"tritongpu-accelerate-matmul", "mlir::Modul
   ];
 }
 
+def TritonGPURegisterPressure : Pass<"tritongpu-register-pressure", "mlir::ModuleOp"> {
+  let summary = "analyze register pressure and print a report";
+
+  let description = [{
+  }];
+
+  let constructor = "mlir::createTritonGPURegisterPressurePass()";
+
+  let dependentDialects = ["mlir::triton::gpu::TritonGPUDialect",
+                           "mlir::triton::nvidia_gpu::TritonNvidiaGPUDialect",
+                           "mlir::triton::TritonDialect"];
+}
+
 def TritonAMDGPUAccelerateMatmul : Pass<"tritonamdgpu-accelerate-matmul", "mlir::ModuleOp"> {
   let summary = "accelerate matmul";
 
