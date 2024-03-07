@@ -86,6 +86,8 @@ llvm::SmallVector<llvm::SmallVector<Value>> computeTensorElemMappingInBlock(
   Value nonKDim = i32_val(iNonKDim);
   Value waveVOffset = mul(waveId, i32_val(elemsPerInstr[0]));
 
+  auto rank = smemOffsets.size();
+
   for (int tile = 0; tile < numK; ++tile) {
     Value tileVOffset = _0;
     Value tileHOffset = i32_val(tile * elemsPerInstr[1]);
@@ -113,8 +115,8 @@ llvm::SmallVector<llvm::SmallVector<Value>> computeTensorElemMappingInBlock(
           add(add(add(tileVOffset, laneVOffset), elemVOffset), waveVOffset);
       Value sliceHOffset = add(add(tileHOffset, laneHOffset), elemHOffset);
 
-      Value row = add(sliceVOffset, smemOffsets[0]);
-      Value col = add(sliceHOffset, smemOffsets[1]);
+      Value row = add(sliceVOffset, smemOffsets[rank - 2]);
+      Value col = add(sliceHOffset, smemOffsets[rank - 1]);
 
       mapping[loadsPerThread * tile + loadId] = {row, col};
     }
@@ -241,6 +243,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
                     const SharedMemoryObject &smemObj,
                     const LLVMTypeConverter *typeConverter, Value thread) {
   assert((opIdx == 0 || opIdx == 1) && "unexpected operand idx");
+  llvm::outs() << ">>> SharedToDotOperand with opIdx = " << opIdx << " <<<\n";
   auto aTensorTy = tensor.getType().cast<MemDescType>();
   ArrayRef<int64_t> shape = aTensorTy.getShape();
   auto rank = shape.size();
@@ -292,11 +295,13 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   Value spatialWaveId = AMD::getWarpIdInBlock(
       rewriter, loc, linearWaveId, warpsPerCTA, mfmaInstrNonK,
       shape[nonKDimIdx], nonKDimIdx, triton::gpu::getOrder(mfmaLayout));
+
   // number of duplicates of elements in wave
   // In case of 64x4 x 4x4 multiplication, 4x4 B operand is duplicated 16 times
   int numSubBlocks = 1;
   if ((mfmaInstrK == 4 || mfmaInstrK == 1) && mfmaInstrNonK == 4)
     numSubBlocks = 16;
+  // numOfElemsPerThreadPerMfmaInstr
   int numOfElems = mfmaInstrNonK * mfmaInstrK * numSubBlocks / iWaveSize;
   assert(numOfElems >= 1);
 
@@ -313,6 +318,8 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
     // disabled, in which case offsets computation can be simplified
     // TODO (zhanglx): later when we enable vector access to LDS for non k-major
     // tensors, we'll refactor the scope of fast and normal path
+
+    llvm::outs() << "go to fast path\n";
     Value cSwizzleOffset = smemObj.getCSwizzleOffset(order[0]);
     if (opIdx == 0) {
       if (isColMajor(order)) {
@@ -391,6 +398,8 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
       ctx, SmallVector<Type>(loadedValues.size(), loadedValues[0].getType()));
   auto result =
       packLLElements(loc, typeConverter, loadedValues, rewriter, structTy);
+  llvm::outs() << ">>> END SharedToDotOperand with opIdx = " << opIdx
+               << ", loadedValues.size() = " << loadedValues.size() << " <<<\n";
   return result;
 }
 
