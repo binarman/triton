@@ -21,8 +21,6 @@ std::unique_ptr<Pass> createTritonAMDGPUAccelerateMatmulPass(
     std::string archGenName = std::string(), int matrixInstructionSize = 0,
     int kpack = 1, bool enableWmmaTransform = false);
 
-std::unique_ptr<Pass> createTritonGPURegisterPressurePass();
-
 std::unique_ptr<Pass> createTritonGPUPrefetchPass();
 
 std::unique_ptr<Pass> createTritonGPUCanonicalizeLoopsPass();

@@ -10,7 +10,6 @@ add_mlir_dialect_library(TritonGPUTransforms
   Pipeliner/PipelineExpander.cpp
   Pipeliner/SoftwarePipeliner.cpp
   Prefetch.cpp
-  RegisterPressure.cpp
   RemoveLayoutConversions.cpp
   ReorderInstructions.cpp
   StreamPipeline.cpp

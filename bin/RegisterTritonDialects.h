@@ -35,6 +35,7 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
   mlir::test::registerTestMembarPass();
   mlir::triton::registerConvertTritonToTritonGPUPass();
   mlir::triton::registerConvertTritonGPUToLLVMPass();
+  mlir::triton::registerTritonGPURegisterPressurePass();
   mlir::triton::registerConvertNVGPUToLLVMPass();
 
   // TODO: register Triton & TritonGPU passes
