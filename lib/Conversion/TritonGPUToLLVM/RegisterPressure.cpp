@@ -43,8 +43,9 @@ public:
     }
     if (auto ptrTy = type.dyn_cast<mlir::triton::PointerType>())
       return ptrTy.getAddressSpace() == 3 ? 4 : 8;
-    else
-      return type.getIntOrFloatBitWidth() / 8;
+    if (auto ptrTy = type.dyn_cast<mlir::LLVM::LLVMPointerType>())
+      return ptrTy.getAddressSpace() == 3 ? 4 : 8;
+    return type.getIntOrFloatBitWidth() / 8;
   }
 
   int estimateTensorRegisterUsage(mlir::RankedTensorType type) {
@@ -89,12 +90,14 @@ public:
 
     m.walk([&](mlir::Operation *op) {
       for (auto res: op->getResults()) {
-        if (auto t = res.getType().dyn_cast<RankedTensorType>()) {
-          auto liveOperations = liveness.resolveLiveness(res);
-          int registers = isTTG ? estimateTensorRegisterUsage(t) : estimateScalarRegisterUsage(t);
-          for (auto liveOps: liveOperations)
+        auto liveOperations = liveness.resolveLiveness(res);
+        int registers = 0;
+        if (auto t = res.getType().dyn_cast<RankedTensorType>())
+          registers = estimateTensorRegisterUsage(t);
+        if (!isTTG)
+           registers = estimateScalarRegisterUsage(res.getType());
+        for (auto liveOps: liveOperations)
             registerUsage[liveOps] += registers;
-        }
       }
       // gather register usage
     }
