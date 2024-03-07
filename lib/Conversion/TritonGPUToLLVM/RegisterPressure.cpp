@@ -44,7 +44,7 @@ public:
     if (auto ptrTy = type.dyn_cast<mlir::triton::PointerType>())
       return ptrTy.getAddressSpace() == 3 ? 4 : 8;
     else
-      return type.getIntOrFloatBitWidth();
+      return type.getIntOrFloatBitWidth() / 8;
   }
 
   int estimateTensorRegisterUsage(mlir::RankedTensorType type) {
