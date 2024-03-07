@@ -86,9 +86,11 @@ public:
 
     Liveness liveness(m);
 
-    std::map<mlir::Operation *, int> registerUsage;
+    std::map<mlir::Operation *, int> registersAlive;
+    std::map<mlir::Operation *, int> registersDefined;
 
     m.walk([&](mlir::Operation *op) {
+      int totalRegs = 0;
       for (auto res: op->getResults()) {
         auto liveOperations = liveness.resolveLiveness(res);
         int registers = 0;
@@ -96,14 +98,19 @@ public:
           registers = estimateTensorRegisterUsage(t);
         if (!isTTG)
            registers = estimateScalarRegisterUsage(res.getType());
+        totalRegs += registers;
         for (auto liveOps: liveOperations)
-            registerUsage[liveOps] += registers;
+            registersAlive[liveOps] += registers;
       }
-      // gather register usage
+      registersDefined[op] += totalRegs;
     }
     );
-    for (auto item: registerUsage)
-      item.first->setDiscardableAttr("ttg.reg_cost", IntegerAttr::get(mlir::IntegerType::get(context, 32), item.second));
+    for (auto item: registersAlive) {
+      auto regsAliveAttr = IntegerAttr::get(mlir::IntegerType::get(context, 32), item.second);
+      item.first->setDiscardableAttr("ttg.regs_alive", regsAliveAttr);
+      auto regsDefinedAttr = IntegerAttr::get(mlir::IntegerType::get(context, 32), registersDefined.at(item.first));
+      item.first->setDiscardableAttr("ttg.regs_defined", regsDefinedAttr);
+    }
   }
 };
 
