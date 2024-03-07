@@ -89,6 +89,19 @@ public:
     std::map<mlir::Operation *, int> registersAlive;
     std::map<mlir::Operation *, int> registersDefined;
 
+    int opId = 0;
+    std::map<mlir::Operation *, int> opToId;
+    std::map<mlir::Operation *, std::vector<int>> affectedIds;
+
+    // assign IDs to operations
+    m.walk([&](mlir::Operation *op) {
+      opToId[op] = opId;
+      auto idAttr = StringAttr::get(context, "opId" + std::to_string(opId));
+      op->setDiscardableAttr("reg_usage.op_id", idAttr);
+      opId++;
+    }
+    );
+    // gather liveness info
     m.walk([&](mlir::Operation *op) {
       int totalRegs = 0;
       for (auto res: op->getResults()) {
@@ -99,17 +112,32 @@ public:
         if (!isTTG)
            registers = estimateScalarRegisterUsage(res.getType());
         totalRegs += registers;
-        for (auto liveOps: liveOperations)
-            registersAlive[liveOps] += registers;
+        for (auto liveOp: liveOperations) {
+          registersAlive[liveOp] += registers;
+          int affectedOpId = opToId[liveOp];
+          affectedIds[op].push_back(affectedOpId);
+        }
+        if (isa<triton::DotOp>(op)) {
+          for (auto liveOps: liveOperations)
+            llvm::errs() << liveOps;
+        }
+
       }
       registersDefined[op] += totalRegs;
     }
     );
+    // set register usage info and affected lists
     for (auto item: registersAlive) {
+      auto op = item.first;
       auto regsAliveAttr = IntegerAttr::get(mlir::IntegerType::get(context, 32), item.second);
-      item.first->setDiscardableAttr("ttg.regs_alive", regsAliveAttr);
+      op->setDiscardableAttr("reg_usage.regs_alive", regsAliveAttr);
       auto regsDefinedAttr = IntegerAttr::get(mlir::IntegerType::get(context, 32), registersDefined.at(item.first));
-      item.first->setDiscardableAttr("ttg.regs_defined", regsDefinedAttr);
+      op->setDiscardableAttr("reg_usage.regs_defined", regsDefinedAttr);
+      std::string affectedData = "";
+      for (int affectedId: affectedIds[op])
+        affectedData += "opId" + std::to_string(affectedId) + ";";
+      auto affectedIdsAttr = StringAttr::get(context, affectedData);
+      op->setDiscardableAttr("reg_usage.affecting_ops", affectedIdsAttr);
     }
   }
 };
