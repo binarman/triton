@@ -243,7 +243,6 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
                     const SharedMemoryObject &smemObj,
                     const LLVMTypeConverter *typeConverter, Value thread) {
   assert((opIdx == 0 || opIdx == 1) && "unexpected operand idx");
-  llvm::outs() << ">>> SharedToDotOperand with opIdx = " << opIdx << " <<<\n";
   auto aTensorTy = tensor.getType().cast<MemDescType>();
   ArrayRef<int64_t> shape = aTensorTy.getShape();
   auto rank = shape.size();
@@ -279,6 +278,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   auto numReps = mfmaLayout.getMFMARepForOperands(shape, kWidth, opIdx);
   auto numRepNonK = numReps[nonKDimIdx];
   auto numRepK = numReps[kDimIdx];
+  auto repB = numReps[0];
   // TODO(Lixun): make it simpler
   // getMFMARepForOperands always returns a 3D vector
   if (rank == 2) {
@@ -307,6 +307,9 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
 
   unsigned int maxNumWarps = shape[nonKDimIdx] / mfmaInstrNonK;
   int warpsPerBlockNonK = std::min(warpsPerCTA[nonKDimIdx], maxNumWarps);
+  int warpsPerBatch =
+      rank == 3 ? std::min<unsigned>(shape[0], warpsPerCTA[0]) : 1;
+  Value waveIdInBatch = urem(linearWaveId, i32_val(warpsPerBatch));
   elemTy = typeConverter->convertType(elemTy);
 
   SmallVector<Value> loadedValues;
@@ -318,8 +321,6 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
     // disabled, in which case offsets computation can be simplified
     // TODO (zhanglx): later when we enable vector access to LDS for non k-major
     // tensors, we'll refactor the scope of fast and normal path
-
-    llvm::outs() << "go to fast path\n";
     Value cSwizzleOffset = smemObj.getCSwizzleOffset(order[0]);
     if (opIdx == 0) {
       if (isColMajor(order)) {
@@ -374,21 +375,44 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   int elemsPerLoad = numOfElems / loadsPerThread;
   assert(numOfElems % loadsPerThread == 0);
 
-  for (int nonK = 0; nonK < numRepNonK; ++nonK) {
-    for (int k = 0; k < numRepK; ++k) {
-      auto vecTy = vec_ty(resElemTy, numOfElems);
-      Value valVec = undef(vecTy);
-      for (unsigned loadId = 0; loadId < loadsPerThread; ++loadId) {
-        auto loadVecTy = vec_ty(elemTy, elemsPerLoad);
-        Value loadOffset;
-        loadOffset = offsets[nonK * loadsPerThread * numRepK +
-                             k * loadsPerThread + loadId];
-        Value loadAddress = gep(smemPtrTy, elemTy, smemBase, loadOffset);
-        Value loadedValue = load(loadVecTy, loadAddress);
-        for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
-          Value elemVal = extract_element(elemTy, loadedValue, i32_val(elemId));
-          loadedValues.push_back(elemVal);
+  for (int b = 0; b < repB; ++b) {
+    int operandSize = shape[rank - 1] * shape[rank - 2];
+    Value batchOffset = mul(i32_val(operandSize),
+                            add(waveIdInBatch, i32_val(b * warpsPerBatch)));
+    for (int nonK = 0; nonK < numRepNonK; ++nonK) {
+      int blockNonKOffset = nonK * mfmaInstrNonK * warpsPerGroupNonK;
+      Value waveBlockOffAdjust = i32_val(blockNonKOffset * shape[order[0]]);
+      for (int k = 0; k < numRepK; ++k) {
+        auto vecTy = vec_ty(resElemTy, numOfElems);
+        Value valVec = undef(vecTy);
+        for (unsigned loadId = 0; loadId < loadsPerThread; ++loadId) {
+          auto loadVecTy = vec_ty(elemTy, elemsPerLoad);
+          Value loadOffset;
+          if (isFastPath)
+            loadOffset = offsets[nonK * loadsPerThread * numRepK +
+                                 k * loadsPerThread + loadId];
+          else
+            // In the normal path, we only computed the offsets of elements
+            // in the first wave-block. Therefore, we update the offsets
+            // of elements in later wave-blocks by adding a constant stride
+            loadOffset =
+                add(waveBlockOffAdjust, offsets[k * loadsPerThread + loadId]);
+          loadOffset = add(loadOffset, batchOffset);
+          Value loadAddress = gep(smemPtrTy, elemTy, smemBase, loadOffset);
+          Value loadedValue = load(loadVecTy, loadAddress);
+          if (loadsPerThread > 1) {
+            for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
+              Value elemVal =
+                  extract_element(elemTy, loadedValue, i32_val(elemId));
+              elemVal = bitcast(elemVal, resElemTy);
+              valVec = insert_element(vecTy, valVec, elemVal,
+                                      i32_val(loadId * elemsPerLoad + elemId));
+            }
+          } else {
+            valVec = loadedValue;
+          }
         }
+        loadedValues.push_back(valVec);
       }
     }
   }
@@ -398,8 +422,6 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
       ctx, SmallVector<Type>(loadedValues.size(), loadedValues[0].getType()));
   auto result =
       packLLElements(loc, typeConverter, loadedValues, rewriter, structTy);
-  llvm::outs() << ">>> END SharedToDotOperand with opIdx = " << opIdx
-               << ", loadedValues.size() = " << loadedValues.size() << " <<<\n";
   return result;
 }
 

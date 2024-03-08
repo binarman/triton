@@ -542,10 +542,10 @@ SmallVector<Value> getMultiDimOffset(Attribute layout, Location loc,
     assert(rank == 2);
     SmallVector<Value> multiDimOffset(rank);
     if (auto mfmaLayout = layout.dyn_cast<AMDMfmaEncodingAttr>()) {
-      emitMfmaOffsetForCTA(mfmaLayout, offsets, multiDimCTAInRepId[0],
+      emitMfmaOffsetForCTA(mfmaLayout, offsets, 0, multiDimCTAInRepId[0],
                            multiDimCTAInRepId[1]);
     } else if (auto wmmaLayout = layout.dyn_cast<AMDWmmaEncodingAttr>()) {
-      emitWmmaOffsetForCTA(wmmaLayout, offsets, multiDimCTAInRepId[0],
+      emitWmmaOffsetForCTA(wmmaLayout, offsets, 0, multiDimCTAInRepId[0],
                            multiDimCTAInRepId[1]);
     }
     multiDimOffset[0] = add(multiDimBase[0], i32_val(offsets[elemId][0]));
