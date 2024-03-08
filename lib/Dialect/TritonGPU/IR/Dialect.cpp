@@ -1501,7 +1501,6 @@ SmallVector<unsigned> AMDMfmaEncodingAttr::getSizePerThread() const {
 
 SmallVector<int64_t>
 AMDMfmaEncodingAttr::getMFMAInstrShapeForOperands(int kWidth, int opIdx) const {
-  // TODO(lixun): should we extend MFMAInstrShape to 3D?
   unsigned mDim = getMDim();
   unsigned nDim = getNDim();
   assert((mDim == nDim) && (mDim == 32 || mDim == 16 || mDim == 4) ||

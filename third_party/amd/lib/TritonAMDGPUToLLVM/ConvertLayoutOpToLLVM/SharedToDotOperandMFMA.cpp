@@ -380,7 +380,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
     Value batchOffset = mul(i32_val(operandSize),
                             add(waveIdInBatch, i32_val(b * warpsPerBatch)));
     for (int nonK = 0; nonK < numRepNonK; ++nonK) {
-      int blockNonKOffset = nonK * mfmaInstrNonK * warpsPerGroupNonK;
+      int blockNonKOffset = nonK * mfmaInstrNonK * warpsPerBlockNonK;
       Value waveBlockOffAdjust = i32_val(blockNonKOffset * shape[order[0]]);
       for (int k = 0; k < numRepK; ++k) {
         auto vecTy = vec_ty(resElemTy, numOfElems);
