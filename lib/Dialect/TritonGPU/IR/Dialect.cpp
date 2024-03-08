@@ -170,7 +170,6 @@ SmallVector<unsigned> getContigPerThread(Attribute layout) {
     SmallVector<unsigned> contigPerThread(rank, 1);
     return contigPerThread;
   } else if (auto mfmaLayout = layout.dyn_cast<AMDMfmaEncodingAttr>()) {
-    // TODO(Lixun): what about transposed mfma layout?
     auto rank = triton::gpu::getOrder(mfmaLayout).size();
     SmallVector<unsigned> contigPerThread(rank, 1);
     if (mfmaLayout.getIsTransposed())
