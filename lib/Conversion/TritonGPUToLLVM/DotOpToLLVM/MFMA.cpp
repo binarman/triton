@@ -60,14 +60,138 @@ struct DotOpMFMAConversionHelper {
     return rewriter.create<arith::TruncIOp>(loc, i32_ty, tid);
   }
 
+  /**
+   * @param mfmaInsnName
+   * @param valA
+   * @param valB
+   * @param valC
+   * @param cbsz Control Broadcast Size modifier
+   * @param abid A-matrix Broadcast Identifier
+   * @param blgp B-matrix Lane Group Pattern modifier
+   */
   Value generateMFMAOp(StringRef mfmaInsnName, Value valA, Value valB,
-                       Value valC) const {
+                       Value valC, int cbsz = 0, int abid = 0,
+                       int blgp = 0) const {
+    assert(cbsz >= 0 && cbsz <= 4);
+    assert(abid >= 0 && abid <= 15);
+    assert(blgp >= 0 && blgp <= 7);
     auto resType = valC.getType();
-    Value zeroFlag = i32_val(0);
+    Value zeroVal = i32_val(0);
+    Value cbszFlag = cbsz != 0 ? i32_val(cbsz) : zeroVal;
+    Value abidFlag = abid != 0 ? i32_val(abid) : zeroVal;
+    Value blgpFlag = blgp != 0 ? i32_val(blgp) : zeroVal;
     OperationState loweredOp(loc, mfmaInsnName);
     loweredOp.addTypes(resType);
-    loweredOp.addOperands({valA, valB, valC, zeroFlag, zeroFlag, zeroFlag});
+    loweredOp.addOperands({valA, valB, valC, cbszFlag, abidFlag, blgpFlag});
     return rewriter.create(loweredOp)->getResult(0);
+  }
+
+  Value getSubVector(Value vec, int numSubVectors, int subVecId) const {
+    auto groupVecType = vec.getType().cast<VectorType>();
+    auto elemType = groupVecType.getElementType();
+    auto totalElems = groupVecType.getNumElements();
+    auto elemsPerRep = totalElems / numSubVectors;
+    VectorType repVecType = vec_ty(elemType, elemsPerRep);
+    Value repVec = undef(repVecType);
+    for (int i = 0; i < elemsPerRep; i++) {
+      Value elem =
+          extract_element(elemType, vec, i32_val(subVecId * elemsPerRep + i));
+      repVec = insert_element(repVecType, repVec, elem, i32_val(i));
+    }
+    return repVec;
+  }
+
+  Value getRepetitionValue(Value vec, int repId) const {
+    auto groupVecType = vec.getType().cast<VectorType>();
+    auto elemType = groupVecType.getElementType();
+    if (elemType.getIntOrFloatBitWidth() == 16) {
+      Value elem = getSubVector(vec, 16, repId);
+      return elem;
+    }
+    auto totalElems = groupVecType.getNumElements();
+    assert(repId < totalElems);
+    Value elem = extract_element(elemType, vec, i32_val(repId));
+    return elem;
+  }
+
+  Value broadcastGroup(Value val, int groupId, int numGroups) const {
+    constexpr int waveSize = 64;
+    const int groupSize = waveSize / numGroups;
+
+    Value lane = getThreadId();
+    // Multiply by 4, because permute requires offset in bytes
+    Value laneOffset = mul(urem(lane, i32_val(groupSize)), i32_val(4));
+    Value permuteAddr = add(laneOffset, i32_val(groupId * groupSize * 4));
+    Type valType = val.getType();
+    Value broadcasted;
+    if (valType.isInteger(32))
+      broadcasted = rewriter.create<ROCDL::DsBpermuteOp>(loc, val.getType(),
+                                                         permuteAddr, val);
+    if (valType.isF32()) {
+      val = bitcast(val, i32_ty);
+      broadcasted = rewriter.create<ROCDL::DsBpermuteOp>(loc, val.getType(),
+                                                         permuteAddr, val);
+      broadcasted = bitcast(broadcasted, f32_ty);
+    }
+    if (valType.isa<VectorType>()) {
+      auto vecTy = valType.dyn_cast<VectorType>();
+      auto vecBitSize = vecTy.getElementType().getIntOrFloatBitWidth() *
+                        vecTy.getNumElements();
+      const int int32VecSize = vecBitSize / 32;
+
+      Type int32VecTy = vec_ty(i32_ty, int32VecSize);
+      Value int32Val = bitcast(val, int32VecTy);
+      Value int32Broadcasted = undef(int32VecTy);
+      for (int i = 0; i < int32VecSize; ++i) {
+        Value int32Chunk = extract_element(i32_ty, int32Val, i32_val(i));
+        Value broadcastedChunk = rewriter.create<ROCDL::DsBpermuteOp>(
+            loc, i32_ty, permuteAddr, int32Chunk);
+        int32Broadcasted = insert_element(int32VecTy, int32Broadcasted,
+                                          broadcastedChunk, i32_val(i));
+      }
+      broadcasted = bitcast(int32Broadcasted, valType);
+    }
+    assert(broadcasted);
+    return broadcasted;
+  }
+
+  Value generateMFMATile(StringRef mfmaInsnName, Value valA, Value valB,
+                         Value valC, int mDim, int nDim, bool transpose) const {
+
+    Value acc;
+    if (mDim == nDim) {
+      acc = transpose ? generateMFMAOp(mfmaInsnName, valB, valA, valC)
+                      : generateMFMAOp(mfmaInsnName, valA, valB, valC);
+    }
+    if (mDim == 4 && nDim == 64 || mDim == 64 && nDim == 4) {
+      // broadcast selected kRep A operand matrix to all A matrices(2^4=16)
+      constexpr int broadcastCtrl = 4;
+      constexpr int numRepeats = 16;
+      acc = valC;
+      for (int kRep = 0; kRep < numRepeats; kRep++) {
+        if (mDim == 4 && !transpose) {
+          Value repVec = getRepetitionValue(valB, kRep);
+          acc = generateMFMAOp(mfmaInsnName, valA, repVec, acc, broadcastCtrl,
+                               kRep);
+        }
+        if (mDim == 4 && transpose) {
+          Value repValB = getRepetitionValue(valB, kRep);
+          Value broadcastValA = broadcastGroup(valA, kRep, numRepeats);
+          acc = generateMFMAOp(mfmaInsnName, repValB, broadcastValA, acc);
+        }
+        if (nDim == 4 && !transpose) {
+          Value repValA = getRepetitionValue(valA, kRep);
+          Value broadcastValB = broadcastGroup(valB, kRep, numRepeats);
+          acc = generateMFMAOp(mfmaInsnName, repValA, broadcastValB, acc);
+        }
+        if (nDim == 4 && transpose) {
+          Value repVec = getRepetitionValue(valA, kRep);
+          acc = generateMFMAOp(mfmaInsnName, valB, repVec, acc, broadcastCtrl,
+                               kRep);
+        }
+      }
+    }
+    return acc;
   }
 
   int getNumSubmatrices(Type elementType, int mDim, int nDim) const {
@@ -187,13 +311,14 @@ struct DotOpMFMAConversionHelper {
       llvm::report_fatal_error("No match found in MFMA database\n");
 
     mfmaInsnName = (*maybeMfmaInsn).getInsnName();
-    unsigned k_base = (*maybeMfmaInsn).getKBase();
+    unsigned kBaseA = (*maybeMfmaInsn).getKBaseA();
+    unsigned kBaseB = (*maybeMfmaInsn).getKBaseB();
 
     auto aEncoding = aTensorTy.getEncoding().cast<DotOperandEncodingAttr>();
     auto bEncoding = bTensorTy.getEncoding().cast<DotOperandEncodingAttr>();
 
-    auto kWidth = aEncoding.getKWidth();
-    assert(kWidth == bEncoding.getKWidth());
+    auto kWidthA = aEncoding.getKWidth();
+    auto kWidthB = bEncoding.getKWidth();
 
     auto repA = aEncoding.getMFMARep(aTensorTy.getShape());
     auto repB = bEncoding.getMFMARep(bTensorTy.getShape());
@@ -209,9 +334,9 @@ struct DotOpMFMAConversionHelper {
     auto numRepK = repA[1];
 
     auto operandA = getValuesFromDotOperandLayoutStruct(
-        loadedA, numRepM, numRepK, kWidth, k_base, aTensorTy.getElementType());
+        loadedA, numRepM, numRepK, kWidthA, kBaseA, aTensorTy.getElementType());
     auto operandB = getValuesFromDotOperandLayoutStruct(
-        loadedB, numRepN, numRepK, kWidth, k_base, aTensorTy.getElementType());
+        loadedB, numRepN, numRepK, kWidthB, kBaseB, aTensorTy.getElementType());
 
     auto dstElemTy = dTensorTy.getElementType();
     auto fc =
@@ -236,12 +361,10 @@ struct DotOpMFMAConversionHelper {
 
         acc = zeroAuxiliarBlocks(subBlocks, acc);
         for (size_t k = 0; k < numRepK; k++)
-          for (int kpack = 0; kpack < kWidth / k_base; ++kpack)
-            acc = mfmaLayout.getIsTransposed()
-                      ? generateMFMAOp(mfmaInsnName, operandB[kpack][{n, k}],
-                                       operandA[kpack][{m, k}], acc)
-                      : generateMFMAOp(mfmaInsnName, operandA[kpack][{m, k}],
-                                       operandB[kpack][{n, k}], acc);
+          for (int kpack = 0; kpack < kWidthA / kBaseA; ++kpack)
+            acc = generateMFMATile(mfmaInsnName, operandA[kpack][{m, k}],
+                                   operandB[kpack][{n, k}], acc, mDim, nDim,
+                                   mfmaLayout.getIsTransposed());
         acc = reduceSubBlocks(subBlocks, acc);
         for (unsigned v = 0; v < elemsPerVec; ++v) {
           fc[m * numRepN * elemsPerVec + n * elemsPerVec + v] =
@@ -276,12 +399,29 @@ struct DotOpMFMAConversionHelper {
             extract_element(type, rawElems, i32_val(elemId + k * k_base));
         vec = insert_element(vecTy, vec, val, i32_val(elemId));
       }
+      // if (64 == k_base) {
+      //   constexpr int numRepeats = 16;
+      //   const int oneOpKWidth = k_base / numRepeats;
+      //   assert(oneOpKWidth == 4);
+      //   auto repVecTy = vec_ty(type, oneOpKWidth);
+      //   auto operandVecTy = vec_ty(repVecTy, numRepeats);
+      //   results.push_back(bitcast(vec, operandVecTy));
+      // }
       if (type.getIntOrFloatBitWidth() == 8) {
         if (4 == k_base)
           // This is for int8 on pre- MI300 GPUs
           results.push_back(bitcast(vec, i32_ty));
         if (8 == k_base)
           results.push_back(bitcast(vec, i64_ty));
+        // In this case one tile is processed by sevelar instructions
+        // repack flat vector into vector of vectors
+        if (64 == k_base) {
+          constexpr int numRepeats = 16;
+          assert(k_base / numRepeats == 4);
+          auto repVecTy = i32_ty;
+          auto operandVecTy = vec_ty(repVecTy, numRepeats);
+          results.push_back(bitcast(vec, operandVecTy));
+        }
       } else
         results.push_back(vec);
     }
@@ -305,8 +445,14 @@ struct DotOpMFMAConversionHelper {
         auto rawElems = elems[n1 * i + j];
 
         if (type.isF32()) {
-          for (int k = 0; k < kpack; ++k) {
-            dotOpVals[k][{i, j}] = extract_element(type, rawElems, i32_val(k));
+          if (k_base == 16) {
+            for (int k = 0; k < kpack; ++k)
+              dotOpVals[k][{i, j}] = getSubVector(rawElems, kpack, k);
+          } else {
+            for (int k = 0; k < kpack; ++k) {
+              dotOpVals[k][{i, j}] =
+                  extract_element(type, rawElems, i32_val(k));
+            }
           }
         } else {
           SmallVector<Value> vals;

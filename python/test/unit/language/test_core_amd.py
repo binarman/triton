@@ -1706,8 +1706,9 @@ def test_permute(dtype_str, shape, perm, device='cuda'):
                                            [4, 32, 64, 4],
                                            [32, 4, 64, 2],
                                            [16, 4, 64, 8],
-                                           [64, 4, 16, 1],
-                                           [4, 64, 16, 1],
+                                           [64, 4, 64, 1],
+                                           [4, 64, 64, 1],
+                                           [4, 64, 64, 4],
                                            ]
                           for allow_tf32 in [False, True]
                           for col_a in [True, False]
