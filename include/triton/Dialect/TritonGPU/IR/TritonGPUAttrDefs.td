@@ -157,7 +157,7 @@ compared to 1*64 when the hasLeadingOffset is false.
                maxPhase = 4;
             // if maxPhase * perPhase is larger than one block of warps,
             // fallback to unswizzled tensor.
-            // Shared to dot op conversion requires that swizzling patern
+            // Shared to dot op conversion requires that swizzling pattern
             // fits into one block of warps.
             auto warpsPerCTA = mfmaEnc.getWarpsPerCTA();
             if (maxPhase * perPhase > nonKDim * warpsPerCTA[nonKDimNum]) {
