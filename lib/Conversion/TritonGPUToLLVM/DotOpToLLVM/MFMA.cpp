@@ -37,7 +37,12 @@ using ::mlir::triton::gpu::DotOperandEncodingAttr;
 using ::mlir::triton::gpu::MfmaEncodingAttr;
 using ::mlir::triton::gpu::SharedEncodingAttr;
 
-using ValueTable = std::map<std::pair<unsigned, unsigned>, Value>;
+// mapping from touple <kpack-rep, non-k-rep, k-rep> to vector of values
+// vector contains single element for MFMA32, MFMA16 and MFMA4 layouts
+// for MFMA 4x64 and 64x4 layouts there are 16 vectors for one of the arguments,
+// because each repetition in these layouts requires 16 mfma operations
+using ValueTable = std::map<std::tuple<unsigned, unsigned, unsigned>,
+                            llvm::SmallVector<Value>>;
 
 struct DotOpMFMAConversionHelper {
   MfmaEncodingAttr mfmaLayout;
@@ -86,34 +91,6 @@ struct DotOpMFMAConversionHelper {
     return rewriter.create(loweredOp)->getResult(0);
   }
 
-  Value getSubVector(Value vec, int numSubVectors, int subVecId) const {
-    auto groupVecType = vec.getType().cast<VectorType>();
-    auto elemType = groupVecType.getElementType();
-    auto totalElems = groupVecType.getNumElements();
-    auto elemsPerRep = totalElems / numSubVectors;
-    VectorType repVecType = vec_ty(elemType, elemsPerRep);
-    Value repVec = undef(repVecType);
-    for (int i = 0; i < elemsPerRep; i++) {
-      Value elem =
-          extract_element(elemType, vec, i32_val(subVecId * elemsPerRep + i));
-      repVec = insert_element(repVecType, repVec, elem, i32_val(i));
-    }
-    return repVec;
-  }
-
-  Value getRepetitionValue(Value vec, int repId) const {
-    auto groupVecType = vec.getType().cast<VectorType>();
-    auto elemType = groupVecType.getElementType();
-    if (elemType.getIntOrFloatBitWidth() == 16) {
-      Value elem = getSubVector(vec, 16, repId);
-      return elem;
-    }
-    auto totalElems = groupVecType.getNumElements();
-    assert(repId < totalElems);
-    Value elem = extract_element(elemType, vec, i32_val(repId));
-    return elem;
-  }
-
   Value broadcastGroup(Value val, int groupId, int numGroups) const {
     constexpr int waveSize = 64;
     const int groupSize = waveSize / numGroups;
@@ -155,13 +132,15 @@ struct DotOpMFMAConversionHelper {
     return broadcasted;
   }
 
-  Value generateMFMATile(StringRef mfmaInsnName, Value valA, Value valB,
-                         Value valC, int mDim, int nDim, bool transpose) const {
+  Value generateMFMATile(StringRef mfmaInsnName, SmallVector<Value> valA,
+                         SmallVector<Value> valB, Value valC, int mDim,
+                         int nDim, bool transpose) const {
 
     Value acc;
     if (mDim == nDim) {
-      acc = transpose ? generateMFMAOp(mfmaInsnName, valB, valA, valC)
-                      : generateMFMAOp(mfmaInsnName, valA, valB, valC);
+      assert(valA.size() == 1 && valB.size() == 1);
+      acc = transpose ? generateMFMAOp(mfmaInsnName, valB[0], valA[0], valC)
+                      : generateMFMAOp(mfmaInsnName, valA[0], valB[0], valC);
     }
     if (mDim == 4 && nDim == 64 || mDim == 64 && nDim == 4) {
       // broadcast selected kRep A operand matrix to all A matrices(2^4=16)
@@ -170,24 +149,24 @@ struct DotOpMFMAConversionHelper {
       acc = valC;
       for (int kRep = 0; kRep < numRepeats; kRep++) {
         if (mDim == 4 && !transpose) {
-          Value repVec = getRepetitionValue(valB, kRep);
-          acc = generateMFMAOp(mfmaInsnName, valA, repVec, acc, broadcastCtrl,
-                               kRep);
+          assert(valA.size() == 1 && valB.size() == 16);
+          acc = generateMFMAOp(mfmaInsnName, valA[0], valB[kRep], acc,
+                               broadcastCtrl, kRep);
         }
         if (mDim == 4 && transpose) {
-          Value repValB = getRepetitionValue(valB, kRep);
-          Value broadcastValA = broadcastGroup(valA, kRep, numRepeats);
-          acc = generateMFMAOp(mfmaInsnName, repValB, broadcastValA, acc);
+          assert(valA.size() == 1 && valB.size() == 16);
+          Value broadcastValA = broadcastGroup(valA[0], kRep, numRepeats);
+          acc = generateMFMAOp(mfmaInsnName, valB[kRep], broadcastValA, acc);
         }
         if (nDim == 4 && !transpose) {
-          Value repValA = getRepetitionValue(valA, kRep);
-          Value broadcastValB = broadcastGroup(valB, kRep, numRepeats);
-          acc = generateMFMAOp(mfmaInsnName, repValA, broadcastValB, acc);
+          assert(valA.size() == 16 && valB.size() == 1);
+          Value broadcastValB = broadcastGroup(valB[0], kRep, numRepeats);
+          acc = generateMFMAOp(mfmaInsnName, valA[kRep], broadcastValB, acc);
         }
         if (nDim == 4 && transpose) {
-          Value repVec = getRepetitionValue(valA, kRep);
-          acc = generateMFMAOp(mfmaInsnName, valB, repVec, acc, broadcastCtrl,
-                               kRep);
+          assert(valA.size() == 16 && valB.size() == 1);
+          acc = generateMFMAOp(mfmaInsnName, valB[0], valA[kRep], acc,
+                               broadcastCtrl, kRep);
         }
       }
     }
@@ -362,8 +341,8 @@ struct DotOpMFMAConversionHelper {
         acc = zeroAuxiliarBlocks(subBlocks, acc);
         for (size_t k = 0; k < numRepK; k++)
           for (int kpack = 0; kpack < kWidthA / kBaseA; ++kpack)
-            acc = generateMFMATile(mfmaInsnName, operandA[kpack][{m, k}],
-                                   operandB[kpack][{n, k}], acc, mDim, nDim,
+            acc = generateMFMATile(mfmaInsnName, operandA[{kpack, m, k}],
+                                   operandB[{kpack, n, k}], acc, mDim, nDim,
                                    mfmaLayout.getIsTransposed());
         acc = reduceSubBlocks(subBlocks, acc);
         for (unsigned v = 0; v < elemsPerVec; ++v) {
@@ -383,47 +362,39 @@ struct DotOpMFMAConversionHelper {
   }
 
   /**
-   * @brief extract vector from rawElems based on kWidth and k_base
+   * @brief extract vector from rawElems based on kWidth and kBase
    * rawElems is a vector of kWidth elements. We need to prepare vector(s) of
-   * k_base elements for each mfma instruction
+   * kBase elements for each mfma instruction
+   *
+   * @param rawElems vector of "raw" elements for one mfma tile
+   * @param k id in k-pack
+   * @param kPack size of k-pack
+   * @param numIntrinsics number of operands we need to extract
+   * @param type type mfma intrinsic requires
+   *
+   * @return elements converted for one repetition
    */
-  SmallVector<Value> extractOperands(Value rawElems, int kWidth, int k_base,
-                                     Type type) const {
-    int kpack = kWidth / k_base;
+  SmallVector<Value> extractOperands(Value rawElems, int k, int kPack,
+                                     int numIntrinsics, Type type) const {
+    assert(numIntrinsics == 1 || numIntrinsics == 16);
+    auto rawTy = rawElems.getType().cast<VectorType>();
+    auto rawElemTy = rawTy.getElementType();
+    // number of elements required by one mfma intrinsic
+    int intrinsicK = rawTy.getNumElements() / numIntrinsics / kPack;
+    int kBase = rawTy.getNumElements() / kPack;
+
     SmallVector<Value> results;
-    auto vecTy = vec_ty(type, k_base);
-    for (int k = 0; k < kpack; ++k) {
-      Value vec = undef(vecTy);
-      for (int elemId = 0; elemId < k_base; ++elemId) {
-        auto val =
-            extract_element(type, rawElems, i32_val(elemId + k * k_base));
-        vec = insert_element(vecTy, vec, val, i32_val(elemId));
+    // extract needed elements in original dtype
+    auto typedVecTy = vec_ty(rawElemTy, intrinsicK);
+    for (int intrinsic = 0; intrinsic < numIntrinsics; ++intrinsic) {
+      Value typedVec = undef(typedVecTy);
+      for (int elemId = 0; elemId < intrinsicK; ++elemId) {
+        int elemOff = elemId + intrinsic * intrinsicK + k * kBase;
+        auto val = extract_element(rawElemTy, rawElems, i32_val(elemOff));
+        typedVec = insert_element(typedVecTy, typedVec, val, i32_val(elemId));
       }
-      // if (64 == k_base) {
-      //   constexpr int numRepeats = 16;
-      //   const int oneOpKWidth = k_base / numRepeats;
-      //   assert(oneOpKWidth == 4);
-      //   auto repVecTy = vec_ty(type, oneOpKWidth);
-      //   auto operandVecTy = vec_ty(repVecTy, numRepeats);
-      //   results.push_back(bitcast(vec, operandVecTy));
-      // }
-      if (type.getIntOrFloatBitWidth() == 8) {
-        if (4 == k_base)
-          // This is for int8 on pre- MI300 GPUs
-          results.push_back(bitcast(vec, i32_ty));
-        if (8 == k_base)
-          results.push_back(bitcast(vec, i64_ty));
-        // In this case one tile is processed by sevelar instructions
-        // repack flat vector into vector of vectors
-        if (64 == k_base) {
-          constexpr int numRepeats = 16;
-          assert(k_base / numRepeats == 4);
-          auto repVecTy = i32_ty;
-          auto operandVecTy = vec_ty(repVecTy, numRepeats);
-          results.push_back(bitcast(vec, operandVecTy));
-        }
-      } else
-        results.push_back(vec);
+      Value castedVec = bitcast(typedVec, type);
+      results.push_back(castedVec);
     }
     return results;
   }
@@ -432,41 +403,38 @@ struct DotOpMFMAConversionHelper {
    * @brief Converts dot operand structure to value table and converts types
    * appropriate for mfma instructions
    */
-  SmallVector<ValueTable>
-  getValuesFromDotOperandLayoutStruct(Value value, int n0, int n1, int kWidth,
-                                      int k_base, Type type) const {
+  ValueTable getValuesFromDotOperandLayoutStruct(Value value, int n0, int n1,
+                                                 int kWidth, int kBase,
+                                                 Type type) const {
     auto elems = typeConverter->unpackLLElements(loc, value, rewriter, type);
-    ValueTable vals;
-    ValueTable vals1;
-    int kpack = kWidth / k_base;
-    SmallVector<ValueTable> dotOpVals(kpack);
+    int kpack = kWidth / kBase;
+    // "Wide operand" means that this operand is for mfma 4x64 layout
+    // This operand is 64x64 for fp16, bf16 and int8 data types and
+    // 16x64 for fp32
+    bool wideOperand = kWidth >= 16;
+    // How many rocdl intrinsics will process one tile
+    int numIntrinsics = wideOperand ? 16 : 1;
+    int intrinsicKWidth = wideOperand ? kBase / numIntrinsics : kBase;
+    Type intrinsicDType;
+    if (type.isF32())
+      intrinsicDType = f32_ty;
+    if (type.getIntOrFloatBitWidth() == 8)
+      intrinsicDType = rewriter.getIntegerType(intrinsicKWidth * 8);
+    if (type.isBF16())
+      intrinsicDType = vec_ty(i16_ty, intrinsicKWidth);
+    if (type.isF16())
+      intrinsicDType = vec_ty(f16_ty, intrinsicKWidth);
+    assert(intrinsicDType);
+
+    ValueTable dotOpVals;
     for (int i = 0; i < n0; i++) {
       for (int j = 0; j < n1; j++) {
         auto rawElems = elems[n1 * i + j];
-
-        if (type.isF32()) {
-          if (k_base == 16) {
-            for (int k = 0; k < kpack; ++k)
-              dotOpVals[k][{i, j}] = getSubVector(rawElems, kpack, k);
-          } else {
-            for (int k = 0; k < kpack; ++k) {
-              dotOpVals[k][{i, j}] =
-                  extract_element(type, rawElems, i32_val(k));
-            }
-          }
-        } else {
-          SmallVector<Value> vals;
-          if (type.getIntOrFloatBitWidth() == 8) {
-            vals = extractOperands(rawElems, kWidth, k_base, i8_ty);
-          } else if (type.isBF16()) {
-            vals = extractOperands(rawElems, kWidth, k_base, i16_ty);
-          } else {
-            assert(type.isF16() && "Unsupported data type");
-            vals = extractOperands(rawElems, kWidth, k_base, f16_ty);
-          }
-          for (int k = 0; k < kpack; ++k) {
-            dotOpVals[k][{i, j}] = vals[k];
-          }
+        for (int k = 0; k < kpack; k++) {
+          SmallVector<Value> vals = extractOperands(
+              rawElems, k, kpack, numIntrinsics, intrinsicDType);
+          assert(vals.size() == numIntrinsics);
+          dotOpVals[{k, i, j}] = vals;
         }
       }
     }
