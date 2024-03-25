@@ -24,8 +24,10 @@ def parse_args():
     parser.add_argument("--num_warps", type=int, default=0)
     parser.add_argument("--num_stages", type=int, default=0)
     parser.add_argument("--waves_per_eu", type=int, default=0)
+    parser.add_argument("--kpack", type=int, default=0)
+    parser.add_argument("--mfma", type=int, default=0)
 
-    parser.add_argument("--config_str", type=str, default="", help="can take from gemm_tune.py script output, looks like M16_N8_K128_BM64_BN64_BK64_GM1_SK2_nW2_nS0_EU0")
+    parser.add_argument("--config_str", type=str, default="", help="can take from gemm_tune.py script output, looks like M16_N8_K128_BM64_BN64_BK64_GM1_SK2_nW2_nS0_EU0_kP1_mfma16")
     args = parser.parse_args()
 
     return args
@@ -44,6 +46,8 @@ def parse_config(cfg_str):
                    "nW": "num_warps",
                    "nS": "num_stages",
                    "EU": "waves_per_eu",
+                   "kP": "kpack",
+                   "mfma": "matrix_instr_nonkdim",
                   }
     config = {}
     for val in values:
@@ -70,8 +74,16 @@ def main():
                   "num_warps": args.num_warps,
                   "num_stages": args.num_stages,
                   "waves_per_eu": args.waves_per_eu,
+                  "kpack": args.kpack,
+                  "matrix_instr_nonkdim": args.mfma,
                  }
-    tune_gemm.test_correctness(config["M"], config["N"], config["K"], config, verbose=True)
+    col_a = False
+    col_b = False
+    dtype_a = "fp16"
+    dtype_b = "fp16"
+    dtype_c = "fp32"
+    init_type = "randn"
+    tune_gemm.test_correctness(config["M"], config["N"], config["K"], col_a, col_b, dtype_a, dtype_b, dtype_c, init_type, config, verbose=True)
 
 
 if __name__ == "__main__":

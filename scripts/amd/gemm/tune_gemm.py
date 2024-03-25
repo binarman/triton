@@ -30,7 +30,7 @@ def get_full_tuning_space():
     # other values in the future
     num_stage_range = [0]
     waves_per_eu_range = [0]
-    matrix_instr_nonkdim_range = [16, 32]
+    matrix_instr_nonkdim_range = [464, 16]
     kpack_range = [1, 2]
 
     for block_m in block_mn_range:
@@ -68,9 +68,7 @@ def prune_configs(M, N, K, configs, elemBytes_a, elemBytes_b):
         num_warps = config.get("num_warps")
         matrix_instr_nonkdim = config.get("matrix_instr_nonkdim")
         kpack = config.get("kpack")
-        if matrix_instr_nonkdim > mfma:
-            continue
-        if mfma == 4 and BLOCK_SIZE_K < 64:
+        if matrix_instr_nonkdim == 464 and BLOCK_SIZE_K < 64:
             continue
         # some layouts could not work properly in case
         # number elemens per thread is less 1
@@ -78,11 +76,13 @@ def prune_configs(M, N, K, configs, elemBytes_a, elemBytes_b):
             continue
         SPLIT_K = config.get("SPLIT_K")
         GROUP_M = config.get("GROUP_SIZE_M")
-        if BLOCK_SIZE_M < matrix_instr_nonkdim or BLOCK_SIZE_N < matrix_instr_nonkdim:
+        matrix_instr_m = 4 if matrix_instr_nonkdim > 32 else matrix_instr_nonkdim
+        matrix_instr_n = 64 if matrix_instr_nonkdim > 32 else matrix_instr_nonkdim
+        if BLOCK_SIZE_M < matrix_instr_m or BLOCK_SIZE_N < matrix_instr_n:
             continue
-        if M <= matrix_instr_nonkdim and BLOCK_SIZE_M != matrix_instr_nonkdim:
+        if M <= matrix_instr_m and BLOCK_SIZE_M != matrix_instr_m:
             continue
-        if N <= matrix_instr_nonkdim and BLOCK_SIZE_N != matrix_instr_nonkdim:
+        if N <= matrix_instr_n and BLOCK_SIZE_N != matrix_instr_n:
             continue
         # Skip BLOCK_SIZE that is too large compare to M/N
         # unless BLOCK_SIZE is already small enough
