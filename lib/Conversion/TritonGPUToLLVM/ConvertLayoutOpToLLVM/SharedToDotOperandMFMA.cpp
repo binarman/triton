@@ -326,33 +326,35 @@ fastPathComputeOffsets(ConversionPatternRewriter &rewriter, Location loc,
   Value waveOffset = mul(waveId, i32_val(iNonKDim));
   Value colOffset = urem(laneId, _nonKDim);
 
+  // halfOffset is an offset related to wrapping of wave in the tile.
+  // for example, mfma 32 case (mapping of tensor elements to lane ids in
+  // wave):
+  //
+  //  0  1  2  3 ... 31
+  //  0  1  2  3 ... 31
+  //  0  1  2  3 ... 31
+  //  0  1  2  3 ... 31
+  // 32 33 34 35 ... 63  <- at this point wave is wrapping
+  // 32 33 34 35 ... 63
+  // 32 33 34 35 ... 63
+  // 32 33 34 35 ... 63
+  Value halfWaveOffset;
+  if (iNonKDim == 64)
+    halfWaveOffset = i32_val(0);
+  else
+    halfWaveOffset =
+        mul(udiv(laneId, _nonKDim), i32_val(numOfElems * lineSize));
+
+  // sum of offsets dependent from lane id and warp Id across non-k dim
+  Value baseThreadOffset = add(add(halfWaveOffset, colOffset), waveOffset);
+
   for (int block = 0; block < numN; ++block) {
-    Value blockOffset = i32_val(block * iNonKDim * warpsPerBlock);
+    int blockOffset = block * iNonKDim * warpsPerBlock;
     for (int tile = 0; tile < numK; ++tile) {
-      Value tileOffset = i32_val(tile * iKDim * lineSize);
+      int tileOffset = tile * iKDim * lineSize;
       for (int elem = 0; elem < numOfElems; ++elem) {
-        // halfOffset is an offset related to wrapping of wave in the tile.
-        // for example, mfma 32 case (mapping of tensor elements to lane ids in
-        // wave):
-        //
-        //  0  1  2  3 ... 31
-        //  0  1  2  3 ... 31
-        //  0  1  2  3 ... 31
-        //  0  1  2  3 ... 31
-        // 32 33 34 35 ... 63  <- at this point wave is wrapping
-        // 32 33 34 35 ... 63
-        // 32 33 34 35 ... 63
-        // 32 33 34 35 ... 63
-        Value halfOffset;
-        if (iNonKDim == 64)
-          halfOffset = i32_val(0);
-        else
-          halfOffset =
-              mul(udiv(laneId, _nonKDim), i32_val(numOfElems * lineSize));
-        Value rowOffset = add(i32_val(elem * lineSize), halfOffset);
-        Value elemOffset = add(rowOffset, colOffset);
-        Value offset =
-            add(add(add(waveOffset, blockOffset), tileOffset), elemOffset);
+        int rowOffset = elem * lineSize;
+        Value offset = add(baseThreadOffset, i32_val(blockOffset + tileOffset + rowOffset));
         offsets[numK * numOfElems * block + numOfElems * tile + elem] = offset;
       }
     }
