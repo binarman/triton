@@ -155,7 +155,13 @@ compared to 1*64 when the hasLeadingOffset is false.
               // Small operand:
               // - shape 4(non-k)x64(k) for 16 bit dtypes
               // - shape 4(non-k)x16(k) for 32 bit dtypes
-              const int vecSize = bankBitWidth / typeWidthInBit;
+              int vecSize = bankBitWidth / typeWidthInBit;
+              if (nonKDim == 64 && vecSize < dotOpEnc.getKWidth()) {
+                // This heuristic introduces bank conflicts,
+                // but saves address computation overhead and
+                // reduces number of ds_read/ds_write instructions
+                vecSize = 4;
+              }
               const int perPhase = std::max(1, numBanks / innerDimLength);
               const int maxPhase = std::min(numBanks, nonKDim) / perPhase;
               return get(context, vecSize, perPhase, maxPhase, order, CTALayout);
