@@ -522,7 +522,7 @@ class _attention(torch.autograd.Function):
     NAME = "triton_splitKF"
 
     @staticmethod
-    def forward(cls, q, k, v, scale_float):
+    def forward(cls, q, k, v, scale_float, matrix_instr_nonkdim=0):
 
         cls.SPLIT_K: Optional[int] = None
         cls.BLOCK_M = 16
@@ -609,7 +609,7 @@ class _attention(torch.autograd.Function):
             num_stages=1,
             PACKED_PER_VAL=PACKED_PER_VAL,
             N_GROUPS=cls.NUM_GROUPS if PACKED_PER_VAL > 1 else 1,
-            matrix_instr_nonkdim=464,
+            matrix_instr_nonkdim=matrix_instr_nonkdim,
             waves_per_eu=1
         )
         #print(f"kernel run B = {B}, G = {G}, H = {H}, split_k = {split_k}, M_ceil = {M_ceil}, Kq = {Kq}\n", pgm.asm["amdgcn"])
@@ -691,9 +691,12 @@ def get_input_shapes():
     return cases
 
 
-@pytest.mark.parametrize('B, Mq, Mkv, Hq, Hkv, K',
-                         get_input_shapes())
-def test_op_fwd(B, Mq, Mkv, Hq, Hkv, K, dtype=torch.float16):
+@pytest.mark.parametrize('B, Mq, Mkv, Hq, Hkv, K, matrix_instr_nonkdim',
+                         [(*shape, matrix_instr_nonkdim)
+                           for shape in get_input_shapes()
+                           for matrix_instr_nonkdim in [16, 464]
+                         ])
+def test_op_fwd(B, Mq, Mkv, Hq, Hkv, K, matrix_instr_nonkdim, dtype=torch.float16):
     torch.manual_seed(20)
     q = (
         torch.empty((B, Mq, Hkv, (Hq + Hkv - 1) // Hkv, K), dtype=dtype, device="cuda")
@@ -711,7 +714,7 @@ def test_op_fwd(B, Mq, Mkv, Hq, Hkv, K, dtype=torch.float16):
         .requires_grad_()
     ).expand(-1, -1, -1, (Hq + Hkv - 1) // Hkv, -1)
     scale = 1 / K**0.5
-    tri_out = attention(q, k, v, scale)
+    tri_out = attention(q, k, v, scale, matrix_instr_nonkdim)
 
     q = q.reshape([B, Mq, -1, K]).permute(0, 2, 1, 3)
     k = k.reshape([B, Mkv, -1, K]).permute(0, 2, 1, 3)
