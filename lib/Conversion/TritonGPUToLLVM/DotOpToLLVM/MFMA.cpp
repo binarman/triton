@@ -132,6 +132,50 @@ struct DotOpMFMAConversionHelper {
     return broadcasted;
   }
 
+  Value rollShiftOperand(Value val) const {
+    constexpr int waveSize = 64;
+    constexpr int numGroups = 16;
+    const int groupSize = waveSize / numGroups;
+
+    Value lane = getThreadId();
+    Value targetLane = urem(add(lane, i32_val(groupSize)), i32_val(waveSize));
+
+    // Multiply by 4, because permute requires offset in bytes
+    Value permuteAddr = mul(targetLane, i32_val(4));
+
+    Type valType = val.getType();
+    Value rolled;
+    if (valType.isInteger(32))
+      rolled = rewriter.create<ROCDL::DsBpermuteOp>(loc, val.getType(),
+                                                         permuteAddr, val);
+    if (valType.isF32()) {
+      val = bitcast(val, i32_ty);
+      rolled = rewriter.create<ROCDL::DsBpermuteOp>(loc, val.getType(),
+                                                         permuteAddr, val);
+      rolled = bitcast(rolled, f32_ty);
+    }
+    if (valType.isa<VectorType>()) {
+      auto vecTy = valType.dyn_cast<VectorType>();
+      auto vecBitSize = vecTy.getElementType().getIntOrFloatBitWidth() *
+                        vecTy.getNumElements();
+      const int int32VecSize = vecBitSize / 32;
+
+      Type int32VecTy = vec_ty(i32_ty, int32VecSize);
+      Value int32Val = bitcast(val, int32VecTy);
+      Value int32Rolled = undef(int32VecTy);
+      for (int i = 0; i < int32VecSize; ++i) {
+        Value int32Chunk = extract_element(i32_ty, int32Val, i32_val(i));
+        Value rolledChunk = rewriter.create<ROCDL::DsBpermuteOp>(
+            loc, i32_ty, permuteAddr, int32Chunk);
+        int32Rolled = insert_element(int32VecTy, int32Rolled,
+                                          rolledChunk, i32_val(i));
+      }
+      rolled = bitcast(int32Rolled, valType);
+    }
+    assert(rolled);
+    return rolled;
+  }
+
   Value generateMFMATile(StringRef mfmaInsnName, SmallVector<Value> valA,
                          SmallVector<Value> valB, Value valC, int mDim,
                          int nDim, bool transpose) const {
@@ -148,25 +192,21 @@ struct DotOpMFMAConversionHelper {
       constexpr int numRepeats = 16;
       acc = valC;
       for (int kRep = 0; kRep < numRepeats; kRep++) {
-        if (mDim == 4 && !transpose) {
+        if (mDim == 4) {
           assert(valA.size() == 1 && valB.size() == 16);
-          acc = generateMFMAOp(mfmaInsnName, valA[0], valB[kRep], acc,
-                               broadcastCtrl, kRep);
+          if (!transpose)
+            acc = generateMFMAOp(mfmaInsnName, valA[0], valB[kRep], acc);
+          else
+            acc = generateMFMAOp(mfmaInsnName, valB[kRep], valA[0], acc);
+          valA[0] = rollShiftOperand(valA[0]);
         }
-        if (mDim == 4 && transpose) {
-          assert(valA.size() == 1 && valB.size() == 16);
-          Value broadcastValA = broadcastGroup(valA[0], kRep, numRepeats);
-          acc = generateMFMAOp(mfmaInsnName, valB[kRep], broadcastValA, acc);
-        }
-        if (nDim == 4 && !transpose) {
+        if (nDim == 4) {
           assert(valA.size() == 16 && valB.size() == 1);
-          Value broadcastValB = broadcastGroup(valB[0], kRep, numRepeats);
-          acc = generateMFMAOp(mfmaInsnName, valA[kRep], broadcastValB, acc);
-        }
-        if (nDim == 4 && transpose) {
-          assert(valA.size() == 16 && valB.size() == 1);
-          acc = generateMFMAOp(mfmaInsnName, valB[0], valA[kRep], acc,
-                               broadcastCtrl, kRep);
+          if (!transpose)
+            acc = generateMFMAOp(mfmaInsnName, valA[kRep], valB[0], acc);
+          else
+            acc = generateMFMAOp(mfmaInsnName, valB[0], valA[kRep], acc);
+          valB[0] = rollShiftOperand(valB[0]);
         }
       }
     }
