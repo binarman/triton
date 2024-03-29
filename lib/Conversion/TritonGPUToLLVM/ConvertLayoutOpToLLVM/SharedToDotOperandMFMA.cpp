@@ -168,7 +168,16 @@ llvm::SmallVector<llvm::SmallVector<Value>> computeTensorElemMappingInBlock(
 
     for (int loadId = 0; loadId < loadsPerThread; ++loadId) {
       Value elemVOffset = _0;
-      Value elemHOffset = i32_val(loadId * loadVecSize);
+      Value elemHOffset;
+      if (iNonKDim == 64) {
+        Value groupId = urem(laneId, i32_val(4));
+        Value groupShift = mul(groupId, i32_val(iKDim / 16));
+        Value loadShift = add(groupShift, i32_val(loadId * loadVecSize));
+        Value wrappedLoadShift = urem(loadShift, i32_val(iKDim));
+        elemHOffset = wrappedLoadShift;
+      } else {
+        elemHOffset = i32_val(loadId * loadVecSize);
+      }
 
       Value sliceVOffset =
           add(add(add(tileVOffset, laneVOffset), elemVOffset), waveVOffset);
@@ -353,8 +362,17 @@ fastPathComputeOffsets(ConversionPatternRewriter &rewriter, Location loc,
     for (int tile = 0; tile < numK; ++tile) {
       int tileOffset = tile * iKDim * lineSize;
       for (int elem = 0; elem < numOfElems; ++elem) {
-        int rowOffset = elem * lineSize;
-        Value offset = add(baseThreadOffset, i32_val(blockOffset + tileOffset + rowOffset));
+        Value rowOffset;
+        if (iNonKDim == 64) {
+          Value groupId = urem(laneId, i32_val(4));
+          Value groupShift = mul(groupId, i32_val(iKDim / 16));
+          Value elemShift = add(groupShift, i32_val(elem));
+          Value wrappedElemShift = urem(elemShift, i32_val(iKDim));
+          rowOffset = mul(wrappedElemShift, i32_val(lineSize));
+        } else {
+          rowOffset = i32_val(elem * lineSize);
+        }
+        Value offset = add(add(baseThreadOffset, rowOffset), i32_val(blockOffset + tileOffset));
         offsets[numK * numOfElems * block + numOfElems * tile + elem] = offset;
       }
     }
