@@ -170,7 +170,7 @@ llvm::SmallVector<llvm::SmallVector<Value>> computeTensorElemMappingInBlock(
       Value elemVOffset = _0;
       Value elemHOffset;
       if (iNonKDim == 64) {
-        Value groupId = urem(laneId, i32_val(4));
+        Value groupId = udiv(laneId, i32_val(4));
         Value groupShift = mul(groupId, i32_val(iKDim / 16));
         Value loadShift = add(groupShift, i32_val(loadId * loadVecSize));
         Value wrappedLoadShift = urem(loadShift, i32_val(iKDim));
@@ -364,7 +364,7 @@ fastPathComputeOffsets(ConversionPatternRewriter &rewriter, Location loc,
       for (int elem = 0; elem < numOfElems; ++elem) {
         Value rowOffset;
         if (iNonKDim == 64) {
-          Value groupId = urem(laneId, i32_val(4));
+          Value groupId = udiv(laneId, i32_val(4));
           Value groupShift = mul(groupId, i32_val(iKDim / 16));
           Value elemShift = add(groupShift, i32_val(elem));
           Value wrappedElemShift = urem(elemShift, i32_val(iKDim));
