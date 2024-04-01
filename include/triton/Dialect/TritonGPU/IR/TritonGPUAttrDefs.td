@@ -162,8 +162,11 @@ compared to 1*64 when the hasLeadingOffset is false.
                 // reduces number of ds_read/ds_write instructions
                 vecSize = 4;
               }
-              const int perPhase = std::max(1, numBanks / innerDimLength);
-              const int maxPhase = std::min(numBanks, nonKDim) / perPhase;
+              const int bankRowInBits = numBanks * bankBitWidth;
+              const int innerDimInBits = innerDimLength * typeWidthInBit;
+              const int perPhase = std::max(1, bankRowInBits / innerDimInBits);
+              const int phaseSanityLimit = std::min(numBanks, innerDimLength / vecSize);
+              const int maxPhase = std::min(phaseSanityLimit, nonKDim) / perPhase;
               return get(context, vecSize, perPhase, maxPhase, order, CTALayout);
             }
             int perPhase = std::max(1, elemsPerOneBanksRow / innerDimLength);
