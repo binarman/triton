@@ -160,7 +160,10 @@ compared to 1*64 when the hasLeadingOffset is false.
                 // This heuristic introduces bank conflicts,
                 // but saves address computation overhead and
                 // reduces number of ds_read/ds_write instructions
-                vecSize = 4;
+
+                // can not swizzle in vectors of 4 for fp32,
+                // because mfma 4x64 and 64x4 shift loads by 1*(laneId/4)in k dimension, breaking borders of one load
+                vecSize = typeWidthInBit == 32 ? 1 : 4;
               }
               const int bankRowInBits = numBanks * bankBitWidth;
               const int innerDimInBits = innerDimLength * typeWidthInBit;
