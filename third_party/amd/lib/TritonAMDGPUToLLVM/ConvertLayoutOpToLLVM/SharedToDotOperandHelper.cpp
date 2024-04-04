@@ -77,11 +77,12 @@ llvm::SmallVector<Value> computeOffsetsAType(
     Value warpId, Value laneId, int warpsPerBlock, int numOfElems,
     ArrayRef<int64_t> reps, SharedMemoryObject smemObj,
     SharedEncodingAttr srcLayout, unsigned nonKDim, unsigned kDim) {
-  SmallVector<Value> strides{smemObj.strides[0], smemObj.strides[1]};
-  SmallVector<Value> offsets{smemObj.offsets[0], smemObj.offsets[1]};
+  SmallVector<Value> strides = smemObj.getStrides();
+  SmallVector<Value> offsets = smemObj.getOffsets();
+  auto rank = offsets.size();
 
   int vectorSize = 1;
-  if (srcLayout.getOrder()[0] == 1) {
+  if (srcLayout.getOrder()[0] == rank - 1) {
     if (isSwizzled(srcLayout))
       vectorSize = std::min(static_cast<int>(srcLayout.getVec()), numOfElems);
     else
@@ -109,6 +110,16 @@ llvm::SmallVector<Value> computeOffsetsAType(
   return aOffsets;
 }
 
+template <typename Container>
+static SmallVector<typename Container::value_type> transposeSpatialDims(const Container &vec) {
+  auto rank = vec.size();
+  assert(rank == 2 || rank == 3);
+  SmallVector<typename Container::value_type> res(rank, vec[0]);
+  res[rank - 2] = vec[rank - 1];
+  res[rank - 1] = vec[rank - 2];
+  return res;
+}
+
 llvm::SmallVector<Value> computeOffsetsBType(
     ConversionPatternRewriter &rewriter, Location loc,
     computeTensorElemMappingInBlockT fn, const ArrayRef<int64_t> &elemsPerInstr,
@@ -118,13 +129,14 @@ llvm::SmallVector<Value> computeOffsetsBType(
   // transpose reps and offsets, because operand B has layout equal to
   // transposed operand A layout
   // this unifies axis order, so non-K dim is 0, k dim is 1
+  auto rank = smemObj.getOffsets().size();
   SmallVector<int64_t> tElemsPerInstr{elemsPerInstr[1], elemsPerInstr[0]};
-  SmallVector<int64_t> tReps{reps[1], reps[0]};
-  SmallVector<Value> tOffsets{smemObj.offsets[1], smemObj.offsets[0]};
-  SmallVector<Value> tStrides{smemObj.strides[1], smemObj.strides[0]};
+  SmallVector<int64_t> tReps = transposeSpatialDims(reps);
+  SmallVector<Value> tOffsets = transposeSpatialDims(smemObj.getOffsets());
+  SmallVector<Value> tStrides = transposeSpatialDims(smemObj.getStrides());
 
   int vectorSize = 1;
-  if (srcLayout.getOrder()[0] == 0) {
+  if (srcLayout.getOrder()[0] == rank - 2) {
     if (isSwizzled(srcLayout))
       vectorSize = std::min(static_cast<int>(srcLayout.getVec()), numOfElems);
     else
