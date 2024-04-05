@@ -788,6 +788,7 @@ emitBaseIndexForMfmaLayout(Location loc, RewriterBase &rewriter,
   Value warpId = udiv(threadId, warpSize);
   SmallVector<Value> multiDimWarpId = delinearize(
       rewriter, loc, warpId, _warpsPerCTA, triton::gpu::getOrder(mfmaLayout));
+  i32_val(12345);
   if (shape[rank - 2] >= mDim) {
     assert(shape[rank - 2] % mDim == 0);
     multiDimWarpId[rank - 2] =
