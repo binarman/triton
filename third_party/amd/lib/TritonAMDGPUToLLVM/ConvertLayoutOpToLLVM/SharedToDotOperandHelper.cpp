@@ -91,7 +91,7 @@ llvm::SmallVector<Value> computeOffsetsAType(
 
   auto mapping = fn(rewriter, loc, elemsPerInstr, warpId, laneId, numOfElems,
                     reps, offsets, vectorSize, nonKDim, kDim);
-  const auto numBlocks = reps[0];
+  const auto numBlocks = reps[1];
   const auto blockSize = mapping.size();
   auto order = srcLayout.getOrder();
   llvm::SmallVector<Value> aOffsets(blockSize * numBlocks);
@@ -145,7 +145,7 @@ llvm::SmallVector<Value> computeOffsetsBType(
 
   auto mapping = fn(rewriter, loc, tElemsPerInstr, warpId, laneId, numOfElems,
                     tReps, tOffsets, vectorSize, nonKDim, kDim);
-  const auto numBlocks = tReps[0];
+  const auto numBlocks = tReps[1];
   const auto blockSize = mapping.size();
   llvm::SmallVector<Value> bOffsets(blockSize * numBlocks);
 
