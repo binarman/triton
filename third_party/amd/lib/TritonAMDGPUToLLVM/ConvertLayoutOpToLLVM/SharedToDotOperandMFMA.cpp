@@ -397,7 +397,14 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
             if (elemTy.isF16()){
               elemVal = inttofloat(f16_ty, lane);
             } else if (elemTy.isF32()){
-              elemVal = inttofloat(f32_ty, lane);
+              if (opIdx == 0) {
+                elemVal = inttofloat(f32_ty, lane);
+              } else {
+                Value halfWave = i32_val(32);
+                Value yCoord = urem(lane, halfWave);
+                Value xCoord = add(udiv(lane, halfWave), i32_val(k * mfmaInstrK));
+                elemVal = select(icmp_eq(xCoord, yCoord), f32_val(1.0), f32_val(0.0));
+              }
             }
             loadedValues.push_back(elemVal);
           }
