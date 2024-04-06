@@ -389,7 +389,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
           Value loadOffset;
           loadOffset = offsets[nonK * loadsPerThread * numRepK +
                                k * loadsPerThread + loadId];
-          loadOffset = add(loadOffset, batchOffset);
+          // loadOffset = add(loadOffset, batchOffset);
           Value loadAddress = gep(smemPtrTy, elemTy, smemBase, loadOffset);
           Value loadedValue = load(loadVecTy, loadAddress);
           for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
@@ -398,7 +398,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
               elemVal = inttofloat(f16_ty, lane);
             } else if (elemTy.isF32()){
               if (opIdx == 0) {
-                elemVal = inttofloat(f32_ty, lane);
+                elemVal = inttofloat(f32_ty, loadOffset);
               } else {
                 Value halfWave = i32_val(32);
                 Value yCoord = urem(lane, halfWave);
