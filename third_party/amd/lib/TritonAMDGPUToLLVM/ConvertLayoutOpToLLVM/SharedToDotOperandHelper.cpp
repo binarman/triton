@@ -98,7 +98,7 @@ llvm::SmallVector<Value> computeOffsetsAType(
 
   for (int block = 0; block < numBlocks; ++block) {
     int blockNonKOffset = block * nonKDim * warpsPerBlock;
-    Value offAdjust = mul(i32_val(blockNonKOffset), strides[0]);
+    Value offAdjust = mul(i32_val(blockNonKOffset), strides[rank-2]);
     for (int i = 0; i < blockSize; ++i) {
       Value row = mapping[i][0];
       Value col = mapping[i][1];
@@ -151,7 +151,7 @@ llvm::SmallVector<Value> computeOffsetsBType(
 
   for (int block = 0; block < numBlocks; ++block) {
     int blockNonKOffset = block * nonKDim * warpsPerBlock;
-    Value offAdjust = mul(i32_val(blockNonKOffset), tStrides[0]);
+    Value offAdjust = mul(i32_val(blockNonKOffset), tStrides[rank-2]);
     for (int i = 0; i < mapping.size(); ++i) {
       // swap row and col, because operand B layout is a transposed operand A
       // layout
