@@ -316,7 +316,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   SmallVector<Value> offsets;
   Value smemBase;
   bool isFastPath = !isKMajor(order, opIdx) && !hasSwizzleEnabled(sharedLayout);
-  llvm::out() << "operand " << opIdx << " fast path: "  << isFastPath << "\n";
+  llvm::outs() << "operand " << opIdx << " fast path: "  << isFastPath << "\n";
   if (isFastPath) {
     // fast path handles tensors that are not k-major and have swizzling
     // disabled, in which case offsets computation can be simplified
