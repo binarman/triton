@@ -54,9 +54,11 @@ Value computeOffset(ConversionPatternRewriter &rewriter, Location loc,
                     SharedEncodingAttr srcLayout) {
   auto [swizzledRow, swizzledCol] =
       swizzleIndexes(rewriter, loc, row, col, smemObj, srcLayout);
-  auto &strides = smemObj.strides;
-  Value rowOffset = mul(swizzledRow, strides[0]);
-  Value colOffset = mul(swizzledCol, strides[1]);
+  const auto &strides = smemObj.getStrides();
+  auto rank = strides.size();
+  assert(rank == 2 || rank == 3);
+  Value rowOffset = mul(swizzledRow, strides[rank - 2]);
+  Value colOffset = mul(swizzledCol, strides[rank - 1]);
   return add(rowOffset, colOffset);
 }
 
