@@ -394,6 +394,11 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
           Value loadedValue = load(loadVecTy, loadAddress);
           for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
             Value elemVal = extract_element(elemTy, loadedValue, i32_val(elemId));
+            if (elemTy.isF16()){
+              elemVal = f16_val(1.0);
+            } else if (elemTy.isF32()){
+              elemVal = f32_val(1.0);
+            }
             loadedValues.push_back(elemVal);
           }
         }
