@@ -22,7 +22,9 @@ std::pair<mlir::Value, mlir::Value>
 swizzleIndexes(ConversionPatternRewriter &rewriter, Location loc, Value row,
                Value col, SharedMemoryObject smemObj, SharedEncodingAttr attr) {
   (void)smemObj; // unused in current pattern
-  bool transposed = (attr.getOrder()[0] != 1);
+  const auto &order = attr.getOrder();
+  auto rank = order.size();
+  bool transposed = (order[rank - 2] != 1);
   if (transposed) {
     // tensor is column-wise, so swapping col and row in computations
     std::swap(row, col);
