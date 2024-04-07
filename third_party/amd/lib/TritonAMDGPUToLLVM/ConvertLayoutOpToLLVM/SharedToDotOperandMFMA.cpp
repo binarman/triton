@@ -395,18 +395,18 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
           Value loadedValue = load(loadVecTy, loadAddress);
           for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
             Value elemVal = extract_element(elemTy, loadedValue, i32_val(elemId));
-            if (elemTy.isF16()){
-              elemVal = inttofloat(f16_ty, lane);
-            } else if (elemTy.isF32()){
-              if (opIdx == 0) {
-                elemVal = inttofloat(f32_ty, loadOffset);
-              } else {
-                Value halfWave = i32_val(32);
-                Value yCoord = urem(lane, halfWave);
-                Value xCoord = add(udiv(lane, halfWave), i32_val(k * mfmaInstrK));
-                elemVal = select(icmp_eq(xCoord, yCoord), f32_val(1.0), f32_val(0.0));
-              }
-            }
+            // if (elemTy.isF16()){
+            //   elemVal = inttofloat(f16_ty, lane);
+            // } else if (elemTy.isF32()){
+            //   if (opIdx == 0) {
+            //     elemVal = inttofloat(f32_ty, loadOffset);
+            //   } else {
+            //     Value halfWave = i32_val(32);
+            //     Value yCoord = urem(lane, halfWave);
+            //     Value xCoord = add(udiv(lane, halfWave), i32_val(k * mfmaInstrK));
+            //     elemVal = select(icmp_eq(xCoord, yCoord), f32_val(1.0), f32_val(0.0));
+            //   }
+            // }
             loadedValues.push_back(elemVal);
           }
         }
