@@ -390,7 +390,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
           Value loadOffset;
           loadOffset = offsets[nonK * loadsPerThread * numRepK +
                                k * loadsPerThread + loadId];
-          // loadOffset = add(loadOffset, batchOffset);
+          loadOffset = add(loadOffset, batchOffset);
           Value loadAddress = gep(smemPtrTy, elemTy, smemBase, loadOffset);
           Value loadedValue = load(loadVecTy, loadAddress);
           for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
