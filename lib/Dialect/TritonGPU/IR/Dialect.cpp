@@ -2010,11 +2010,6 @@ Attribute DotOperandEncodingAttr::parse(AsmParser &parser, Type type) {
   unsigned kWidth = 0;
   Attribute _kWidth = attrs.get("kWidth");
   if (_kWidth) {
-    if (!mmaParent || mmaParent.isVolta()) {
-      auto loc = parser.getNameLoc();
-      parser.emitError(loc, "kWidth only supported for MMAv2+ parent");
-      return Attribute();
-    }
     kWidth = _kWidth.cast<IntegerAttr>().getInt();
   }
   if (parent.isa<AMDWmmaEncodingAttr>()) {
