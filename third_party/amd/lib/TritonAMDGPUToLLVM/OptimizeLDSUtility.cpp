@@ -15,20 +15,12 @@ namespace mlir {
 namespace triton {
 namespace AMD {
 
-constexpr int kPtrBitWidth = 64;
-
 int getCvtOpLDSUsage(RankedTensorType srcTy, RankedTensorType dstTy) {
   unsigned inVec = 0;
   unsigned outVec = 0;
   auto smemShape =
       triton::getScratchConfigForCvtLayout(srcTy, dstTy, inVec, outVec);
-  unsigned elems =
-      std::accumulate(smemShape.begin(), smemShape.end(), 1, std::multiplies{});
-  auto bytes =
-      srcTy.getElementType().isa<triton::PointerType>()
-          ? elems * kPtrBitWidth / 8
-          : elems * std::max<int>(8, srcTy.getElementTypeBitWidth()) / 8;
-
+  auto bytes = getBufferSizeInBytes(smemShape, srcTy.getElementType());
   return bytes;
 }
 

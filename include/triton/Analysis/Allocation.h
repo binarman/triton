@@ -29,6 +29,9 @@ SmallVector<unsigned> getRepShapeForCvtLayout(triton::gpu::ConvertLayoutOp op);
 SmallVector<unsigned> getRepShapeForCvtLayout(RankedTensorType srcTy,
                                               RankedTensorType dstTy);
 
+/// Compute buffer size in bytes
+unsigned getBufferSizeInBytes(ArrayRef<unsigned> shape, Type elemTy);
+
 } // namespace triton
 
 /// Modified from llvm-15.0: llvm/ADT/AddressRanges.h

@@ -34,9 +34,6 @@ namespace mlir {
 //===----------------------------------------------------------------------===//
 namespace triton {
 
-// Bitwidth of pointers
-constexpr int kPtrBitWidth = 64;
-
 static std::pair<SmallVector<unsigned>, SmallVector<unsigned>>
 getCvtOrder(Attribute srcLayout, Attribute dstLayout) {
   auto srcMmaLayout = mlir::dyn_cast<NvidiaMmaEncodingAttr>(srcLayout);
@@ -167,6 +164,17 @@ SmallVector<unsigned> getScratchConfigForCvtLayout(RankedTensorType srcTy,
   return repShape;
 }
 
+unsigned getBufferSizeInBytes(ArrayRef<unsigned> shape, Type elemTy) {
+  // Bitwidth of global memory pointers
+  constexpr int kPtrBitWidth = 64;
+  unsigned elems = product(shape);
+  auto bytes =
+      isa<triton::PointerType>(elemTy)
+          ? elems * kPtrBitWidth / 8
+          : elems * std::max<int>(8, elemTy.getIntOrFloatBitWidth()) / 8;
+  return bytes;
+}
+
 // TODO: extend beyond scalars
 SmallVector<unsigned> getScratchConfigForAtomicRMW(triton::AtomicRMWOp op) {
   SmallVector<unsigned> smemShape;
@@ -295,12 +303,7 @@ private:
       unsigned inVec = 0;
       unsigned outVec = 0;
       auto smemShape = getScratchConfigForCvtLayout(cvtLayout, inVec, outVec);
-      unsigned elems = std::accumulate(smemShape.begin(), smemShape.end(), 1,
-                                       std::multiplies{});
-      auto bytes =
-          isa<triton::PointerType>(srcTy.getElementType())
-              ? elems * kPtrBitWidth / 8
-              : elems * std::max<int>(8, srcTy.getElementTypeBitWidth()) / 8;
+      auto bytes = getBufferSizeInBytes(smemShape, srcTy.getElementType());
       maybeAddScratchBuffer<BufferT::BufferKind::Scratch>(op, bytes,
                                                           scratchAlignment);
     } else if (auto atomicRMWOp = dyn_cast<triton::AtomicRMWOp>(op)) {
@@ -311,14 +314,9 @@ private:
         // nothing to do
       } else {
         auto smemShape = getScratchConfigForAtomicRMW(atomicRMWOp);
-        unsigned elems = std::accumulate(smemShape.begin(), smemShape.end(), 1,
-                                         std::multiplies{});
         auto elemTy =
             cast<triton::PointerType>(value.getType()).getPointeeType();
-        auto bytes =
-            isa<triton::PointerType>(elemTy)
-                ? elems * kPtrBitWidth / 8
-                : elems * std::max<int>(8, elemTy.getIntOrFloatBitWidth()) / 8;
+        auto bytes = getBufferSizeInBytes(smemShape, elemTy);
         maybeAddScratchBuffer<BufferT::BufferKind::Scratch>(op, bytes,
                                                             scratchAlignment);
       }
@@ -330,13 +328,9 @@ private:
         // nothing to do
       } else {
         auto smemShape = getScratchConfigForAtomicCAS(atomicCASOp);
-        unsigned elems = std::accumulate(smemShape.begin(), smemShape.end(), 1,
-                                         std::multiplies{});
         auto elemTy =
             cast<triton::PointerType>(value.getType()).getPointeeType();
-        auto bytes = isa<triton::PointerType>(elemTy)
-                         ? elems * kPtrBitWidth / 8
-                         : elems * elemTy.getIntOrFloatBitWidth() / 8;
+        auto bytes = getBufferSizeInBytes(smemShape, elemTy);
         maybeAddScratchBuffer<BufferT::BufferKind::Scratch>(op, bytes,
                                                             scratchAlignment);
       }
