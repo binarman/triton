@@ -398,6 +398,9 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     tri_dq, q.grad = q.grad.clone(), None
     # compare
     torch.testing.assert_close(ref_out, tri_out, atol=1e-2, rtol=0)
+    print(f"abs top (1, 26, 2029, 60). Ref: {ref_dq[1, 26, 2029, 60]}, Triton: {tri_dq[1, 26, 2029, 60]}")
+    print("ref: ", ref_dq)
+    print("triton: ", tri_dq)
     torch.testing.assert_close(ref_dq, tri_dq, atol=1e-2, rtol=0)
     torch.testing.assert_close(ref_dv, tri_dv, atol=1e-2, rtol=0)
     torch.testing.assert_close(ref_dk, tri_dk, atol=1e-2, rtol=0)
