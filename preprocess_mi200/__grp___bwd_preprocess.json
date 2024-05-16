@@ -1,0 +1,10 @@
+{
+  "child_paths": {
+    "_bwd_preprocess.ttir": "/root/.triton/cache/ea053d7e74810e11b5b4230c2b3853e5f1dc925f45c0d91d1c30d2a36313f6d3/_bwd_preprocess.ttir",
+    "_bwd_preprocess.ttgir": "/root/.triton/cache/ea053d7e74810e11b5b4230c2b3853e5f1dc925f45c0d91d1c30d2a36313f6d3/_bwd_preprocess.ttgir",
+    "_bwd_preprocess.llir": "/root/.triton/cache/ea053d7e74810e11b5b4230c2b3853e5f1dc925f45c0d91d1c30d2a36313f6d3/_bwd_preprocess.llir",
+    "_bwd_preprocess.amdgcn": "/root/.triton/cache/ea053d7e74810e11b5b4230c2b3853e5f1dc925f45c0d91d1c30d2a36313f6d3/_bwd_preprocess.amdgcn",
+    "_bwd_preprocess.hsaco": "/root/.triton/cache/ea053d7e74810e11b5b4230c2b3853e5f1dc925f45c0d91d1c30d2a36313f6d3/_bwd_preprocess.hsaco",
+    "_bwd_preprocess.json": "/root/.triton/cache/ea053d7e74810e11b5b4230c2b3853e5f1dc925f45c0d91d1c30d2a36313f6d3/_bwd_preprocess.json"
+  }
+}
