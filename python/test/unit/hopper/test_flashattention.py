@@ -316,7 +316,7 @@ class _attention(torch.autograd.Function):
             o.stride(0), o.stride(1), o.stride(2), o.stride(3),  #
             q.shape[0], q.shape[1], q.shape[2], D0,  #
             BLOCK_M=BLOCK, BLOCK_N=BLOCK, BLOCK_DMODEL=Lk,  #
-            num_warps=num_warps, num_stages=2)
+            num_warps=num_warps, num_stages=2, allow_flush_denorm=True)
 
         ctx.save_for_backward(q, k, v, o, L, m)
         ctx.grid = grid
@@ -351,7 +351,7 @@ class _attention(torch.autograd.Function):
             q.shape[0], q.shape[1], q.shape[2], D0,  #
             ctx.grid[0],  #
             BLOCK_M=BLOCK, BLOCK_N=BLOCK, BLOCK_DMODEL=ctx.BLOCK_DMODEL,  #
-            num_warps=8, num_stages=1)
+            num_warps=8, num_stages=1, allow_flush_denorm=True)
         return dq, dk, dv, None
 
 
@@ -381,7 +381,8 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     print("k input: ", k)
     print("v input: ", v)
     sm_scale = 0.2
-    dout = torch.randn_like(q)
+    dout = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.1, std=0.2,
+                                                                                 generator=g).to("cuda")
     # reference implementation
     M = torch.tril(torch.ones((N_CTX, N_CTX), device="cuda"))
     p = torch.matmul(q, k.transpose(2, 3)) * sm_scale

@@ -192,6 +192,7 @@ class HIPBackend(BaseBackend):
         kernels[0].add_fn_attr("amdgpu-waves-per-eu", f"{options.waves_per_eu}")
         denormal_mode = "preserve-sign" if options.allow_flush_denorm else "ieee"
         kernels[0].add_fn_attr("denormal-fp-math-f32", denormal_mode)
+        kernels[0].add_fn_attr("denormal-fp-math", denormal_mode)
 
         if options.extern_libs:
             paths = [path for (name, path) in options.extern_libs if amd.need_extern_lib(llvm_mod, name)]
