@@ -67,17 +67,19 @@ struct DotOpMFMAConversionHelper {
     OperationState loweredOp(loc, mfmaInsnName);
     loweredOp.addTypes(resType);
     loweredOp.addOperands({valA, valB, valC, zeroFlag, zeroFlag, zeroFlag});
-    auto modeSwitch = rewriter.create<LLVM::InlineAsmOp>(
-        loc, valA.getType(),
-        /*operands=*/valA,
-        /*asm_string=*/"ololo;",
-        /*constraints=*/"=r,r",
-        /*has_side_effects=*/true,
-        /*is_align_stack=*/false,
-        /*asm_dialect=*/
-        LLVM::AsmDialectAttr::get(rewriter.getContext(),
-                                  LLVM::AsmDialect::AD_ATT),
-        /*operand_attrs=*/ArrayAttr());
+    valA = rewriter
+               .create<LLVM::InlineAsmOp>(
+                   loc, valA.getType(),
+                   /*operands=*/valA,
+                   /*asm_string=*/"V_MOV_B64 $0, $1;",
+                   /*constraints=*/"=r,r",
+                   /*has_side_effects=*/true,
+                   /*is_align_stack=*/false,
+                   /*asm_dialect=*/
+                   LLVM::AsmDialectAttr::get(rewriter.getContext(),
+                                             LLVM::AsmDialect::AD_ATT),
+                   /*operand_attrs=*/ArrayAttr())
+               .getResult(0);
     auto dot = rewriter.create(loweredOp)->getResult(0);
     return dot;
   }
