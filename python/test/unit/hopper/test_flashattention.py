@@ -369,14 +369,14 @@ attention = _attention.apply
 ])
 @pytest.mark.skipif(torch.cuda.get_device_capability()[0] < 9, reason="requires arch 9+")
 def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
-    g = torch.Generator(device="cuda")
+    g = torch.Generator(device="cpu")
     g.manual_seed(20)
-    q = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2,
-                                                                               generator=g).requires_grad_()
-    k = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.4, std=0.2,
-                                                                               generator=g).requires_grad_()
-    v = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2,
-                                                                               generator=g).requires_grad_()
+    q = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.1, std=0.2,
+                                                                              generator=g).to("cuda").requires_grad_()
+    k = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.4, std=0.2,
+                                                                              generator=g).to("cuda").requires_grad_()
+    v = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.3, std=0.2,
+                                                                              generator=g).to("cuda").requires_grad_()
     print("q input: ", q)
     print("k input: ", k)
     print("v input: ", v)
