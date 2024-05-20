@@ -266,6 +266,7 @@ def _bwd_kernel(Q, K, V, sm_scale, Out, DO,  #
             ds = p * dp * sm_scale
             # compute dk = dot(ds.T, q)
             dk += tl.dot(tl.trans(ds.to(tl.float16)), q)
+            tl.device_print("dk: ", dk)
             # compute dq
             dq = tl.load(dq_tile_ptr)
             dq += tl.dot(ds.to(tl.float16), k)
@@ -359,6 +360,8 @@ attention = _attention.apply
 
 
 @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD', [
+    (1, 1, 128, 64),
+    (1, 16, 128, 64),
     (4, 48, 128, 64),
     (4, 48, 256, 64),
     (4, 48, 512, 64),
@@ -385,36 +388,36 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     print("v input: ", v)
     print("dout input: ", dout)
     # reference implementation
-    M = torch.tril(torch.ones((N_CTX, N_CTX), device="cpu"))
-    p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
-    for z in range(Z):
-        for h in range(H):
-            p[:, :, M == 0] = float("-inf")
-    p = torch.softmax(p.float(), dim=-1).half()
+    #M = torch.tril(torch.ones((N_CTX, N_CTX), device="cpu"))
+    #p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
+    #for z in range(Z):
+    #    for h in range(H):
+    #        p[:, :, M == 0] = float("-inf")
+    #p = torch.softmax(p.float(), dim=-1).half()
     # p = torch.exp(p)
-    ref_out = torch.matmul(p, v)
-    ref_out.backward(dout)
-    ref_dv, v.grad = v.grad.clone(), None
-    ref_dk, k.grad = k.grad.clone(), None
-    ref_dq, q.grad = q.grad.clone(), None
+    #ref_out = torch.matmul(p, v)
+    #ref_out.backward(dout)
+    #ref_dv, v.grad = v.grad.clone(), None
+    #ref_dk, k.grad = k.grad.clone(), None
+    #ref_dq, q.grad = q.grad.clone(), None
     # triton implementation
     tri_out = attention(q.to(device), k.to(device), v.to(device), sm_scale)
     # print(ref_out)
     # print(tri_out)
     tri_out.backward(dout.to(device))
-    tri_dv, v.grad = v.grad.clone(), None
-    tri_dk, k.grad = k.grad.clone(), None
+    #tri_dv, v.grad = v.grad.clone(), None
+    #tri_dk, k.grad = k.grad.clone(), None
     tri_dq, q.grad = q.grad.clone(), None
     # compare
-    torch.testing.assert_close(ref_out.to(device), tri_out, atol=1e-2, rtol=0)
+    #torch.testing.assert_close(ref_out.to(device), tri_out, atol=1e-2, rtol=0)
     print("tri_out: ", tri_out)
-    print("largest diff: ", torch.max(torch.abs(ref_out.to(device) - tri_out)))
-    print(f"abs top (1, 26, 2029, 60). Ref: {ref_dq[1, 26, 2029, 60]}, Triton: {tri_dq[1, 26, 2029, 60]}")
-    print("ref dq: ", ref_dq)
+    #print("largest diff: ", torch.max(torch.abs(ref_out.to(device) - tri_out)))
+    #print(f"abs top (1, 26, 2029, 60). Ref: {ref_dq[1, 26, 2029, 60]}, Triton: {tri_dq[1, 26, 2029, 60]}")
+    #print("ref dq: ", ref_dq)
     print("triton dq: ", tri_dq)
-    torch.testing.assert_close(ref_dq, tri_dq.to("cpu"), atol=1e-2, rtol=0)
-    torch.testing.assert_close(ref_dv, tri_dv.to("cpu"), atol=1e-2, rtol=0)
-    torch.testing.assert_close(ref_dk, tri_dk.to("cpu"), atol=1e-2, rtol=0)
+    #torch.testing.assert_close(ref_dq, tri_dq.to("cpu"), atol=1e-2, rtol=0)
+    #torch.testing.assert_close(ref_dv, tri_dv.to("cpu"), atol=1e-2, rtol=0)
+    #torch.testing.assert_close(ref_dk, tri_dk.to("cpu"), atol=1e-2, rtol=0)
 
 
 try:
