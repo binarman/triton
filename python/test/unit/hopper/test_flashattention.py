@@ -266,10 +266,12 @@ def _bwd_kernel(Q, K, V, sm_scale, Out, DO,  #
             ds = p * dp * sm_scale
             # compute dk = dot(ds.T, q)
             dk += tl.dot(tl.trans(ds.to(tl.float16)), q)
-            tl.device_print("dk: ", dk)
             # compute dq
             dq = tl.load(dq_tile_ptr)
+            tl.device_print("ds: ", ds)
+            tl.device_print("dq1: ", dq)
             dq += tl.dot(ds.to(tl.float16), k)
+            tl.device_print("dq2: ", dq)
             tl.store(dq_tile_ptr, dq)
             # increment pointers
             dq_ptrs += BLOCK_M * stride_qm
