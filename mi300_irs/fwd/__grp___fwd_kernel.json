@@ -1,0 +1,10 @@
+{
+  "child_paths": {
+    "_fwd_kernel.ttir": "/root/.triton/cache/1ba6991024ea7f1fb75ccdae39c9ca016fc6fb8993cc558875dac55adebd51fd/_fwd_kernel.ttir",
+    "_fwd_kernel.ttgir": "/root/.triton/cache/1ba6991024ea7f1fb75ccdae39c9ca016fc6fb8993cc558875dac55adebd51fd/_fwd_kernel.ttgir",
+    "_fwd_kernel.llir": "/root/.triton/cache/1ba6991024ea7f1fb75ccdae39c9ca016fc6fb8993cc558875dac55adebd51fd/_fwd_kernel.llir",
+    "_fwd_kernel.amdgcn": "/root/.triton/cache/1ba6991024ea7f1fb75ccdae39c9ca016fc6fb8993cc558875dac55adebd51fd/_fwd_kernel.amdgcn",
+    "_fwd_kernel.hsaco": "/root/.triton/cache/1ba6991024ea7f1fb75ccdae39c9ca016fc6fb8993cc558875dac55adebd51fd/_fwd_kernel.hsaco",
+    "_fwd_kernel.json": "/root/.triton/cache/1ba6991024ea7f1fb75ccdae39c9ca016fc6fb8993cc558875dac55adebd51fd/_fwd_kernel.json"
+  }
+}

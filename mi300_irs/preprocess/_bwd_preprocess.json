@@ -1,0 +1,51 @@
+{
+  "hash": "f1d2d4d83c0f68fa157298630eba8b928b47d292ab2b3488c4aaca88501f1f29",
+  "target": {
+    "backend": "hip",
+    "arch": "gfx942",
+    "warp_size": 64
+  },
+  "num_warps": 4,
+  "waves_per_eu": 1,
+  "num_stages": 0,
+  "num_ctas": 1,
+  "extern_libs": [
+    [
+      "cuda2gcn",
+      "/triton/python/triton/backends/amd/lib/cuda2gcn.bc"
+    ],
+    [
+      "opencl",
+      "/triton/python/triton/backends/amd/lib/opencl.bc"
+    ],
+    [
+      "ocml",
+      "/triton/python/triton/backends/amd/lib/ocml.bc"
+    ],
+    [
+      "ockl",
+      "/triton/python/triton/backends/amd/lib/ockl.bc"
+    ]
+  ],
+  "cluster_dims": [
+    1,
+    1,
+    1
+  ],
+  "debug": null,
+  "arch": "gfx942",
+  "allow_fp8e4nv": false,
+  "allow_fp8e4b15": false,
+  "default_dot_input_precision": "ieee",
+  "allowed_dot_input_precisions": [
+    "ieee"
+  ],
+  "enable_fp_fusion": true,
+  "matrix_instr_nonkdim": 0,
+  "kpack": 1,
+  "allow_flush_denorm": false,
+  "max_num_imprecise_acc_default": 0,
+  "warp_size": 64,
+  "shared": 512,
+  "name": "_bwd_preprocess"
+}
