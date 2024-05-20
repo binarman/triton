@@ -371,20 +371,21 @@ attention = _attention.apply
 def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     g = torch.Generator(device="cpu")
     g.manual_seed(20)
+    device = "cuda"
     q = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.1, std=0.2,
-                                                                              generator=g).to("cuda").requires_grad_()
+                                                                              generator=g).requires_grad_()
     k = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.4, std=0.2,
-                                                                              generator=g).to("cuda").requires_grad_()
+                                                                              generator=g).requires_grad_()
     v = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.3, std=0.2,
-                                                                              generator=g).to("cuda").requires_grad_()
+                                                                              generator=g).requires_grad_()
+    sm_scale = 0.2
+    dout = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.1, std=0.2, generator=g)
     print("q input: ", q)
     print("k input: ", k)
     print("v input: ", v)
-    sm_scale = 0.2
-    dout = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cpu").normal_(mean=0.1, std=0.2,
-                                                                                 generator=g).to("cuda")
+    print("dout input: ", dout)
     # reference implementation
-    M = torch.tril(torch.ones((N_CTX, N_CTX), device="cuda"))
+    M = torch.tril(torch.ones((N_CTX, N_CTX), device="cpu"))
     p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
     for z in range(Z):
         for h in range(H):
@@ -397,23 +398,23 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     ref_dk, k.grad = k.grad.clone(), None
     ref_dq, q.grad = q.grad.clone(), None
     # triton implementation
-    tri_out = attention(q, k, v, sm_scale)
+    tri_out = attention(q.to(device), k.to(device), v.to(device), sm_scale)
     # print(ref_out)
     # print(tri_out)
-    tri_out.backward(dout)
+    tri_out.backward(dout.to(device))
     tri_dv, v.grad = v.grad.clone(), None
     tri_dk, k.grad = k.grad.clone(), None
     tri_dq, q.grad = q.grad.clone(), None
     # compare
-    torch.testing.assert_close(ref_out, tri_out, atol=1e-2, rtol=0)
+    torch.testing.assert_close(ref_out.to(device), tri_out, atol=1e-2, rtol=0)
     print("tri_out: ", tri_out)
-    print("largest diff: ", torch.max(torch.abs(ref_out - tri_out)))
+    print("largest diff: ", torch.max(torch.abs(ref_out.to(device) - tri_out)))
     print(f"abs top (1, 26, 2029, 60). Ref: {ref_dq[1, 26, 2029, 60]}, Triton: {tri_dq[1, 26, 2029, 60]}")
-    print("ref: ", ref_dq)
-    print("triton: ", tri_dq)
-    torch.testing.assert_close(ref_dq, tri_dq, atol=1e-2, rtol=0)
-    torch.testing.assert_close(ref_dv, tri_dv, atol=1e-2, rtol=0)
-    torch.testing.assert_close(ref_dk, tri_dk, atol=1e-2, rtol=0)
+    print("ref dq: ", ref_dq)
+    print("triton dq: ", tri_dq)
+    torch.testing.assert_close(ref_dq, tri_dq.to("cpu"), atol=1e-2, rtol=0)
+    torch.testing.assert_close(ref_dv, tri_dv.to("cpu"), atol=1e-2, rtol=0)
+    torch.testing.assert_close(ref_dk, tri_dk.to("cpu"), atol=1e-2, rtol=0)
 
 
 try:
