@@ -279,7 +279,7 @@ def _bwd_kernel(Q, K, V, sm_scale, Out, DO,  #
             #tl.device_print("ds: ", ds)
             #tl.device_print("dq1: ", dq)
             dq += tl.dot(ds.to(tl.float16), k)
-            #tl.device_print("dq2: ", dq)
+            tl.device_print("dq2: ", dq)
             tl.store(dq_tile_ptr, dq)
             # increment pointers
             dq_ptrs += BLOCK_M * stride_qm
@@ -306,7 +306,7 @@ class _attention(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, q, k, v, sm_scale):
-        BLOCK = 128
+        BLOCK = 32
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
         assert Lq == Lk and Lk == Lv
@@ -337,7 +337,7 @@ class _attention(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, do):
-        BLOCK = 128
+        BLOCK = 32
         q, k, v, o, l, m = ctx.saved_tensors
         do = do.contiguous()
         dq = torch.zeros_like(q, dtype=torch.float32)
