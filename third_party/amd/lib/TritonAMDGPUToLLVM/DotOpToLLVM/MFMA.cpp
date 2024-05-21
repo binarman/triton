@@ -64,6 +64,8 @@ struct DotOpMFMAConversionHelper {
     if (auto vecTy = mlir::dyn_cast<VectorType>(val.getType())) {
       int numScalars = vecTy.getNumElements();
       auto elemTy = vecTy.getElementType();
+      if (!elemTy.isF16())
+        return val;
       auto fzero = f16_val(0.0);
       std::vector<Value> elems(numScalars);
       for (int i = 0; i < numScalars; ++i) {
