@@ -40,7 +40,7 @@ __global__ void sgemm_32x32x8(const float16_t *A, const float16_t *B,
   float16x4 b;
   for (int elemId = 0; elemId < 4; ++elemId) {
     const int a_idx = lane32Id * K + elemId + laneGroupId * 4;
-    a[elemId] = A[a_idx];
+    a[elemId] = A[a_idx] * 2;
 
     const int b_idx = lane32Id + elemId * N + laneGroupId * 4 * N;
     b[elemId] = B[b_idx];
