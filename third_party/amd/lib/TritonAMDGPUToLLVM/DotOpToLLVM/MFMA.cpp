@@ -60,24 +60,30 @@ struct DotOpMFMAConversionHelper {
     return rewriter.create<arith::TruncIOp>(loc, i32_ty, tid);
   }
 
+  Value flushDenormValue(Value val) const {
+    if (auto vecTy = mlir::dyn_cast<VectorType>(val.getType())) {
+      int numScalars = vecTy.getNumElements();
+      auto elemTy = vecTy.getElementType();
+      auto fzero = f16_val(0.0);
+      std::vector<Value> elems(numScalars);
+      for (int i = 0; i < numScalars; ++i) {
+        elems[i] = extract_element(elemTy, val, i32_val(i));
+        elems[i] = rewriter.create<LLVM::AddOp>(loc, elems[i], fzero);
+        val = insert_element(vecTy, val, elems[i], i32_val(i));
+      }
+    }
+    return val;
+  }
+
   Value generateMFMAOp(StringRef mfmaInsnName, Value valA, Value valB,
                        Value valC) const {
     auto resType = valC.getType();
     Value zeroFlag = i32_val(0);
+    valA = flushDenormValue(valA);
+    valB = flushDenormValue(valB);
     OperationState loweredOp(loc, mfmaInsnName);
     loweredOp.addTypes(resType);
     loweredOp.addOperands({valA, valB, valC, zeroFlag, zeroFlag, zeroFlag});
-    // valA = rewriter.create<LLVM::InlineAsmOp>(
-    //     loc, valA.getType(),
-    //     /*operands=*/valA,
-    //     /*asm_string=*/"v_mov_b64 $0, $1;\ns_getreg;\ns_setreg;",
-    //     /*constraints=*/"=r,r",
-    //     /*has_side_effects=*/true,
-    //     /*is_align_stack=*/false,
-    //     /*asm_dialect=*/
-    //     LLVM::AsmDialectAttr::get(rewriter.getContext(),
-    //                               LLVM::AsmDialect::AD_ATT),
-    //     /*operand_attrs=*/ArrayAttr()).getResult(0);
     auto dot = rewriter.create(loweredOp)->getResult(0);
     return dot;
   }
