@@ -251,27 +251,27 @@ def _bwd_kernel(Q, K, V, sm_scale, Out, DO,  #
             q = tl.load(q_tile_ptr, boundary_check=(0, 1))
             # recompute p = softmax(qk, dim=-1).T
             # NOTE: `do` is pre-divided by `l`; no normalization here
-            tl.device_print("q: ", q)
-            tl.device_print("k: ", k)
+            ##tl.device_print("q: ", q)
+            ##tl.device_print("k: ", k)
             qk = tl.dot(q, tl.trans(k))
-            tl.device_print("qk1: ", qk)
+            ##tl.device_print("qk1: ", qk)
             qk = tl.where(offs_m_curr[:, None] >= (offs_n[None, :]), qk, float("-inf"))
             m = tl.load(m_ptrs + offs_m_curr)
             p = tl.exp(qk * sm_scale - m[:, None])
-            tl.device_print("p: ", p)
+            ##tl.device_print("p: ", p)
             # compute dv
             do = tl.load(do_tile_ptr, boundary_check=(0, 1))
             dv += tl.dot(tl.trans(p.to(tl.float16)), do)
             # compute dp = dot(v, do)
             Di = tl.load(D_ptrs + offs_m_curr)
             dp = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32) - Di[:, None]
-            tl.device_print("do: ", do)
-            tl.device_print("v: ", v)
+            ##tl.device_print("do: ", do)
+            ##tl.device_print("v: ", v)
             dp += tl.dot(do, tl.trans(v))
             # compute ds = p * (dp - delta[:, None])
-            tl.device_print("dp: ", dp)
+            ##tl.device_print("dp: ", dp)
             ds = p * dp * sm_scale
-            tl.device_print("ds: ", ds)
+            ##tl.device_print("ds: ", ds)
             # compute dk = dot(ds.T, q)
             dk += tl.dot(tl.trans(ds.to(tl.float16)), q)
             # compute dq
@@ -382,7 +382,7 @@ attention = _attention.apply
     #  (4, 48, 8192, 64), out of memory
 ])
 @pytest.mark.skipif(torch.cuda.get_device_capability()[0] < 9, reason="requires arch 9+")
-def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
+def test_op_triton_only(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     g = torch.Generator(device="cpu")
     g.manual_seed(20)
     device = "cuda"
@@ -429,6 +429,51 @@ def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     #torch.testing.assert_close(ref_dq, tri_dq.to("cpu"), atol=1e-2, rtol=0)
     #torch.testing.assert_close(ref_dv, tri_dv.to("cpu"), atol=1e-2, rtol=0)
     #torch.testing.assert_close(ref_dk, tri_dk.to("cpu"), atol=1e-2, rtol=0)
+
+
+@pytest.mark.parametrize('Z, H, N_CTX, D_HEAD', [
+    (4, 48, 128, 64),
+    (4, 48, 256, 64),
+    (4, 48, 512, 64),
+    (4, 48, 1024, 64),
+    (4, 48, 2048, 64),
+    (4, 48, 4096, 64),
+    #  (4, 48, 8192, 64), out of memory
+])
+@pytest.mark.skipif(torch.cuda.get_device_capability()[0] < 9, reason="requires arch 9+")
+def test_op(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
+    torch.manual_seed(20)
+    q = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2).requires_grad_()
+    k = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.4, std=0.2).requires_grad_()
+    v = torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2).requires_grad_()
+    sm_scale = 0.2
+    dout = torch.randn_like(q)
+    # reference implementation
+    M = torch.tril(torch.ones((N_CTX, N_CTX), device="cuda"))
+    p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
+    for z in range(Z):
+        for h in range(H):
+            p[:, :, M == 0] = float("-inf")
+    p = torch.softmax(p.float(), dim=-1).half()
+    # p = torch.exp(p)
+    ref_out = torch.matmul(p, v)
+    ref_out.backward(dout)
+    ref_dv, v.grad = v.grad.clone(), None
+    ref_dk, k.grad = k.grad.clone(), None
+    ref_dq, q.grad = q.grad.clone(), None
+    # triton implementation
+    tri_out = attention(q, k, v, sm_scale)
+    # print(ref_out)
+    # print(tri_out)
+    tri_out.backward(dout)
+    tri_dv, v.grad = v.grad.clone(), None
+    tri_dk, k.grad = k.grad.clone(), None
+    tri_dq, q.grad = q.grad.clone(), None
+    # compare
+    torch.testing.assert_close(ref_out, tri_out, atol=1e-2, rtol=0)
+    torch.testing.assert_close(ref_dq, tri_dq, atol=1e-2, rtol=0)
+    torch.testing.assert_close(ref_dv, tri_dv, atol=1e-2, rtol=0)
+    torch.testing.assert_close(ref_dk, tri_dk, atol=1e-2, rtol=0)
 
 
 try:
