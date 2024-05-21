@@ -251,10 +251,14 @@ def _bwd_kernel(Q, K, V, sm_scale, Out, DO,  #
             q = tl.load(q_tile_ptr, boundary_check=(0, 1))
             # recompute p = softmax(qk, dim=-1).T
             # NOTE: `do` is pre-divided by `l`; no normalization here
+            tl.device_print("q: ", q)
+            tl.device_print("k: ", k)
             qk = tl.dot(q, tl.trans(k))
+            tl.device_print("qk1: ", qk)
             qk = tl.where(offs_m_curr[:, None] >= (offs_n[None, :]), qk, float("-inf"))
             m = tl.load(m_ptrs + offs_m_curr)
             p = tl.exp(qk * sm_scale - m[:, None])
+            tl.device_print("p: ", p)
             # compute dv
             do = tl.load(do_tile_ptr, boundary_check=(0, 1))
             dv += tl.dot(tl.trans(p.to(tl.float16)), do)
@@ -268,10 +272,10 @@ def _bwd_kernel(Q, K, V, sm_scale, Out, DO,  #
             dk += tl.dot(tl.trans(ds.to(tl.float16)), q)
             # compute dq
             dq = tl.load(dq_tile_ptr)
-            tl.device_print("ds: ", ds)
-            tl.device_print("dq1: ", dq)
+            #tl.device_print("ds: ", ds)
+            #tl.device_print("dq1: ", dq)
             dq += tl.dot(ds.to(tl.float16), k)
-            tl.device_print("dq2: ", dq)
+            #tl.device_print("dq2: ", dq)
             tl.store(dq_tile_ptr, dq)
             # increment pointers
             dq_ptrs += BLOCK_M * stride_qm
@@ -298,7 +302,7 @@ class _attention(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, q, k, v, sm_scale):
-        BLOCK = 128
+        BLOCK = 32
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
         assert Lq == Lk and Lk == Lv
@@ -329,7 +333,7 @@ class _attention(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, do):
-        BLOCK = 128
+        BLOCK = 32
         q, k, v, o, l, m = ctx.saved_tensors
         do = do.contiguous()
         dq = torch.zeros_like(q, dtype=torch.float32)
@@ -362,6 +366,7 @@ attention = _attention.apply
 
 
 @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD', [
+    (1, 1, 32, 32),
     (1, 1, 128, 64),
     (1, 16, 128, 64),
     (4, 48, 128, 64),
