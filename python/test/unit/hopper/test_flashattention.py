@@ -267,7 +267,9 @@ def _bwd_kernel(Q, K, V, sm_scale, Out, DO,  #
             dp = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32) - Di[:, None]
             dp += tl.dot(do, tl.trans(v))
             # compute ds = p * (dp - delta[:, None])
+            tl.device_print("dp: ", dp)
             ds = p * dp * sm_scale
+            tl.device_print("ds: ", ds)
             # compute dk = dot(ds.T, q)
             dk += tl.dot(tl.trans(ds.to(tl.float16)), q)
             # compute dq
