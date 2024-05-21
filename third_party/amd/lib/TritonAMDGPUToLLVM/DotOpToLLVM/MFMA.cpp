@@ -68,7 +68,7 @@ struct DotOpMFMAConversionHelper {
       std::vector<Value> elems(numScalars);
       for (int i = 0; i < numScalars; ++i) {
         elems[i] = extract_element(elemTy, val, i32_val(i));
-        elems[i] = rewriter.create<LLVM::AddOp>(loc, elems[i], fzero);
+        elems[i] = rewriter.create<LLVM::FAddOp>(loc, elems[i], fzero);
         val = insert_element(vecTy, val, elems[i], i32_val(i));
       }
     }
