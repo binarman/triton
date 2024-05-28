@@ -519,67 +519,166 @@ TEST_F(InferLayoutTest, FuzzReshape) {
          100.0 * numSuccess / numTests);
 }
 
-TEST(MFMALayoutTest, mfma32) {
-  // Prerequisites
+class AMDMfmaLayoutTest : public ::testing::Test {
+public:
+  AMDMfmaLayoutTest() {
+    ctx.getOrLoadDialect<TritonGPUDialect>();
+    ctaLayout =
+        triton::gpu::CTALayoutAttr::get(&ctx, ctaPerCGA, ctaSplit, ctaOrder);
+    f16Ty = FloatType::getF16(&ctx);
+  }
+
+  triton::gpu::AMDMfmaEncodingAttr createMFMA(int mDim, int nDim) {
+    return triton::gpu::AMDMfmaEncodingAttr::get(&ctx, 2, 0, warpsPerCTA, mDim,
+                                                 nDim, false, ctaLayout);
+  }
+
+protected:
   MLIRContext ctx;
-  ctx.getOrLoadDialect<TritonGPUDialect>();
   const SmallVector<unsigned> warpsPerCTA{2, 4, 1};
-  const unsigned mDim = 32;
-  const unsigned nDim = 32;
   const SmallVector<unsigned> ctaPerCGA{1, 1, 1};
   const SmallVector<unsigned> ctaSplit{1, 1, 1};
   const SmallVector<unsigned> ctaOrder{2, 1, 0};
-  auto ctaLayout =
-      triton::gpu::CTALayoutAttr::get(&ctx, ctaPerCGA, ctaSplit, ctaOrder);
-  auto f16Ty = FloatType::getF16(&ctx);
+  triton::gpu::CTALayoutAttr ctaLayout;
+  Type f16Ty;
+};
 
-  // Testing
-  {
-    // TODO fix function, it depends on kWidth
-    auto mfmaLayout = triton::gpu::AMDMfmaEncodingAttr::get(
-        &ctx, 2, 0, warpsPerCTA, mDim, nDim, false, ctaLayout);
-    SmallVector<unsigned> perThread0 =
-        mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 0);
-    SmallVector<unsigned> perThread1 =
-        mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 1);
-    ASSERT_THAT(perThread0, testing::ElementsAre(1u, 4u));
-    ASSERT_THAT(perThread1, testing::ElementsAre(4u, 1u));
+TEST_F(AMDMfmaLayoutTest, mfma32) {
+  auto mfmaLayout = createMFMA(32, 32);
 
-    // TODO clarify tile size meaning
-    SmallVector<unsigned> perCTATile0 =
-        mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
-                                                    /*opIdx*/ 0);
-    SmallVector<unsigned> perCTATile1 =
-        mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
-                                                    /*opIdx*/ 1);
-    ASSERT_THAT(perCTATile0, testing::ElementsAre(2u, 128u, 32u));
-    ASSERT_THAT(perCTATile1, testing::ElementsAre(2u, 32u, 64u));
+  // TODO fix function, it depends on kWidth
+  SmallVector<unsigned> perThread0 =
+      mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 0);
+  SmallVector<unsigned> perThread1 =
+      mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 1);
+  ASSERT_THAT(perThread0, testing::ElementsAre(1u, 4u));
+  ASSERT_THAT(perThread1, testing::ElementsAre(4u, 1u));
 
-    unsigned perThreadForOp0 = mfmaLayout.getTotalElemsPerThreadForOperands(
-        /*shape*/ {2, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 0);
-    unsigned perThreadForOp1 = mfmaLayout.getTotalElemsPerThreadForOperands(
-        /*shape*/ {4, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 1);
-    ASSERT_EQ(perThreadForOp0, 1 * 1 * 64);
-    ASSERT_EQ(perThreadForOp1, 2 * 64 * 4);
+  // TODO clarify tile size meaning
+  SmallVector<unsigned> perCTATile0 =
+      mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
+                                                  /*opIdx*/ 0);
+  SmallVector<unsigned> perCTATile1 =
+      mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
+                                                  /*opIdx*/ 1);
+  ASSERT_THAT(perCTATile0, testing::ElementsAre(2u, 128u, 32u));
+  ASSERT_THAT(perCTATile1, testing::ElementsAre(2u, 32u, 32u));
 
-    SmallVector<int64_t> instrOpShape0 =
-        mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 4, /*opIdx*/ 0);
-    SmallVector<int64_t> instrOpShape1 =
-        mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 8, /*opIdx*/ 1);
-    ASSERT_THAT(instrOpShape0, testing::ElementsAre(32l, 8l));
-    ASSERT_THAT(instrOpShape1, testing::ElementsAre(16l, 32l));
+  unsigned perThreadForOp0 = mfmaLayout.getTotalElemsPerThreadForOperands(
+      /*shape*/ {2, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 0);
+  unsigned perThreadForOp1 = mfmaLayout.getTotalElemsPerThreadForOperands(
+      /*shape*/ {4, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 1);
+  ASSERT_EQ(perThreadForOp0, 1 * 1 * 64);
+  ASSERT_EQ(perThreadForOp1, 2 * 64 * 4);
 
-    SmallVector<int64_t> repsOp0 = mfmaLayout.getMFMARepForOperands(
-        /*operandShape*/ {8, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 0);
-    SmallVector<int64_t> repsOp1 = mfmaLayout.getMFMARepForOperands(
-        /*operandShape*/ {1, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 1);
-    ASSERT_THAT(repsOp0, testing::ElementsAre(4l, 1l, 16l));
-    ASSERT_THAT(repsOp1, testing::ElementsAre(1l, 8l, 4l));
+  SmallVector<int64_t> instrOpShape0 =
+      mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 4, /*opIdx*/ 0);
+  SmallVector<int64_t> instrOpShape1 =
+      mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 8, /*opIdx*/ 1);
+  ASSERT_THAT(instrOpShape0, testing::ElementsAre(32l, 8l));
+  ASSERT_THAT(instrOpShape1, testing::ElementsAre(16l, 32l));
 
-    SmallVector<unsigned> contig = mfmaLayout.getContigPerThread();
-    ASSERT_THAT(contig, testing::ElementsAre(1u, 4u, 1u));
-  }
+  SmallVector<int64_t> repsOp0 = mfmaLayout.getMFMARepForOperands(
+      /*operandShape*/ {8, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 0);
+  SmallVector<int64_t> repsOp1 = mfmaLayout.getMFMARepForOperands(
+      /*operandShape*/ {1, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 1);
+  ASSERT_THAT(repsOp0, testing::ElementsAre(4l, 1l, 16l));
+  ASSERT_THAT(repsOp1, testing::ElementsAre(1l, 8l, 4l));
+
+  SmallVector<unsigned> contig = mfmaLayout.getContigPerThread();
+  ASSERT_THAT(contig, testing::ElementsAre(1u, 4u, 1u));
 }
+
+TEST_F(AMDMfmaLayoutTest, mfma16) {
+  auto mfmaLayout = createMFMA(16, 16);
+
+  // TODO fix function, it depends on kWidth
+  SmallVector<unsigned> perThread0 =
+      mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 0);
+  SmallVector<unsigned> perThread1 =
+      mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 1);
+  ASSERT_THAT(perThread0, testing::ElementsAre(1u, 4u));
+  ASSERT_THAT(perThread1, testing::ElementsAre(4u, 1u));
+
+  // TODO clarify tile size meaning
+  SmallVector<unsigned> perCTATile0 =
+      mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
+                                                  /*opIdx*/ 0);
+  SmallVector<unsigned> perCTATile1 =
+      mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
+                                                  /*opIdx*/ 1);
+  ASSERT_THAT(perCTATile0, testing::ElementsAre(2u, 64u, 32u));
+  ASSERT_THAT(perCTATile1, testing::ElementsAre(2u, 32u, 16u));
+
+  unsigned perThreadForOp0 = mfmaLayout.getTotalElemsPerThreadForOperands(
+      /*shape*/ {2, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 0);
+  unsigned perThreadForOp1 = mfmaLayout.getTotalElemsPerThreadForOperands(
+      /*shape*/ {4, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 1);
+  ASSERT_EQ(perThreadForOp0, 1 * 1 * 64);
+  ASSERT_EQ(perThreadForOp1, 2 * 64 * 4);
+
+  SmallVector<int64_t> instrOpShape0 =
+      mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 4, /*opIdx*/ 0);
+  SmallVector<int64_t> instrOpShape1 =
+      mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 8, /*opIdx*/ 1);
+  ASSERT_THAT(instrOpShape0, testing::ElementsAre(16l, 16l));
+  ASSERT_THAT(instrOpShape1, testing::ElementsAre(32l, 16l));
+
+  SmallVector<int64_t> repsOp0 = mfmaLayout.getMFMARepForOperands(
+      /*operandShape*/ {8, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 0);
+  SmallVector<int64_t> repsOp1 = mfmaLayout.getMFMARepForOperands(
+      /*operandShape*/ {1, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 1);
+  ASSERT_THAT(repsOp0, testing::ElementsAre(4l, 1l, 8l));
+  ASSERT_THAT(repsOp1, testing::ElementsAre(1l, 4l, 8l));
+
+  SmallVector<unsigned> contig = mfmaLayout.getContigPerThread();
+  ASSERT_THAT(contig, testing::ElementsAre(1u, 4u, 1u));
+}
+
+// TEST_F(AMDMfmaLayoutTest, mfma464) {
+//   // TODO fix function, it depends on kWidth
+//   auto mfmaLayout = createMFMA(4, 64);
+//   SmallVector<unsigned> perThread0 =
+//       mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 0);
+//   SmallVector<unsigned> perThread1 =
+//       mfmaLayout.getSizePerThreadForOperands(/* opIdx */ 1);
+//   ASSERT_THAT(perThread0, testing::ElementsAre(1u, 4u));
+//   ASSERT_THAT(perThread1, testing::ElementsAre(4u, 1u));
+
+//   // TODO clarify tile size meaning
+//   SmallVector<unsigned> perCTATile0 =
+//       mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
+//                                                   /*opIdx*/ 0);
+//   SmallVector<unsigned> perCTATile1 =
+//       mfmaLayout.getShapePerCTATileForDotOperands(/*shape*/ {1, 128, 64},
+//                                                   /*opIdx*/ 1);
+//   ASSERT_THAT(perCTATile0, testing::ElementsAre(2u, 128u, 32u));
+//   ASSERT_THAT(perCTATile1, testing::ElementsAre(2u, 32u, 32u));
+
+//   unsigned perThreadForOp0 = mfmaLayout.getTotalElemsPerThreadForOperands(
+//       /*shape*/ {2, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 0);
+//   unsigned perThreadForOp1 = mfmaLayout.getTotalElemsPerThreadForOperands(
+//       /*shape*/ {4, 128, 128}, /*eltTy*/ f16Ty, /*kWidth*/ 4, /*opIdx*/ 1);
+//   ASSERT_EQ(perThreadForOp0, 1 * 1 * 64);
+//   ASSERT_EQ(perThreadForOp1, 2 * 64 * 4);
+
+//   SmallVector<int64_t> instrOpShape0 =
+//       mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 4, /*opIdx*/ 0);
+//   SmallVector<int64_t> instrOpShape1 =
+//       mfmaLayout.getMFMAInstrShapeForOperands(/*kWidth*/ 8, /*opIdx*/ 1);
+//   ASSERT_THAT(instrOpShape0, testing::ElementsAre(32l, 8l));
+//   ASSERT_THAT(instrOpShape1, testing::ElementsAre(16l, 32l));
+
+//   SmallVector<int64_t> repsOp0 = mfmaLayout.getMFMARepForOperands(
+//       /*operandShape*/ {8, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 0);
+//   SmallVector<int64_t> repsOp1 = mfmaLayout.getMFMARepForOperands(
+//       /*operandShape*/ {1, 64, 128}, /*kWidth*/ 4, /*opIdx*/ 1);
+//   ASSERT_THAT(repsOp0, testing::ElementsAre(4l, 1l, 16l));
+//   ASSERT_THAT(repsOp1, testing::ElementsAre(1l, 8l, 4l));
+
+//   SmallVector<unsigned> contig = mfmaLayout.getContigPerThread();
+//   ASSERT_THAT(contig, testing::ElementsAre(1u, 4u, 1u));
+// }
 
 } // anonymous namespace
 } // namespace mlir::triton::gpu

@@ -398,6 +398,22 @@ LinearLayout hopperMmaToLinearLayout(ArrayRef<int64_t> shape,
   return combineCtaCgaWithShape(ctaLayout, mma.getCTALayout(), shape);
 }
 
+LinearLayout mfmaToLinearLayout(ArrayRef<int64_t> shape,
+                                AMDMfmaEncodingAttr mfma) {
+  int rank = shape.size();
+  assert(rank == mfma.getWarpsPerCTA().size());
+  MLIRContext *ctx = mfma.getContext();
+  SmallVector<StringAttr> outDimNames = standardOutDimNames(ctx, rank);
+  auto order = triton::gpu::getOrder(mfma);
+
+  LinearLayout ctaLayout =
+      identityND(S("register"), mfma.getSizePerThread(), order, outDimNames) *
+      identityND(S("lane"), mfma.getThreadsPerWarp(), order, outDimNames) *
+      identityND(S("warp"), mfma.getWarpsPerCTA(), order, outDimNames);
+
+  return combineCtaCgaWithShape(ctaLayout, mfma.getCTALayout(), shape);
+}
+
 std::optional<LinearLayout> toLinearLayout(ArrayRef<int64_t> shape,
                                            SliceEncodingAttr slice) {
   MLIRContext *ctx = slice.getContext();
@@ -469,6 +485,9 @@ std::optional<LinearLayout> toLinearLayout(ArrayRef<int64_t> shape,
                                            Attribute layout) {
   if (auto blocked = dyn_cast<BlockedEncodingAttr>(layout)) {
     return blockedToLinearLayout(shape, blocked);
+  }
+  if (auto mfma = dyn_cast<AMDMfmaEncodingAttr>(layout)) {
+    return mfmaToLinearLayout(shape, mfma);
   }
   if (auto mma = dyn_cast<NvidiaMmaEncodingAttr>(layout)) {
     if (mma.isAmpere()) {
