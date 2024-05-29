@@ -408,27 +408,18 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
   if (mfma.getMDim() != 32 || mfma.getNDim() != 32)
     return std::nullopt;
 
-  LinearLayout registerLayout = LinearLayout::empty();
-  int threadDim = mfma.getIsTransposed() ? rank - 1 : rank - 2;
   auto order = triton::gpu::getOrder(mfma);
-  for (int i = 0; i < rank; ++i) {
-    auto dim = order[i];
-    LinearLayout DimLayout =
-        (dim == threadDim)
-            ? LinearLayout({{S("register"), {{1}, {2}, {8}, {16}}}},
-                           {outDimNames[dim]})
-            : LinearLayout::zeros1D(1, S("register"), outDimNames[dim]);
-    registerLayout *= DimLayout;
-  }
+  assert(!mfma.getIsTransposed());
+  assert(rank == 2);
+  auto tileLayout = LinearLayout(
+      {{S("register"), {{0, 1}, {0, 2}, {0, 8}, {0, 16}}},
+       {S("lane"), {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, 4}}}},
+      {outDimNames[1], outDimNames[0]});
 
-  LinearLayout laneLayout =
-      identityND(S("lane"), mfma.getThreadsPerWarp(), order, outDimNames);
-
-  SmallVector<unsigned> warpOrder = triton::gpu::getWarpOrder(mfma);
   LinearLayout warpLayout =
-      identityND(S("warp"), mfma.getWarpsPerCTA(), warpOrder, outDimNames);
+      identityND(S("warp"), mfma.getWarpsPerCTA(), order, outDimNames);
 
-  LinearLayout ctaLayout = registerLayout * laneLayout * warpLayout;
+  LinearLayout ctaLayout = tileLayout * warpLayout;
 
   llvm::outs() << "mfma layout: " << mfma << " as Linear Layout: " << ctaLayout
                << "\n";
