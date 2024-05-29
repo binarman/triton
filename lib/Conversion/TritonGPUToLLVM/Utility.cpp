@@ -215,6 +215,8 @@ emitIndicesUsingLinearLayouts(Location loc, RewriterBase &rewriter,
   if (!ll.has_value()) {
     return std::nullopt;
   }
+  llvm::outs() << "generate linear layout from: " << layout
+               << " to:" << ll.value() << "\n";
 
   // TODO(jlebar): We could add strong typing if we wanted; for now this is
   // "stringly typed".
