@@ -413,8 +413,9 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
   for (int dim = 0; dim < rank; ++dim) {
     LinearLayout DimLayout =
         (dim == threadDim)
-            ? LinearLayout({{S("register"), {{1}, {2}, {8}, {16}}}},
-                           {outDimNames[dim]})
+            ? LinearLayout(
+                  {{S("register"), {{1}, {2}, {8}, {16}}}, {S("lane"), {{1}}}},
+                  {outDimNames[dim]})
             : LinearLayout::zeros1D(1, S("register"), outDimNames[dim]);
     registerLayout *= DimLayout;
   }
