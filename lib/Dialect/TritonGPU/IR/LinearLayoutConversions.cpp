@@ -405,11 +405,12 @@ LinearLayout mfmaToLinearLayout(ArrayRef<int64_t> shape,
   MLIRContext *ctx = mfma.getContext();
   SmallVector<StringAttr> outDimNames = standardOutDimNames(ctx, rank);
   auto order = triton::gpu::getOrder(mfma);
+  SmallVector<unsigned> warpOrder = triton::gpu::getWarpOrder(mfma);
 
   LinearLayout ctaLayout =
       identityND(S("register"), mfma.getSizePerThread(), order, outDimNames) *
       identityND(S("lane"), mfma.getThreadsPerWarp(), order, outDimNames) *
-      identityND(S("warp"), mfma.getWarpsPerCTA(), order, outDimNames);
+      identityND(S("warp"), mfma.getWarpsPerCTA(), warpOrder, outDimNames);
 
   return combineCtaCgaWithShape(ctaLayout, mfma.getCTALayout(), shape);
 }
