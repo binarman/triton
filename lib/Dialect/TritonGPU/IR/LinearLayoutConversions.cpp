@@ -430,6 +430,9 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
 
   LinearLayout ctaLayout = registerLayout * laneLayout * warpLayout;
 
+  llvm::outs() << "mfma layout: " << mfma << " as Linear Layout: " << ctaLayout
+               << "\n";
+
   return combineCtaCgaWithShape(ctaLayout, mfma.getCTALayout(), shape);
 }
 
