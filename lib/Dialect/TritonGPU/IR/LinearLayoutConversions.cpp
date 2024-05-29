@@ -427,6 +427,8 @@ std::optional<LinearLayout> toLinearLayout(ArrayRef<int64_t> shape,
   if (!parentLL) {
     return std::nullopt;
   }
+  llvm::outs() << "generate linear layout from: " << slice.getParent()
+               << " to:" << parentLL.value() << "\n";
 
   // Remove dimension slice.getDim() from the parent layout.
   //
