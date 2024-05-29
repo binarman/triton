@@ -409,8 +409,10 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
     return std::nullopt;
 
   LinearLayout registerLayout = LinearLayout::empty();
-  int threadDim = mfma.getIsTransposed() ? rank - 2 : rank - 1;
-  for (int dim = 0; dim < rank; ++dim) {
+  int threadDim = mfma.getIsTransposed() ? rank - 1 : rank - 2;
+  auto order = triton::gpu::getOrder(mfma);
+  for (int i = 0; i < rank; ++i) {
+    auto dim = order[i];
     LinearLayout DimLayout =
         (dim == threadDim)
             ? LinearLayout({{S("register"), {{1}, {2}, {8}, {16}}}},
@@ -419,7 +421,6 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
     registerLayout *= DimLayout;
   }
 
-  auto order = triton::gpu::getOrder(mfma);
   LinearLayout laneLayout =
       identityND(S("lane"), mfma.getThreadsPerWarp(), order, outDimNames);
 
