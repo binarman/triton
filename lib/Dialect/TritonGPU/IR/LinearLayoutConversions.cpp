@@ -411,10 +411,26 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
   auto order = triton::gpu::getOrder(mfma);
   assert(!mfma.getIsTransposed());
   assert(rank == 2);
-  auto tileLayout = LinearLayout(
-      {{S("register"), {{0, 1}, {0, 2}, {0, 8}, {0, 16}}},
-       {S("lane"), {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, 4}}}},
-      {outDimNames[1], outDimNames[0]});
+  auto tileLayout = LinearLayout::empty();
+  if (!mfma.getIsTransposed()) {
+    tileLayout = LinearLayout(
+        {{S("register"), {{0, 1}, {0, 2}, {0, 8}, {0, 16}}},
+         {S("lane"), {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, 4}}}},
+        {outDimNames[1], outDimNames[0]});
+  } else {
+    tileLayout = LinearLayout(
+        {{S("register"), {{0, 1}, {0, 2}, {0, 8}, {0, 16}}},
+         {S("lane"), {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, 4}}}},
+        {outDimNames[0], outDimNames[1]});
+  }
+  if (rank == 3) {
+    assert(order[0] == 2);
+    tileLayout =
+        LinearLayout::identity1D(1, S("register"), outDimNames[order[0]]) *
+        tileLayout;
+    tileLayout = LinearLayout::identity1D(1, S("lane"), outDimNames[order[0]]) *
+                 tileLayout;
+  }
 
   LinearLayout warpLayout =
       identityND(S("warp"), mfma.getWarpsPerCTA(), order, outDimNames);
