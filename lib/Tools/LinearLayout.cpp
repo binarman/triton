@@ -191,7 +191,7 @@ void assertDimsEqualIgnoringOrder(T &&a, U &&b) {
 LinearLayout::LinearLayout(BasesT bases, ArrayRef<StringAttr> outDimNames)
     : bases(validateBases(std::move(bases), outDimNames)),
       outDimNames(outDimNames.begin(), outDimNames.end()) {
-  // validateSurjectivity(*this);
+  validateSurjectivity(*this);
 }
 
 LinearLayout::LinearLayout(

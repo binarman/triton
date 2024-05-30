@@ -429,9 +429,6 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
 
   LinearLayout ctaLayout = tileLayout * warpLayout;
 
-  llvm::outs() << "mfma layout: " << mfma << " as Linear Layout: " << ctaLayout
-               << "\n";
-
   return combineCtaCgaWithShape(ctaLayout, mfma.getCTALayout(), shape);
 }
 
@@ -447,8 +444,6 @@ std::optional<LinearLayout> toLinearLayout(ArrayRef<int64_t> shape,
   if (!parentLL) {
     return std::nullopt;
   }
-  llvm::outs() << "generate linear layout from: " << slice.getParent()
-               << " to:" << parentLL.value() << "\n";
 
   // Remove dimension slice.getDim() from the parent layout.
   //
