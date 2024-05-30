@@ -414,16 +414,14 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
 
   auto order = triton::gpu::getOrder(mfma);
   auto tileLayout = LinearLayout::empty();
-  tileLayout = LinearLayout(
-      {{rDim, {{0, 1}, {0, 2}, {0, 8}, {0, 16}}},
-       {lDim, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, 4}}}},
-      {outDimNames[order[rank - 2]], outDimNames[order[rank - 1]]});
+  tileLayout =
+      LinearLayout({{rDim, {{0, 1}, {0, 2}, {0, 8}, {0, 16}}},
+                    {lDim, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, 4}}}},
+                   {outDimNames[order[0]], outDimNames[order[1]]});
   if (rank == 3) {
     assert(order[0] == 2);
-    tileLayout =
-        LinearLayout::identity1D(1, rDim, outDimNames[order[0]]) * tileLayout;
-    tileLayout =
-        LinearLayout::identity1D(1, lDim, outDimNames[order[0]]) * tileLayout;
+    tileLayout *= LinearLayout::identity1D(1, rDim, outDimNames[order[2]]);
+    tileLayout *= LinearLayout::identity1D(1, lDim, outDimNames[order[2]]);
   }
 
   LinearLayout warpLayout =
