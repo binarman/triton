@@ -409,7 +409,6 @@ std::optional<LinearLayout> mfmaToLinearLayout(ArrayRef<int64_t> shape,
     return std::nullopt;
 
   auto order = triton::gpu::getOrder(mfma);
-  assert(!mfma.getIsTransposed());
   assert(rank == 2);
   auto tileLayout = LinearLayout::empty();
   if (!mfma.getIsTransposed()) {
