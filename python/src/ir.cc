@@ -31,15 +31,20 @@
 
 class InternalMLIRContext : public mlir::MLIRContext {
 public:
+  static int progressingId;
+  int id;
   InternalMLIRContext() : MLIRContext() {
     auto pid = getpid();
-    llvm::errs() << "MLIRContext " << pid << "\n";
+    id = progressingId++;
+    llvm::errs() << "MLIRContext " << id << "  pid:" << pid << "\n";
   }
   ~InternalMLIRContext() {
     auto pid = getpid();
-    llvm::errs() << "~MLIRContext " << pid << "\n";
+    llvm::errs() << "~MLIRContext " << id << "  pid:" << pid << "\n";
   }
 };
+
+int InternalMLIRContext::progressingId = 0;
 
 namespace {
 
