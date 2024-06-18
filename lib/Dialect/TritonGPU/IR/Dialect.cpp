@@ -1618,9 +1618,9 @@ unsigned AMDMfmaEncodingAttr::getTotalElemsPerThreadForOperands(
 SmallVector<unsigned>
 AMDMfmaEncodingAttr::getSizePerThreadForOperands(unsigned opIdx) const {
   if (opIdx == 0) {
-    return {1, 4};
-  } else if (opIdx == 1) {
     return {4, 1};
+  } else if (opIdx == 1) {
+    return {1, 4};
   } else {
     llvm::report_fatal_error("DotOperandEncodingAttr opIdx must be 0 or 1");
     return {};
