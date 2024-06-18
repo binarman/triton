@@ -1294,7 +1294,9 @@ def ast_to_ttir(fn, specialization, context, options, codegen_fns):
     generator = CodeGenerator(context, prototype, gscope=gscope, constants=all_constants, function_name=function_name,
                               jit_fn=fn, attributes=new_attrs, is_kernel=True, file_name=file_name,
                               begin_line=begin_line, options=options, codegen_fns=codegen_fns)
+    print("before visit ast", fn)
     generator.visit(fn.parse())
+    print("after visit ast")
 
     ret = generator.module
     # module takes ownership of the context

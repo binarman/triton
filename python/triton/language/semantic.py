@@ -126,6 +126,7 @@ def binary_op_type_checking_impl(lhs: tl.tensor, rhs: tl.tensor, builder: ir.bui
 
 
 def add(input: tl.tensor, other: tl.tensor, builder: ir.builder) -> tl.tensor:
+    print("parsing add")
     input, other = binary_op_type_checking_impl(input, other, builder, True, True)
     input_scalar_ty = input.type.scalar
     other_scalar_ty = other.type.scalar
@@ -1081,6 +1082,7 @@ def _store_block_pointer(ptr, val, mask, boundary_check, cache, eviction, builde
 
 
 def _store_legacy(ptr, val, mask, boundary_check, cache, eviction, builder):
+    print("parsing legacy store")
     # Store by a tensor of pointers or a pointer of scalar: `block_type<pointer_type<>>` or `pointer_type<>`
     if not ptr.type.scalar.is_ptr():
         raise ValueError(f"Unsupported ptr type {ptr.type.__repr__()} in `tl.store`")
@@ -1090,6 +1092,7 @@ def _store_legacy(ptr, val, mask, boundary_check, cache, eviction, builder):
         raise ValueError("`boundary_check` argument is not supported for storing a tensor of pointers or storing a "
                          "scalar. Because the compiler does not know the boundary; please use block pointers "
                          "(defined by `make_block_ptr`) instead")
+    print("parsing legacy store 0")
 
     # For a pointer of scalar, check the type of `val` and `mask`
     if not ptr.type.is_block():
@@ -1097,12 +1100,14 @@ def _store_legacy(ptr, val, mask, boundary_check, cache, eviction, builder):
             raise ValueError("Value argument cannot be block type if pointer argument is not a block")
         if mask and mask.type.is_block():
             raise ValueError("Mask argument cannot be block type if pointer argument is not a block")
+    print("parsing legacy store 1")
 
     # Make `mask` and `val` into the same shape as `ptr`
     if ptr.type.is_block():
         val = broadcast_impl_shape(val, ptr.type.get_block_shapes(), builder)
         if mask is not None:
             mask = broadcast_impl_shape(mask, ptr.type.get_block_shapes(), builder)
+    print("parsing legacy store 2")
 
     ptr_ty = ptr.type.scalar
     elt_ty = ptr_ty.element_ty
@@ -1112,13 +1117,16 @@ def _store_legacy(ptr, val, mask, boundary_check, cache, eviction, builder):
         elt_ty = tl.int8
         ptr_ty = tl.pointer_type(elt_ty, ptr_ty.address_space)
         ptr = cast(ptr, ptr_ty, builder)
+    print("parsing legacy store 3")
 
     # Cast to target data type
     val = cast(val, elt_ty, builder)
+    print("parsing legacy store 4")
 
     # Build IR
     if not mask:
         return tl.tensor(builder.create_store(ptr.handle, val.handle, cache, eviction), tl.void)
+    print("parsing legacy store 5")
     if not mask.type.scalar.is_bool():
         raise ValueError("Mask must have boolean scalar type")
     return tl.tensor(builder.create_masked_store(ptr.handle, val.handle, mask.handle, cache, eviction), tl.void)
@@ -1126,6 +1134,7 @@ def _store_legacy(ptr, val, mask, boundary_check, cache, eviction, builder):
 
 def store(ptr: tl.tensor, val: tl.tensor, mask: Optional[tl.tensor], boundary_check, cache_modifier: str,
           eviction_policy: str, builder: ir.builder) -> tl.tensor:
+    print("parsing store")
     # Cache and eviction options
     cache = _str_to_store_cache_modifier(cache_modifier)
     eviction = _str_to_eviction_policy(eviction_policy)
@@ -1133,6 +1142,7 @@ def store(ptr: tl.tensor, val: tl.tensor, mask: Optional[tl.tensor], boundary_ch
     if ptr.type.is_const() or ptr.type.scalar.is_const():
         raise ValueError("Cannot store to a constant pointer")
 
+    print("parsing store checkpoint 1")
     if ptr.type.is_ptr() and ptr.type.element_ty.is_block():
         # Store by a block pointer: `pointer_type<block_type<>>`
         return _store_block_pointer(ptr, val, mask, boundary_check, cache, eviction, builder)

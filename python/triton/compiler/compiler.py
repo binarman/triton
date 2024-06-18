@@ -224,6 +224,7 @@ def filter_traceback(e: BaseException):
 
 
 def compile(src, target=None, options=None):
+    print("compiler preparations start")
     if target is None:
         target = driver.active.get_current_target()
     assert isinstance(target, GPUTarget), "target must be of GPUTarget type"
@@ -250,6 +251,7 @@ def compile(src, target=None, options=None):
     metadata_group = fn_cache_manager.get_group(metadata_filename) or {}
     metadata_path = metadata_group.get(metadata_filename)
     always_compile = os.environ.get("TRITON_ALWAYS_COMPILE", "0") == "1"
+    print("compiler preparations checkpoint 1")
     if not always_compile and metadata_path is not None:
         # cache hit!
         metadata = json.loads(Path(metadata_path).read_text())
@@ -261,24 +263,36 @@ def compile(src, target=None, options=None):
         **options.__dict__,
         **env_vars,
     }
+    print("compiler preparations checkpoint 2")
     # run compilation pipeline  and populate metadata
     stages = dict()
+    print("compilation stages 0:", stages)
     backend.add_stages(stages, options)
+    print("compilation stages 1:", stages)
     first_stage = list(stages.keys()).index(src.ext)
     # when the source is an IR file, don't apply the passes related to this stage. This makes it easier to write IR level tests.
     if ir_source:
         first_stage += 1
     context = ir.context()
+    print(context)
     ir.load_dialects(context)
+    print("compiler preparations checkpoint 3")
     backend.load_dialects(context)
+    print("compiler preparations checkpoint 4")
     codegen_fns = backend.get_codegen_implementation()
+    print("compiler preparations checkpoint 5")
     try:
         module = src.make_ir(options, codegen_fns, context)
     except Exception as e:
         filter_traceback(e)
         raise
+    print("compiler preparations checkpoint 6")
     use_ttgir_loc = os.environ.get("USE_TTGIR_LOC", "0") == "1"
+    print("done compiler preparations")
+    print("src.ext", src.ext)
+    print("compilation stages 2:", stages)
     for ext, compile_ir in list(stages.items())[first_stage:]:
+        print("compilation stage", ext)
         next_module = compile_ir(module, metadata)
         ir_filename = f"{src.name}.{ext}"
         metadata_group[ir_filename] = fn_cache_manager.put(next_module, ir_filename)
