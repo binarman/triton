@@ -27,8 +27,21 @@
 #include "triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Tools/Sys/GetEnv.hpp"
+#include "unistd.h"
 
 namespace {
+
+class InternalMLIRContext : public mlir::MLIRContext {
+public:
+  InternalMLIRContext() : MLIRContext() {
+    auto pid = getpid();
+    llvm::errs() << "MLIRContext " << pid << "\n";
+  }
+  ~InternalMLIRContext() {
+    auto pid = getpid();
+    llvm::errs() << "~MLIRContext " << pid << "\n";
+  }
+};
 
 namespace py = pybind11;
 using namespace mlir;
@@ -201,7 +214,8 @@ void init_triton_ir(py::module &&m) {
       .value("IEEE", InputPrecision::IEEE)
       .export_values();
 
-  py::class_<MLIRContext>(m, "context", py::module_local()).def(py::init<>());
+  py::class_<InternalMLIRContext>(m, "context", py::module_local())
+      .def(py::init<>());
 
   m.def("load_dialects", [](MLIRContext &context) {
     DialectRegistry registry;
