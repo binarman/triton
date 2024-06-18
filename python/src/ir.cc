@@ -29,8 +29,6 @@
 #include "triton/Tools/Sys/GetEnv.hpp"
 #include "unistd.h"
 
-namespace {
-
 class InternalMLIRContext : public mlir::MLIRContext {
 public:
   InternalMLIRContext() : MLIRContext() {
@@ -42,6 +40,8 @@ public:
     llvm::errs() << "~MLIRContext " << pid << "\n";
   }
 };
+
+namespace {
 
 namespace py = pybind11;
 using namespace mlir;

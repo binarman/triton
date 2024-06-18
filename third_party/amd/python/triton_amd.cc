@@ -28,8 +28,21 @@
 #include "llvm/TargetParser/TargetParser.h"
 #include <pybind11/pybind11.h>
 #include <stdexcept>
+#include <unistd.h>
 
 namespace py = pybind11;
+
+class InternalMLIRContext : public mlir::MLIRContext {
+public:
+  InternalMLIRContext() : MLIRContext() {
+    auto pid = getpid();
+    llvm::errs() << "MLIRContext " << pid << "\n";
+  }
+  ~InternalMLIRContext() {
+    auto pid = getpid();
+    llvm::errs() << "~MLIRContext " << pid << "\n";
+  }
+};
 
 namespace {
 void init_triton_amd_passes_ttgpuir(py::module &&m) {
@@ -85,7 +98,7 @@ void init_triton_amd(py::module &&m) {
   m.attr("CALLING_CONV_AMDGPU_KERNEL") =
       (unsigned)llvm::CallingConv::AMDGPU_KERNEL;
 
-  m.def("load_dialects", [](mlir::MLIRContext &context) {
+  m.def("load_dialects", [](InternalMLIRContext &context) {
     mlir::DialectRegistry registry;
     // registry.insert<mlir::ROCDL::ROCDLDialect>();
     mlir::registerROCDLDialectTranslation(registry);
