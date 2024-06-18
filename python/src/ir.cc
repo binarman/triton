@@ -50,7 +50,7 @@ using namespace triton;
 // A custom op builder that keeps track of the last location
 class TritonOpBuilder {
 public:
-  TritonOpBuilder(MLIRContext *context) {
+  TritonOpBuilder(InternalMLIRContext *context) {
     builder = std::make_unique<OpBuilder>(context);
     lastLoc = std::make_unique<Location>(builder->getUnknownLoc());
   }
@@ -217,7 +217,7 @@ void init_triton_ir(py::module &&m) {
   py::class_<InternalMLIRContext>(m, "context", py::module_local())
       .def(py::init<>());
 
-  m.def("load_dialects", [](MLIRContext &context) {
+  m.def("load_dialects", [](InternalMLIRContext &context) {
     DialectRegistry registry;
     registry.insert<TritonDialect, ::mlir::triton::gpu::TritonGPUDialect,
                     math::MathDialect, arith::ArithDialect, index::IndexDialect,
@@ -497,16 +497,17 @@ void init_triton_ir(py::module &&m) {
              self.walk(fn);
            });
 
-  m.def("make_attr", [](const std::vector<int> &values, MLIRContext &context) {
-    return mlir::cast<Attribute>(DenseIntElementsAttr::get(
-        RankedTensorType::get({static_cast<int64_t>(values.size())},
-                              IntegerType::get(&context, 32)),
-        values));
-  });
+  m.def("make_attr",
+        [](const std::vector<int> &values, InternalMLIRContext &context) {
+          return mlir::cast<Attribute>(DenseIntElementsAttr::get(
+              RankedTensorType::get({static_cast<int64_t>(values.size())},
+                                    IntegerType::get(&context, 32)),
+              values));
+        });
 
   m.def(
       "parse_mlir_module",
-      [](const std::string &inputFilename, MLIRContext &context) {
+      [](const std::string &inputFilename, InternalMLIRContext &context) {
         // parse module
         OwningOpRef<ModuleOp> module =
             parseSourceFile<ModuleOp>(inputFilename, &context);
@@ -582,7 +583,7 @@ void init_triton_ir(py::module &&m) {
 
   py::class_<TritonOpBuilder>(m, "builder", py::module_local(),
                               py::dynamic_attr())
-      .def(py::init<MLIRContext *>())
+      .def(py::init<InternalMLIRContext *>())
       // getters
       .def("create_module",
            [](TritonOpBuilder &self) -> ModuleOp {
@@ -1565,7 +1566,7 @@ void init_triton_ir(py::module &&m) {
            });
 
   py::class_<PassManager>(m, "pass_manager", py::module_local())
-      .def(py::init<MLIRContext *>())
+      .def(py::init<InternalMLIRContext *>())
       .def("enable_debug",
            [](PassManager &self) {
              auto *context = self.getContext();
