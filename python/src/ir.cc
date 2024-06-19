@@ -33,7 +33,7 @@ class InternalMLIRContext : public mlir::MLIRContext {
 public:
   static int progressingId;
   int id;
-  InternalMLIRContext() : MLIRContext(MLIRContext::Threading::ENABLED) {
+  InternalMLIRContext() : MLIRContext(MLIRContext::Threading::DISABLED) {
     auto pid = getpid();
     id = progressingId++;
     llvm::errs() << "MLIRContext " << id << "  pid:" << pid << "\n";
