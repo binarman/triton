@@ -312,6 +312,10 @@ def compile(src, target=None, options=None):
     metadata_group[metadata_filename] = fn_cache_manager.put(json.dumps(metadata, default=vars), metadata_filename,
                                                              binary=False)
     fn_cache_manager.put_group(metadata_filename, metadata_group)
+    # delete context to safely finalize threads pool inside
+    print("delete context")
+    del context
+    print("context delted")
     # return handle to compiled kernel
     return CompiledKernel(src, metadata_group, hash)
 
