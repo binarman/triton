@@ -314,7 +314,7 @@ def compile(src, target=None, options=None):
     fn_cache_manager.put_group(metadata_filename, metadata_group)
     # delete context to safely finalize threads pool inside
     print("delete context")
-    del context
+    context.disable_multithreading()
     print("context delted")
     # return handle to compiled kernel
     return CompiledKernel(src, metadata_group, hash)

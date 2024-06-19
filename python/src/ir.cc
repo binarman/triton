@@ -220,7 +220,9 @@ void init_triton_ir(py::module &&m) {
       .export_values();
 
   py::class_<InternalMLIRContext>(m, "context", py::module_local())
-      .def(py::init<>());
+      .def(py::init<>())
+      .def("disable_multithreading",
+           [](InternalMLIRContext &self) { self.disableMultithreading(); });
 
   m.def("load_dialects", [](InternalMLIRContext &context) {
     DialectRegistry registry;
