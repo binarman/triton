@@ -32,6 +32,13 @@
 
 namespace py = pybind11;
 
+// ~MLIRContext
+// ~ThreadPool
+// waiting for all threads to join
+
+// Disable Threading in context
+// do something for proper synronization on fork
+
 class InternalMLIRContext : public mlir::MLIRContext {
 public:
   static int progressingId;
