@@ -1245,6 +1245,89 @@ std::vector<NvidiaMmaLLTestParams> makeNvidiaMmaV3TestCases() {
 INSTANTIATE_TEST_SUITE_P(MMAv3, NvidiaMmaLLTest,
                          ::testing::ValuesIn(makeNvidiaMmaV3TestCases()));
 
+struct AMDMfmaLLTestParams {
+  std::vector<int64_t> shape;
+  unsigned versionMajor;
+  unsigned versionMinor;
+  std::vector<unsigned> warpsPerCTA;
+  unsigned mDim;
+  unsigned nDim;
+  bool isTransposed;
+
+  AMDMfmaEncodingAttr getEncoding() const {
+    unsigned rank = warpsPerCTA.size();
+    std::vector<unsigned> CTAsPerCGA(rank, 1);
+    std::vector<unsigned> CTASplitNum(rank, 1);
+    std::vector<unsigned> CTAOrder(rank);
+    std::iota(CTAOrder.begin(), CTAOrder.end(), 0);
+    auto ctaLayout =
+        CTALayoutAttr::get(getContext(), CTAsPerCGA, CTASplitNum, CTAOrder);
+    return AMDMfmaEncodingAttr::get(getContext(), versionMajor, versionMinor,
+                                    warpsPerCTA, mDim, nDim, isTransposed,
+                                    ctaLayout);
+  }
+};
+
+std::ostream &operator<<(std::ostream &os, const AMDMfmaLLTestParams &params) {
+  std::string str;
+  llvm::raw_string_ostream llvm_os(str);
+  llvm_os << "shape=" << triton::join(params.shape, "x")
+          << ", encoding=" << params.getEncoding();
+  os << str;
+  return os;
+}
+
+class AMDMfmaLLTest
+    : public DistributedLLTest<AMDMfmaEncodingAttr, AMDMfmaLLTestParams> {};
+
+TEST_P(AMDMfmaLLTest, DoIt) { DoIt(); }
+
+// INSTANTIATE_TEST_SUITE_P(
+//     MFMA32, AMDMfmaLLTest,
+//     ::testing::ValuesIn(std::vector<AMDMfmaLLTestParams>({
+//         {
+//             .shape = {32, 32},
+//             .versionMajor = 2,
+//             .versionMinor = 0,
+//             .warpsPerCTA = {1, 1},
+//             .mDim = 32,
+//             .nDim = 32,
+//             .isTransposed = false,
+//         },
+//         {
+//             .shape = {32, 32},
+//             .versionMajor = 2,
+//             .versionMinor = 0,
+//             .warpsPerCTA = {1, 1},
+//             .mDim = 32,
+//             .nDim = 32,
+//             .isTransposed = true,
+//         },
+//     })));
+
+// INSTANTIATE_TEST_SUITE_P(
+//     MFMA16, AMDMfmaLLTest,
+//     ::testing::ValuesIn(std::vector<AMDMfmaLLTestParams>({
+//         {
+//             .shape = {16, 16},
+//             .versionMajor = 2,
+//             .versionMinor = 0,
+//             .warpsPerCTA = {1, 1},
+//             .mDim = 16,
+//             .nDim = 16,
+//             .isTransposed = false
+//         },
+//         {
+//             .shape = {16, 16},
+//             .versionMajor = 2,
+//             .versionMinor = 0,
+//             .warpsPerCTA = {1, 1},
+//             .mDim = 16,
+//             .nDim = 16,
+//             .isTransposed = true
+//         },
+//     })));
+
 struct SliceLLTestParams {
   std::vector<int64_t> shape;
   int64_t sliceDim;
@@ -1274,181 +1357,263 @@ class SliceVsLinearLayoutsTest
 
 TEST_P(SliceVsLinearLayoutsTest, DoIt) { DoIt(); }
 
-INSTANTIATE_TEST_SUITE_P(TestCases, SliceVsLinearLayoutsTest,
-                         ::testing::ValuesIn(
-                             std::vector<SliceLLTestParams>(
-                                 {
-                                     {
-                                         .shape = {128},
-                                         .sliceDim = 0,
-                                         .parent =
-                                             BlockedLLTestParams{
-                                                 .sizePerThread = {2, 4},
-                                                 .threadsPerWarp = {4, 2},
-                                                 .warpsPerCTA = {2, 2},
-                                                 .order = {1, 0},
-                                                 .CTAsPerCGA = {2, 2},
-                                                 .CTASplitNum = {2, 2},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {128},
-                                         .sliceDim = 1,
-                                         .parent =
-                                             BlockedLLTestParams{
-                                                 .sizePerThread = {2, 4},
-                                                 .threadsPerWarp = {4, 2},
-                                                 .warpsPerCTA = {2, 2},
-                                                 .order = {1, 0},
-                                                 .CTAsPerCGA = {2, 2},
-                                                 .CTASplitNum = {2, 2},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
+INSTANTIATE_TEST_SUITE_P(
+    TestCases, SliceVsLinearLayoutsTest,
+    ::testing::ValuesIn(
+        std::vector<SliceLLTestParams>(
+            {
+                {
+                    .shape = {128},
+                    .sliceDim = 0,
+                    .parent =
+                        BlockedLLTestParams{
+                            .sizePerThread = {2, 4},
+                            .threadsPerWarp = {4, 2},
+                            .warpsPerCTA = {2, 2},
+                            .order = {1, 0},
+                            .CTAsPerCGA = {2, 2},
+                            .CTASplitNum = {2, 2},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {128},
+                    .sliceDim = 1,
+                    .parent =
+                        BlockedLLTestParams{
+                            .sizePerThread =
+                                {2, 4},
+                            .threadsPerWarp = {4, 2},
+                            .warpsPerCTA = {2, 2},
+                            .order = {1, 0},
+                            .CTAsPerCGA = {2, 2},
+                            .CTASplitNum = {2, 2},
+                            .CTAOrder = {1, 0},
+                        },
+                },
 
-                                     {
-                                         .shape = {32},
-                                         .sliceDim = 1,
-                                         .parent =
-                                             BlockedLLTestParams{
-                                                 .sizePerThread = {1, 1},
-                                                 .threadsPerWarp = {32, 1},
-                                                 .warpsPerCTA = {4, 1},
-                                                 .order = {0, 1},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {32},
-                                         .sliceDim = 0,
-                                         .parent =
-                                             BlockedLLTestParams{
-                                                 .sizePerThread = {1, 1},
-                                                 .threadsPerWarp = {32, 1},
-                                                 .warpsPerCTA = {4, 1},
-                                                 .order = {0, 1},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {32},
-                                         .sliceDim = 1,
-                                         .parent =
-                                             BlockedLLTestParams{
-                                                 .sizePerThread = {1, 4},
-                                                 .threadsPerWarp = {8, 4},
-                                                 .warpsPerCTA = {2, 2},
-                                                 .order = {0, 1},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {32},
-                                         .sliceDim = 0,
-                                         .parent =
-                                             BlockedLLTestParams{
-                                                 .sizePerThread = {1, 4},
-                                                 .threadsPerWarp = {8, 4},
-                                                 .warpsPerCTA = {2, 2},
-                                                 .order = {0, 1},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {1},
-                                         .sliceDim = 0,
-                                         .parent =
-                                             BlockedLLTestParams{
-                                                 .sizePerThread = {1, 4},
-                                                 .threadsPerWarp = {8, 4},
-                                                 .warpsPerCTA = {2, 2},
-                                                 .order = {0, 1},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
+                {
+                    .shape = {32},
+                    .sliceDim = 1,
+                    .parent =
+                        BlockedLLTestParams{
+                            .sizePerThread = {1, 1},
+                            .threadsPerWarp = {32, 1},
+                            .warpsPerCTA = {4, 1},
+                            .order = {0, 1},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {32},
+                    .sliceDim = 0,
+                    .parent =
+                        BlockedLLTestParams{
+                            .sizePerThread = {1, 1},
+                            .threadsPerWarp = {32, 1},
+                            .warpsPerCTA = {4, 1},
+                            .order = {0, 1},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {32},
+                    .sliceDim = 1,
+                    .parent =
+                        BlockedLLTestParams{
+                            .sizePerThread = {1, 4},
+                            .threadsPerWarp = {8, 4},
+                            .warpsPerCTA = {2, 2},
+                            .order = {0, 1},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {32},
+                    .sliceDim = 0,
+                    .parent =
+                        BlockedLLTestParams{
+                            .sizePerThread = {1, 4},
+                            .threadsPerWarp = {8, 4},
+                            .warpsPerCTA = {2, 2},
+                            .order = {0, 1},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {1},
+                    .sliceDim = 0,
+                    .parent =
+                        BlockedLLTestParams{
+                            .sizePerThread = {1, 4},
+                            .threadsPerWarp = {8, 4},
+                            .warpsPerCTA = {2, 2},
+                            .order = {0, 1},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
 
-                                     {
-                                         .shape = {16},
-                                         .sliceDim = 0,
-                                         .parent =
-                                             NvidiaMmaLLTestParams{
-                                                 .versionMajor = 2,
-                                                 .versionMinor = 0,
-                                                 .warpsPerCTA = {2, 2},
-                                                 .instrShape = {16, 8},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {128},
-                                         .sliceDim = 0,
-                                         .parent =
-                                             NvidiaMmaLLTestParams{
-                                                 .versionMajor = 2,
-                                                 .versionMinor = 0,
-                                                 .warpsPerCTA = {2, 2},
-                                                 .instrShape = {16, 8},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {16},
-                                         .sliceDim = 1,
-                                         .parent =
-                                             NvidiaMmaLLTestParams{
-                                                 .versionMajor = 2,
-                                                 .versionMinor = 0,
-                                                 .warpsPerCTA = {2, 2},
-                                                 .instrShape = {16, 8},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {128},
-                                         .sliceDim = 1,
-                                         .parent =
-                                             NvidiaMmaLLTestParams{
-                                                 .versionMajor = 2,
-                                                 .versionMinor = 0,
-                                                 .warpsPerCTA = {2, 2},
-                                                 .instrShape = {16, 8},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                     {
-                                         .shape = {128},
-                                         .sliceDim = 0,
-                                         .parent =
-                                             NvidiaMmaLLTestParams{
-                                                 .versionMajor = 3,
-                                                 .versionMinor = 0,
-                                                 .warpsPerCTA = {4, 4},
-                                                 .instrShape = {16, 16, 16},
-                                                 .CTAsPerCGA = {1, 1},
-                                                 .CTASplitNum = {1, 1},
-                                                 .CTAOrder = {1, 0},
-                                             },
-                                     },
-                                 })));
+                {
+                    .shape = {16},
+                    .sliceDim = 0,
+                    .parent =
+                        NvidiaMmaLLTestParams{
+                            .versionMajor = 2,
+                            .versionMinor = 0,
+                            .warpsPerCTA = {2, 2},
+                            .instrShape = {16, 8},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {128},
+                    .sliceDim = 0,
+                    .parent =
+                        NvidiaMmaLLTestParams{
+                            .versionMajor = 2,
+                            .versionMinor = 0,
+                            .warpsPerCTA = {2, 2},
+                            .instrShape = {16, 8},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {16},
+                    .sliceDim = 1,
+                    .parent =
+                        NvidiaMmaLLTestParams{
+                            .versionMajor = 2,
+                            .versionMinor = 0,
+                            .warpsPerCTA = {2, 2},
+                            .instrShape = {16, 8},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {128},
+                    .sliceDim = 1,
+                    .parent =
+                        NvidiaMmaLLTestParams{
+                            .versionMajor = 2,
+                            .versionMinor = 0,
+                            .warpsPerCTA = {2, 2},
+                            .instrShape = {16, 8},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {128},
+                    .sliceDim = 0,
+                    .parent =
+                        NvidiaMmaLLTestParams{
+                            .versionMajor = 3,
+                            .versionMinor = 0,
+                            .warpsPerCTA = {4, 4},
+                            .instrShape = {16, 16, 16},
+                            .CTAsPerCGA = {1, 1},
+                            .CTASplitNum = {1, 1},
+                            .CTAOrder = {1, 0},
+                        },
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 0,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 32,
+                                                  .nDim = 32,
+                                                  .isTransposed = false},
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 0,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 32,
+                                                  .nDim = 32,
+                                                  .isTransposed = true},
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 1,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 32,
+                                                  .nDim = 32,
+                                                  .isTransposed = false},
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 1,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 32,
+                                                  .nDim = 32,
+                                                  .isTransposed = true},
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 0,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 16,
+                                                  .nDim = 16,
+                                                  .isTransposed = false},
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 0,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 16,
+                                                  .nDim = 16,
+                                                  .isTransposed = true},
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 1,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 16,
+                                                  .nDim = 16,
+                                                  .isTransposed = false},
+                },
+                {
+                    .shape = {64},
+                    .sliceDim = 1,
+                    .parent = AMDMfmaLLTestParams{.versionMajor = 2,
+                                                  .versionMinor = 0,
+                                                  .warpsPerCTA = {2, 2},
+                                                  .mDim = 16,
+                                                  .nDim = 16,
+                                                  .isTransposed = true},
+                },
+            })));
 
 struct LoadSharedToDistributedLLTestParams {
   std::vector<int64_t> shape;
