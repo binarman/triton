@@ -237,14 +237,11 @@ emitIndicesUsingLinearLayouts(Location loc, RewriterBase &rewriter,
                                      {kWarp, warpId},
                                      {kBlock, blockId}});
   for (unsigned reg = 0; reg < ll->getInDimSize(str_attr("register")); reg++) {
-    auto idxsReg = applyLinearLayout(loc, rewriter, *ll,
-                                     {{kRegister, i32_val(reg)},
-                                      {kLane, i32_val(0)},
-                                      {kWarp, i32_val(0)},
-                                      {kBlock, i32_val(0)}});
+    auto idxsReg =
+        ll->apply({{kRegister, reg}, {kLane, 0}, {kWarp, 0}, {kBlock, 0}});
     SmallVector<std::pair<StringAttr, Value>> idxs;
     for (int i = 0; i < idxsBase.size(); ++i) {
-      auto val = xor_(idxsBase[i].second, idxsReg[i].second);
+      auto val = xor_(idxsBase[i].second, i32_val(idxsReg[i].second));
       auto axisData = std::pair<StringAttr, Value>(idxsBase[i].first, val);
       idxs.push_back(axisData);
     }
