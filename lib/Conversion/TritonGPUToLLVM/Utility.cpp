@@ -252,6 +252,7 @@ emitIndicesUsingLinearLayouts(Location loc, RewriterBase &rewriter,
     for (unsigned k = 0; k < rank; ++k) {
       assert(idxs[k].first == str_attr("dim" + std::to_string(k)));
     }
+    llvm::errs() << "emitting LL indices'n";
     ret.push_back(llvm::to_vector(llvm::make_second_range(idxs)));
   }
 
