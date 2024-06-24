@@ -231,12 +231,23 @@ emitIndicesUsingLinearLayouts(Location loc, RewriterBase &rewriter,
       withCTAOffset ? target.getClusterCTAId(rewriter, loc) : i32_val(0);
   unsigned rank = shape.size();
   SmallVector<SmallVector<Value>> ret;
+  auto idxsBase = applyLinearLayout(loc, rewriter, *ll,
+                                    {{kRegister, i32_val(0)},
+                                     {kLane, laneId},
+                                     {kWarp, warpId},
+                                     {kBlock, blockId}});
   for (unsigned reg = 0; reg < ll->getInDimSize(str_attr("register")); reg++) {
-    auto idxs = applyLinearLayout(loc, rewriter, *ll,
-                                  {{kRegister, i32_val(reg)},
-                                   {kLane, laneId},
-                                   {kWarp, warpId},
-                                   {kBlock, blockId}});
+    auto idxsReg = applyLinearLayout(loc, rewriter, *ll,
+                                     {{kRegister, i32_val(reg)},
+                                      {kLane, i32_val(0)},
+                                      {kWarp, i32_val(0)},
+                                      {kBlock, i32_val(0)}});
+    SmallVector<std::pair<StringAttr, Value>> idxs;
+    for (int i = 0; i < idxsBase.size(); ++i) {
+      auto val = xor_(idxsBase[i].second, idxsReg[i].second);
+      auto axisData = std::pair<StringAttr, Value>(idxsBase[i].first, val);
+      idxs.push_back(axisData);
+    }
     assert(idxs.size() == rank);
     for (unsigned k = 0; k < rank; ++k) {
       assert(idxs[k].first == str_attr("dim" + std::to_string(k)));
