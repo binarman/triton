@@ -114,7 +114,7 @@ class HIPBackend(BaseBackend):
         passes.ttir.add_combine(pm)
         passes.common.add_canonicalizer(pm)
         passes.ttir.add_reorder_broadcast(pm)
-        passes.common.add_cse(pm)
+        # passes.common.add_cse(pm)
         passes.common.add_licm(pm)
         passes.common.add_symbol_dce(pm)
         pm.run(mod)
@@ -144,7 +144,7 @@ class HIPBackend(BaseBackend):
         passes.ttgpuir.add_reduce_data_duplication(pm)
         if options.num_stages != 0:
             amd.passes.ttgpuir.add_reorder_instructions(pm)
-        passes.common.add_cse(pm)
+        # passes.common.add_cse(pm)
         passes.common.add_symbol_dce(pm)
         pm.run(mod)
         return mod
@@ -170,12 +170,12 @@ class HIPBackend(BaseBackend):
         __HIP_FTZ = True
         amd.passes.ttgpuir.add_to_llvmir(pm, options.arch, __HIP_FTZ)
         passes.common.add_canonicalizer(pm)
-        passes.common.add_cse(pm)
+        # passes.common.add_cse(pm)
 
         passes.convert.add_cf_to_llvmir(pm)
         passes.convert.add_arith_to_llvmir(pm)
         passes.common.add_canonicalizer(pm)
-        passes.common.add_cse(pm)
+        # passes.common.add_cse(pm)
         passes.common.add_symbol_dce(pm)
         if os.environ.get("TRITON_DISABLE_LINE_INFO", "0") == "0":
             passes.llvmir.add_di_scope(pm)
