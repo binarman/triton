@@ -13,6 +13,11 @@ def DecomposeUnsupportedAMDConversions : Pass<"decompose-unsupported-amd-convers
     ];
 }
 
+def InsertAMDSchedulerBarriers : Pass<"insert-amd-scheduler-barriers", "mlir::ModuleOp"> {
+    let summary = "Insert AMD scheduler barriers";
+    let constructor = "mlir::triton::createInsertAMDSchedulerBarriersPass()";
+}
+
 def ConvertTritonAMDGPUToLLVM : Pass<"convert-triton-amdgpu-to-llvm", "mlir::ModuleOp"> {
     let summary = "Convert TritonGPU to LLVM";
     let constructor = "mlir::triton::createConvertTritonAMDGPUToLLVMPass(\"\", /*ftz=*/true)";

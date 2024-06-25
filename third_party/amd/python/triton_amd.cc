@@ -46,6 +46,9 @@ void init_triton_amd_passes_ttgpuir(py::module &&m) {
     pm.addPass(
         mlir::triton::AMD::createDecomposeUnsupportedConversionsPass(arch));
   });
+  m.def("add_insert_scheduler_barriers", [](mlir::PassManager &pm) {
+    pm.addPass(mlir::triton::createInsertAMDSchedulerBarriersPass());
+  });
   ADD_PASS_WRAPPER_3("add_accelerate_matmul",
                      mlir::createTritonAMDGPUAccelerateMatmulPass,
                      const std::string, int, int);
