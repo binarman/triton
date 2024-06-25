@@ -16,6 +16,16 @@ def DecomposeUnsupportedAMDConversions : Pass<"decompose-unsupported-amd-convers
 def InsertAMDSchedulerBarriers : Pass<"insert-amd-scheduler-barriers", "mlir::ModuleOp"> {
     let summary = "Insert AMD scheduler barriers";
     let constructor = "mlir::triton::createInsertAMDSchedulerBarriersPass()";
+
+    let dependentDialects = ["mlir::arith::ArithDialect",
+                             "mlir::math::MathDialect",
+                             "mlir::gpu::GPUDialect",
+                             "mlir::scf::SCFDialect",
+                             "mlir::LLVM::LLVMDialect",
+                             "mlir::tensor::TensorDialect",
+                             "mlir::triton::TritonDialect",
+                             "mlir::triton::gpu::TritonGPUDialect",
+                             "mlir::ROCDL::ROCDLDialect"];
 }
 
 def ConvertTritonAMDGPUToLLVM : Pass<"convert-triton-amdgpu-to-llvm", "mlir::ModuleOp"> {
