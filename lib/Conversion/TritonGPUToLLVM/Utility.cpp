@@ -147,7 +147,9 @@ LLVM::LLVMFuncOp appendOrGetExternFuncOp(RewriterBase &rewriter, Operation *op,
 SmallVector<std::pair<StringAttr, Value>>
 applyLinearLayout(Location loc, RewriterBase &rewriter,
                   const LinearLayout &layout,
-                  ArrayRef<std::pair<StringAttr, Value>> indices) {
+                  ArrayRef<std::pair<StringAttr, Value>> rindices) {
+  SmallVector<std::pair<StringAttr, Value>> indices(rindices.rbegin(),
+                                                    rindices.rend());
   assert(layout.getNumInDims() == indices.size());
   for (auto [inDimName, idx] : indices) {
     assert(layout.hasInDim(inDimName) && "Invalid inDimName");
