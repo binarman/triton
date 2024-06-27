@@ -153,6 +153,31 @@ applyLinearLayout(Location loc, RewriterBase &rewriter,
     assert(layout.hasInDim(inDimName) && "Invalid inDimName");
   }
 
+  Value zero = i32_val(0);
+  SmallVector<std::pair<StringAttr, Value>> outIndices;
+  for (auto [i, outDimName] : llvm::enumerate(layout.getOutDimNames())) {
+    outIndices.push_back({outDimName, zero});
+  }
+
+  for (auto [inDimName, idx] : indices) {
+    // Processing constants later in this function
+    if (isa<LLVM::ConstantOp>(idx.getDefiningOp())) {
+      continue;
+    }
+
+    int nBits = layout.getInDimSizeLog2(inDimName);
+    for (int i = 0; i < nBits; i++) {
+      Value bit = and_(idx, i32_val(1 << i));
+      Value bit_is_zero = icmp_eq(bit, zero);
+      for (auto &[outDimName, outIdx] : outIndices) {
+        int32_t basis = layout.getBasis(inDimName, i, outDimName);
+        if (basis == 0)
+          continue;
+        outIdx = xor_(outIdx, select(bit_is_zero, zero, i32_val(basis)));
+      }
+    }
+  }
+
   // This function can emit a lot of MLIR code, which ultimately makes
   // compilation slow.  (We think this shouldn't be the case -- it's not *that*
   // much code -- but we're not clear on how to fix the slowness, which happens
@@ -173,31 +198,10 @@ applyLinearLayout(Location loc, RewriterBase &rewriter,
   }
   SmallVector<int32_t> constantComponent =
       llvm::to_vector(llvm::make_second_range(layout.apply(constantIns)));
-
-  Value zero = i32_val(0);
-  SmallVector<std::pair<StringAttr, Value>> outIndices;
-  for (auto [i, outDimName] : llvm::enumerate(layout.getOutDimNames())) {
-    if (constantComponent[i] == 0)
-      outIndices.push_back({outDimName, zero});
-    else
-      outIndices.push_back({outDimName, i32_val(constantComponent[i])});
-  }
-
-  for (auto [inDimName, idx] : indices) {
-    if (isa<LLVM::ConstantOp>(idx.getDefiningOp())) {
-      continue;
-    }
-
-    int nBits = layout.getInDimSizeLog2(inDimName);
-    for (int i = 0; i < nBits; i++) {
-      Value bit = and_(idx, i32_val(1 << i));
-      Value bit_is_zero = icmp_eq(bit, zero);
-      for (auto &[outDimName, outIdx] : outIndices) {
-        int32_t basis = layout.getBasis(inDimName, i, outDimName);
-        if (basis == 0)
-          continue;
-        outIdx = xor_(outIdx, select(bit_is_zero, zero, i32_val(basis)));
-      }
+  for (int i = 0; i < constantComponent.size(); ++i) {
+    if (constantComponent[i] != 0) {
+      outIndices[i].second =
+          xor_(outIndices[i].second, i32_val(constantComponent[i]));
     }
   }
 
