@@ -189,7 +189,7 @@ applyLinearLayout(Location loc, RewriterBase &rewriter,
     }
 
     int nBits = layout.getInDimSizeLog2(inDimName);
-    for (int i = nBits - 1; i >= 0; i--) {
+    for (int i = 0; i < nBits; i++) {
       Value bit = and_(idx, i32_val(1 << i));
       Value bit_is_zero = icmp_eq(bit, zero);
       for (auto &[outDimName, outIdx] : outIndices) {
