@@ -204,6 +204,22 @@ applyLinearLayout(Location loc, RewriterBase &rewriter,
   return outIndices;
 }
 
+void createMark(Location loc, RewriterBase &rewriter, const char *label) {
+  auto ctx = loc.getContext();
+  auto asmRetType = void_ty(ctx);
+  rewriter.create<mlir::LLVM::InlineAsmOp>(
+      loc, asmRetType,
+      /*operands=*/::mlir::ValueRange(),
+      /*asm_string=*/::mlir::StringAttr::get(ctx, label),
+      /*constraints=*/::mlir::StringAttr::get(ctx, ""), /*"=r,r"*/
+      /*has_side_effects=*/true,
+      /*is_align_stack=*/false,
+      /*asm_dialect=*/
+      LLVM::AsmDialectAttr::get(rewriter.getContext(),
+                                LLVM::AsmDialect::AD_ATT),
+      /*operand_attrs=*/ArrayAttr());
+}
+
 std::optional<SmallVector<SmallVector<Value>>>
 emitIndicesUsingLinearLayouts(Location loc, RewriterBase &rewriter,
                               const TargetInfoBase &target, Attribute layout,
@@ -231,6 +247,7 @@ emitIndicesUsingLinearLayouts(Location loc, RewriterBase &rewriter,
       withCTAOffset ? target.getClusterCTAId(rewriter, loc) : i32_val(0);
   unsigned rank = shape.size();
   SmallVector<SmallVector<Value>> ret;
+  createMark(loc, rewriter, ";start_emit_ind");
   for (unsigned reg = 0; reg < ll->getInDimSize(str_attr("register")); reg++) {
     auto idxs = applyLinearLayout(loc, rewriter, *ll,
                                   {{kRegister, i32_val(reg)},
@@ -243,6 +260,7 @@ emitIndicesUsingLinearLayouts(Location loc, RewriterBase &rewriter,
     }
     ret.push_back(llvm::to_vector(llvm::make_second_range(idxs)));
   }
+  createMark(loc, rewriter, ";end_emit_ind");
 
   return ret;
 }
