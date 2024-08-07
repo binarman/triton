@@ -235,6 +235,8 @@ class HIPBackend(BaseBackend):
         if options.instruction_sched_variant == "local-prefetch":
             stream_prefetch = use_buffer_ops = True
 
+        amd.passes.ttgpuir.add_tritongpu_bypass_lds_for_dot_operand(pm)
+
         if amd.has_matrix_core_feature(options.arch):
             assert options.num_stages != 0, ("Triton AMD backend pipeliner has been updated. "
                                              "We used to trigger software pipelining with "
