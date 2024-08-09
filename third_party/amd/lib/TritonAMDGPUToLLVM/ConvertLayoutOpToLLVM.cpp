@@ -130,6 +130,9 @@ public:
       auto vals = unpackLLElements(loc, adaptor.getSrc(), rewriter);
       Value view =
           packLLElements(loc, getTypeConverter(), vals, rewriter, dstTy);
+      auto srcElems = getTotalElemsPerThread(op.getSrc().getType());
+      auto dstElems = getTotalElemsPerThread(op.getResult().getType());
+      assert(srcElems == dstElems);
       rewriter.replaceOp(op, view);
       return success();
     }
