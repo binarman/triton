@@ -112,6 +112,23 @@ def TritonAMDGPUCanonicalizePointers : Pass<"tritonamdgpu-canonicalize-pointers"
 
 }
 
+def TritonAMDGPUOptimizeFMADot : Pass<"tritonamdgpu-optimize-fma-dot", "mlir::ModuleOp"> {
+  let summary = "Optimize small matrices operands: Load dot operands in layout compatible to dotOp.";
+
+  let description = [{
+  }];
+
+  let constructor = "mlir::createTritonAMDGPUOptimizeFMADotPass()";
+
+  let options = [
+  Option<"kSplit", "ksplit",
+          "int32_t", /*default*/"64",
+          "split k dim up to given number of pieces, compute them in different threads and then reduce">,
+];
+
+  let dependentDialects = [];
+}
+
 def TritonAMDGPUReorderInstructions: Pass<"tritonamdgpu-reorder-instructions", "mlir::ModuleOp"> {
   let summary = "Reorder instructions";
 
