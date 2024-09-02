@@ -109,6 +109,7 @@ def TritonAMDGPUCanonicalizePointers : Pass<"tritonamdgpu-canonicalize-pointers"
   let constructor = "mlir::createTritonAMDGPUCanonicalizePointersPass()";
 
   let dependentDialects = [];
+}
 
 }
 
