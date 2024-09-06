@@ -31,7 +31,7 @@ class OptimizeFMADotPattern : public mlir::RewritePattern {
                        unsigned kSplit, unsigned numWarps,
                        unsigned numThreads) const {
     assert(kSplit > 0 && kSplit <= numThreads);
-    SmallVector<unsigned> order{2, 1, 0};
+    SmallVector<unsigned> order{1, 0, 2};
     triton::gpu::CTALayoutAttr ctaLayout =
         triton::gpu::CTALayoutAttr::get(ctx, {1, 1, 1}, {1, 1, 1}, {2, 1, 0});
 
@@ -247,6 +247,8 @@ class OptimizeFMADotPattern : public mlir::RewritePattern {
     auto aExtendedLayout = llvm::cast<triton::gpu::BlockedEncodingAttr>(
         aExtendedType.getEncoding());
     rewriter.setInsertionPoint(aCvt);
+    llvm::errs() << "reshaping from: " << aOrig.getType()
+                 << "  to: " << aExtendedType << "\n";
     assert(!triton::gpu::isExpensiveView(aOrig.getType(), aExtendedType));
     auto aExtended =
         rewriter.create<triton::ReshapeOp>(aCvtLoc, aExtendedType, aOrig, true);
@@ -299,6 +301,8 @@ class OptimizeFMADotPattern : public mlir::RewritePattern {
         bLoadOp.getIsVolatile());
     auto bBatchedType =
         RankedTensorType::get({kSplit, k / kSplit, n}, elTy, bBatchedLayout);
+    llvm::errs() << "reshaping from: " << bLoad.getType()
+                 << "  to: " << bBatchedType << "\n";
     assert(!triton::gpu::isExpensiveView(bLoad.getType(), bBatchedType));
     auto bBatched =
         rewriter.create<triton::ReshapeOp>(bLoadLoc, bBatchedType, bLoad, true);
