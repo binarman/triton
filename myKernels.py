@@ -30,6 +30,7 @@ def streamk_gemm_BM128_BN128_BK128_GM1_nW4_nS2_EU0_kP2_mfma16(
 ):
     rk = tl.arange(0, BLOCK_SIZE_K)
 
+    #if K < 32:
     for tile_id in range(K, 1, 1):
         rk = BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
 
