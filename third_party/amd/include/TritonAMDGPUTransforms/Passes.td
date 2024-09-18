@@ -111,8 +111,6 @@ def TritonAMDGPUCanonicalizePointers : Pass<"tritonamdgpu-canonicalize-pointers"
   let dependentDialects = [];
 }
 
-}
-
 def TritonAMDGPUOptimizeFMADot : Pass<"tritonamdgpu-optimize-fma-dot", "mlir::ModuleOp"> {
   let summary = "Optimize small matrices operands: Load dot operands in layout compatible to dotOp.";
 
