@@ -17,16 +17,28 @@ namespace {
 using ValueTableFMA = std::map<std::tuple<int, int, int>, Value>;
 
 static ValueTableFMA
-getValueTableFromStructFMA(Value val, int batch, int nonK, int K,
-                           ConversionPatternRewriter &rewriter, Location loc) {
+getValueTableFromStructFMA(Value val, ArrayRef<unsigned> perTileShape,
+                           unsigned kDim, unsigned nonKDim,
+                           ConversionPatternRewriter &rewriter, Location loc,
+                           ArrayRef<unsigned> order) {
   ValueTableFMA res;
   auto elems = unpackLLElements(loc, val, rewriter);
-  assert(elems.size() == K * nonK * batch);
-  int index = 0;
-  for (unsigned b = 0; b < batch; ++b)
-    for (unsigned k = 0; k < K; ++k)
-      for (unsigned i = 0; i < nonK; ++i)
-        res[{b, i, k}] = elems[index++];
+  assert(perTileShape.size() == 3);
+  assert(elems.size() == product(perTileShape));
+  assert(kDim == 1 || kDim == 2);
+  assert(nonKDim == 1 || nonKDim == 2);
+  const unsigned bDim = 0;
+
+  for (unsigned idx = 0; idx < elems.size(); ++idx) {
+    unsigned spatialIdx[3];
+    unsigned curIdx = idx;
+    for (auto dim : order) {
+      spatialIdx[dim] = curIdx % perTileShape[dim];
+      curIdx /= perTileShape[dim];
+    }
+    assert(curIdx == 0);
+    res[{spatialIdx[bDim], spatialIdx[nonKDim], spatialIdx[kDim]}] = elems[idx];
+  }
   return res;
 }
 
@@ -148,7 +160,7 @@ LogicalResult convertAMDFMADot(triton::DotOp op, triton::DotOp::Adaptor adaptor,
   auto shapePerCTATile =
       expandMatrixShapeWithBatch(ArrayRef(getShapePerCTATile(dLayout)));
 
-  int K = aShapePerCTA[2];
+  unsigned K = aShapePerCTA[2];
 
   unsigned retSize[3];
   for (int i = 0; i < 3; ++i) {
@@ -157,10 +169,10 @@ LogicalResult convertAMDFMADot(triton::DotOp op, triton::DotOp::Adaptor adaptor,
     retSize[i] = numRep * sizePerThread[i];
   }
 
-  auto has =
-      getValueTableFromStructFMA(llA, retSize[0], retSize[1], K, rewriter, loc);
-  auto hbs =
-      getValueTableFromStructFMA(llB, retSize[0], retSize[2], K, rewriter, loc);
+  auto has = getValueTableFromStructFMA(llA, {retSize[0], retSize[1], K}, 2, 1,
+                                        rewriter, loc, order);
+  auto hbs = getValueTableFromStructFMA(llB, {retSize[0], K, retSize[2]}, 1, 2,
+                                        rewriter, loc, order);
 
   SmallVector<Value> ret = cc;
   auto selectedOp = chooseIntrinsic(rewriter, loc, op);
