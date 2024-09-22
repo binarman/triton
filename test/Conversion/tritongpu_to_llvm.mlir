@@ -1729,3 +1729,19 @@ module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 4 :
     tt.return
   }
 }
+
+// -----
+
+#blocked = #triton_gpu.blocked<{sizePerThread = [1, 1, 4], threadsPerWarp = [4, 1, 8], warpsPerCTA = [4, 1, 1], order = [2, 1, 0]}>
+#blocked1 = #triton_gpu.blocked<{sizePerThread = [1, 1, 8], threadsPerWarp = [8, 1, 4], warpsPerCTA = [4, 1, 1], order = [2, 0, 1]}>
+#shared = #triton_gpu.shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [2, 0, 1], hasLeadingOffset = false}>
+module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 4 : i32, triton_gpu.target = "hip:gfx1030", "triton_gpu.threads-per-warp" = 32 : i32} {
+  tt.func public @memref_order_201(%arg0: tensor<64x8x32x!tt.ptr<f16>, #blocked1>, %arg1: tensor<64x8x32x!tt.ptr<f16>, #blocked>) attributes {noinline = false} {
+    // CHECK-LABEL: memref_order_201
+    %0 = tt.load %arg0 : tensor<64x8x32x!tt.ptr<f16>, #blocked1>
+    %1 = triton_gpu.local_alloc %0 : (tensor<64x8x32xf16, #blocked1>) -> !tt.memdesc<64x8x32xf16, #shared, #triton_gpu.shared_memory>
+    %2 = triton_gpu.local_load %1 : !tt.memdesc<64x8x32xf16, #shared, #triton_gpu.shared_memory> -> tensor<64x8x32xf16, #blocked>
+    tt.store %arg1, %2 : tensor<64x8x32x!tt.ptr<f16>, #blocked>
+    tt.return
+  }
+}
