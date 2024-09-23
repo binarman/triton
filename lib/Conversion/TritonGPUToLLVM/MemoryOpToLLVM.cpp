@@ -24,9 +24,6 @@ void lowerDistributedToShared(Location loc, Value src, Value dst,
   auto srcTy = cast<RankedTensorType>(src.getType());
   auto dstTy = cast<MemDescType>(dst.getType());
   auto outOrd = mlir::cast<SharedEncodingAttr>(dstTy.getEncoding()).getOrder();
-  assert(srcTy.getShape().size() <= 2 ||
-         (srcTy.getShape().size() == 3 && outOrd[2] == 0) &&
-             "Unexpected rank of ConvertLayout(blocked->shared)");
   auto elemTy = typeConverter->convertType(srcTy.getElementType());
 
   auto smemBase = smemObj.getBase();
