@@ -67,31 +67,29 @@ SmallVector<Value> swizzleIndices(ConversionPatternRewriter &rewriter,
   return swizzledIndices;
 }
 
-/**
- * @brief put elements from Value vec to appropriate indexes in opValues array
- *
- * This function maps elements of 3d sub-tensor in linear array.
- * Axes are arranged in following order from fastest to slowest: [nonKdim, kDim,
- * bDim]
- */
+/// @brief put elements from Value vec to appropriate indexes in opValues array
+///
+/// This function maps elements of 3d sub-tensor in linear array.
+/// Axes are arranged in following order from fastest to slowest: [nonKdim,
+/// kDim, bDim]
 void storeValuesInLinearVector(PatternRewriter &rewriter, Location loc,
                                SmallVector<Value> &opValues, Value vec,
-                               unsigned kElems, unsigned nonKElems,
+                               ArrayRef<unsigned> perThreadTileShape,
                                unsigned kIdx, unsigned nonKIdx, unsigned bIdx,
-                               int kDim, int nonKDim, int bDim, int fastDim) {
+                               int kDim, int nonKDim, int bDim, int vecDim,
+                               ArrayRef<unsigned> opOrder) {
   auto vecTy = cast<VectorType>(vec.getType());
   auto vectorSize = vecTy.getNumElements();
   auto elemTy = vecTy.getElementType();
   for (int elem = 0; elem < vectorSize; ++elem) {
-    unsigned outIdx[3] = {};
-    outIdx[bDim] = bIdx;
-    outIdx[kDim] = kIdx;
-    outIdx[nonKDim] = nonKIdx;
+    unsigned spatialIdx[3] = {};
+    spatialIdx[bDim] = bIdx;
+    spatialIdx[kDim] = kIdx;
+    spatialIdx[nonKDim] = nonKIdx;
+    spatialIdx[vecDim] += elem;
 
-    outIdx[fastDim] += elem;
-    auto idx = outIdx[bDim] * kElems * nonKElems + outIdx[kDim] * nonKElems +
-               outIdx[nonKDim];
-    opValues[idx] = extract_element(elemTy, vec, i32_val(elem));
+    unsigned linearIdx = linearize(spatialIdx, perThreadTileShape, opOrder);
+    opValues[linearIdx] = extract_element(elemTy, vec, i32_val(elem));
   }
 }
 
@@ -107,16 +105,16 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   }
 
   auto ctx = dotOp.getContext();
-  const int bDim = 0;
-  const int kDim = dotOpNo == 0 ? 2 : 1;
-  const int nonKDim = dotOpNo == 0 ? 1 : 2;
+  const unsigned bDim = 0;
+  const unsigned kDim = dotOpNo == 0 ? 2 : 1;
+  const unsigned nonKDim = dotOpNo == 0 ? 1 : 2;
   auto opTensorTy = cast<MemDescType>(dotOp.getType());
   auto opTensorShape = expandMatrixShapeWithBatch(opTensorTy.getShape());
   auto sharedLayout = cast<SharedEncodingAttr>(opTensorTy.getEncoding());
   auto opShapePerCTA =
       expandMatrixShapeWithBatch(ArrayRef(getShapePerCTA(opTensorTy)));
 
-  auto order = expandMatrixOrderWithBatch(dLayout.getOrder());
+  auto opOrder = expandMatrixOrderWithBatch(dLayout.getOrder());
 
   auto origSmem = getSharedMemoryObjectFromStruct(
       loc, llA, typeConverter->convertType(opTensorTy.getElementType()),
@@ -141,9 +139,9 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   auto laneId = urem(thread, warpSize);
   auto warpId = udiv(thread, warpSize);
   auto laneIds =
-      mlir::LLVM::delinearize(rewriter, loc, laneId, threadsPerWarp, order);
+      mlir::LLVM::delinearize(rewriter, loc, laneId, threadsPerWarp, opOrder);
   auto warpIds =
-      mlir::LLVM::delinearize(rewriter, loc, warpId, warpsPerCTA, order);
+      mlir::LLVM::delinearize(rewriter, loc, warpId, warpsPerCTA, opOrder);
   auto sizePerWarpB = sizePerThread[bDim] * threadsPerWarp[bDim];
   auto sizePerWarpNonK = sizePerThread[nonKDim] * threadsPerWarp[nonKDim];
 
@@ -173,8 +171,16 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   auto numBTiles = std::max(1u, B / shapePerCTABTile);
   auto numNonKTiles = std::max(1u, NonK / shapePerCTANonKTile);
 
+  // TODO support in triton::gpu::getElemsPerThread
+  SmallVector<unsigned> perThreadShape = {numBTiles * sizeBPerThread, 1, 1};
+  perThreadShape[nonKDim] = numNonKTiles * sizeNonKPerThread;
+  perThreadShape[kDim] = K;
+
   SmallVector<Value> opValues(numBTiles * sizeBPerThread * K * numNonKTiles *
                               sizeNonKPerThread);
+
+  // numBTiles, sizeBPerThread, K, numNonKTiles, sizeNonKPerThread, dimStep,
+  // bDim, nonKDim, kDim
   if (isSwizzled(sharedLayout)) {
     for (unsigned bTile = 0; bTile < numBTiles; ++bTile)
       for (unsigned b = 0; b < sizeBPerThread; b += dimStep[bDim])
@@ -182,19 +188,19 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
           for (unsigned nonKTile = 0; nonKTile < numNonKTiles; ++nonKTile)
             for (unsigned nonK = 0; nonK < sizeNonKPerThread;
                  nonK += dimStep[nonKDim]) {
-              SmallVector<Value> rawIndices(3);
-              rawIndices[bDim] =
+              SmallVector<Value> elemMultiDimIndices(3);
+              elemMultiDimIndices[bDim] =
                   add(bTileOffset, i32_val(bTile * shapePerCTABTile + b));
-              rawIndices[nonKDim] =
+              elemMultiDimIndices[nonKDim] =
                   add(nonKTileOffset,
                       i32_val(nonKTile * shapePerCTANonKTile + nonK));
-              rawIndices[kDim] = i32_val(k);
+              elemMultiDimIndices[kDim] = i32_val(k);
 
-              SmallVector<Value> swizzledIndices =
-                  swizzleIndices(rewriter, loc, rawIndices, sharedLayout);
+              SmallVector<Value> swizzledIndices = swizzleIndices(
+                  rewriter, loc, elemMultiDimIndices, sharedLayout);
 
               Value offset = i32_val(0);
-              for (int dim = 0; dim < order.size(); ++dim) {
+              for (int dim = 0; dim < opOrder.size(); ++dim) {
                 auto wrappedDimIndex =
                     urem(swizzledIndices[dim], i32_val(opTensorShape[dim]));
                 auto dimOffset = mul(wrappedDimIndex, strides[dim]);
@@ -204,19 +210,18 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
               Value elemAddr = gep(ptrTy, elemTy, smem.base, offset);
               Value vec = load(vecTy, elemAddr);
               storeValuesInLinearVector(
-                  rewriter, loc, opValues, vec, /*kElems*/ K,
-                  /*nonKElems*/ numNonKTiles * sizeNonKPerThread, /*kIdx*/ k,
+                  rewriter, loc, opValues, vec, perThreadShape, /*kIdx*/ k,
                   /*nonKIdx*/ nonKTile * sizeNonKPerThread + nonK,
                   /*bIdx*/ bTile * sizeBPerThread + b, kDim, nonKDim, bDim,
-                  sharedOrder[0]);
+                  sharedOrder[0], opOrder);
             }
   } else {
     auto bOffset = mul(urem(bTileOffset, i32_val(B)), strides[bDim]);
     auto nonKOffset =
         mul(urem(nonKTileOffset, i32_val(NonK)), strides[nonKDim]);
-    Value threadDependantOffset = add(bOffset, nonKOffset);
+    Value threadIdDependantOffset = add(bOffset, nonKOffset);
 
-    auto basePtr = gep(ptrTy, elemTy, smem.base, threadDependantOffset);
+    auto basePtr = gep(ptrTy, elemTy, smem.base, threadIdDependantOffset);
 
     for (unsigned bTile = 0; bTile < numBTiles; ++bTile)
       for (unsigned b = 0; b < sizeBPerThread; b += dimStep[bDim])
@@ -231,17 +236,16 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
               offsetIndices[kDim] = i32_val(k);
 
               Value offset = i32_val(0);
-              for (int dim = 0; dim < order.size(); ++dim)
-                offset = add(offset, mul(offsetIndices[dim], strides[dim]));
+              mlir::linearize for (int dim = 0; dim < opOrder.size(); ++dim)
+                  offset = add(offset, mul(offsetIndices[dim], strides[dim]));
 
               Value elemAddr = gep(ptrTy, elemTy, basePtr, offset);
               Value vec = load(vecTy, elemAddr);
               storeValuesInLinearVector(
-                  rewriter, loc, opValues, vec, /*kElems*/ K,
-                  /*nonKElems*/ numNonKTiles * sizeNonKPerThread, /*kIdx*/ k,
+                  rewriter, loc, opValues, vec, perThreadShape, /*kIdx*/ k,
                   /*nonKIdx*/ nonKTile * sizeNonKPerThread + nonK,
                   /*bIdx*/ bTile * sizeBPerThread + b, kDim, nonKDim, bDim,
-                  sharedOrder[0]);
+                  sharedOrder[0], opOrder);
             }
   }
 
