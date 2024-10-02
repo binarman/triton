@@ -93,16 +93,20 @@ void storeValuesInLinearVector(PatternRewriter &rewriter, Location loc,
   }
 }
 
-Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
-                Value thread, Location loc,
-                const LLVMTypeConverter *typeConverter,
-                ConversionPatternRewriter &rewriter, const int dotOpNo) {
-  auto ctaSplit = dLayout.getCTALayout().getCTASplitNum();
+void verifyCTALayout(CTALayoutAttr ctaLayout) {
+  auto ctaSplit = ctaLayout.getCTASplitNum();
   for (auto split : ctaSplit) {
     if (split != 1)
       llvm::report_fatal_error("tensors splited in CGA(thread group clusters) "
                                "are not supported in FMA dot yet.");
   }
+}
+
+Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
+                Value thread, Location loc,
+                const LLVMTypeConverter *typeConverter,
+                ConversionPatternRewriter &rewriter, const int dotOpNo) {
+  verifyCTALayout(dLayout.getCTALayout());
 
   auto ctx = dotOp.getContext();
   const unsigned bDim = 0;
@@ -179,15 +183,28 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   SmallVector<Value> opValues(numBTiles * sizeBPerThread * K * numNonKTiles *
                               sizeNonKPerThread);
 
-  // numBTiles, sizeBPerThread, K, numNonKTiles, sizeNonKPerThread, dimStep,
-  // bDim, nonKDim, kDim
-  if (isSwizzled(sharedLayout)) {
-    for (unsigned bTile = 0; bTile < numBTiles; ++bTile)
-      for (unsigned b = 0; b < sizeBPerThread; b += dimStep[bDim])
-        for (unsigned k = 0; k < K; k += dimStep[kDim])
-          for (unsigned nonKTile = 0; nonKTile < numNonKTiles; ++nonKTile)
-            for (unsigned nonK = 0; nonK < sizeNonKPerThread;
-                 nonK += dimStep[nonKDim]) {
+  bool swizzlePath = isSwizzled(sharedLayout);
+
+  Value basePtr;
+  if (swizzlePath) {
+    basePtr = smem.base;
+  } else {
+    auto bOffset = mul(urem(bTileOffset, i32_val(B)), strides[bDim]);
+    auto nonKOffset =
+        mul(urem(nonKTileOffset, i32_val(NonK)), strides[nonKDim]);
+    Value threadIdDependantOffset = add(bOffset, nonKOffset);
+
+    basePtr = gep(ptrTy, elemTy, smem.base, threadIdDependantOffset);
+  }
+
+  for (unsigned bTile = 0; bTile < numBTiles; ++bTile)
+    for (unsigned b = 0; b < sizeBPerThread; b += dimStep[bDim])
+      for (unsigned k = 0; k < K; k += dimStep[kDim])
+        for (unsigned nonKTile = 0; nonKTile < numNonKTiles; ++nonKTile)
+          for (unsigned nonK = 0; nonK < sizeNonKPerThread;
+               nonK += dimStep[nonKDim]) {
+            Value offset = i32_val(0);
+            if (swizzlePath) {
               SmallVector<Value> elemMultiDimIndices(3);
               elemMultiDimIndices[bDim] =
                   add(bTileOffset, i32_val(bTile * shapePerCTABTile + b));
@@ -199,55 +216,31 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
               SmallVector<Value> swizzledIndices = swizzleIndices(
                   rewriter, loc, elemMultiDimIndices, sharedLayout);
 
-              Value offset = i32_val(0);
               for (int dim = 0; dim < opOrder.size(); ++dim) {
                 auto wrappedDimIndex =
                     urem(swizzledIndices[dim], i32_val(opTensorShape[dim]));
                 auto dimOffset = mul(wrappedDimIndex, strides[dim]);
                 offset = add(offset, dimOffset);
               }
-
-              Value elemAddr = gep(ptrTy, elemTy, smem.base, offset);
-              Value vec = load(vecTy, elemAddr);
-              storeValuesInLinearVector(
-                  rewriter, loc, opValues, vec, perThreadShape, /*kIdx*/ k,
-                  /*nonKIdx*/ nonKTile * sizeNonKPerThread + nonK,
-                  /*bIdx*/ bTile * sizeBPerThread + b, kDim, nonKDim, bDim,
-                  sharedOrder[0], opOrder);
-            }
-  } else {
-    auto bOffset = mul(urem(bTileOffset, i32_val(B)), strides[bDim]);
-    auto nonKOffset =
-        mul(urem(nonKTileOffset, i32_val(NonK)), strides[nonKDim]);
-    Value threadIdDependantOffset = add(bOffset, nonKOffset);
-
-    auto basePtr = gep(ptrTy, elemTy, smem.base, threadIdDependantOffset);
-
-    for (unsigned bTile = 0; bTile < numBTiles; ++bTile)
-      for (unsigned b = 0; b < sizeBPerThread; b += dimStep[bDim])
-        for (unsigned k = 0; k < K; k += dimStep[kDim])
-          for (unsigned nonKTile = 0; nonKTile < numNonKTiles; ++nonKTile)
-            for (unsigned nonK = 0; nonK < sizeNonKPerThread;
-                 nonK += dimStep[nonKDim]) {
+            } else {
               SmallVector<Value> offsetIndices(3);
               offsetIndices[bDim] = i32_val((bTile * shapePerCTABTile + b) % B);
               offsetIndices[nonKDim] =
                   i32_val((nonKTile * shapePerCTANonKTile + nonK) % NonK);
               offsetIndices[kDim] = i32_val(k);
 
-              Value offset = i32_val(0);
-              mlir::linearize for (int dim = 0; dim < opOrder.size(); ++dim)
-                  offset = add(offset, mul(offsetIndices[dim], strides[dim]));
-
-              Value elemAddr = gep(ptrTy, elemTy, basePtr, offset);
-              Value vec = load(vecTy, elemAddr);
-              storeValuesInLinearVector(
-                  rewriter, loc, opValues, vec, perThreadShape, /*kIdx*/ k,
-                  /*nonKIdx*/ nonKTile * sizeNonKPerThread + nonK,
-                  /*bIdx*/ bTile * sizeBPerThread + b, kDim, nonKDim, bDim,
-                  sharedOrder[0], opOrder);
+              for (int dim = 0; dim < opOrder.size(); ++dim)
+                offset = add(offset, mul(offsetIndices[dim], strides[dim]));
             }
-  }
+
+            Value elemAddr = gep(ptrTy, elemTy, basePtr, offset);
+            Value vec = load(vecTy, elemAddr);
+            storeValuesInLinearVector(
+                rewriter, loc, opValues, vec, perThreadShape, /*kIdx*/ k,
+                /*nonKIdx*/ nonKTile * sizeNonKPerThread + nonK,
+                /*bIdx*/ bTile * sizeBPerThread + b, kDim, nonKDim, bDim,
+                sharedOrder[0], opOrder);
+          }
 
   return getStructFromValueTable(opValues, rewriter, loc, typeConverter,
                                  elemTy);
