@@ -108,7 +108,7 @@ void verifyCTALayout(CTALayoutAttr ctaLayout) {
   }
 }
 
-/// @brief get an offset of first element loaded by thread
+/// @brief get a linear offset of first element loaded by thread
 ///
 /// In unswizzled case offset of any element computed with formula:
 /// smem.base + first_element_offset + constant_offset.
@@ -116,10 +116,10 @@ void verifyCTALayout(CTALayoutAttr ctaLayout) {
 /// first_element_offset depends on lane Id and warp Id
 /// constant_offset depends on value number, which is same for all threads.
 /// @returns first_element_offset
-Value getUnswizzledLaneOffset(ConversionPatternRewriter &rewriter, Location loc,
-                              unsigned B, unsigned NonK, Value bTileOffset,
-                              Value nonKTileOffset, Value bStride,
-                              Value nonKStride) {
+Value getUnswizzledFirstElemOffset(ConversionPatternRewriter &rewriter,
+                                   Location loc, unsigned B, unsigned NonK,
+                                   Value bTileOffset, Value nonKTileOffset,
+                                   Value bStride, Value nonKStride) {
   auto bOffset = mul(urem(bTileOffset, i32_val(B)), bStride);
   auto nonKOffset = mul(urem(nonKTileOffset, i32_val(NonK)), nonKStride);
   Value threadIdDependantOffset = add(bOffset, nonKOffset);
@@ -129,8 +129,7 @@ Value getUnswizzledLaneOffset(ConversionPatternRewriter &rewriter, Location loc,
 /// @returns number of elements stored by one thread across each dimension
 SmallVector<unsigned> getElemsPerThreadInOp(ArrayRef<int64_t> opTensorShape,
                                             ArrayRef<unsigned> shapePerCTATile,
-                                            ArrayRef<unsigned> sizePerThread,
-                                            unsigned kDim) {
+                                            ArrayRef<unsigned> sizePerThread) {
   int rank = opTensorShape.size();
   SmallVector<unsigned> elemsPerThread(rank);
   for (int d = 0; d < rank; ++d) {
@@ -138,7 +137,6 @@ SmallVector<unsigned> getElemsPerThreadInOp(ArrayRef<int64_t> opTensorShape,
         ceil(static_cast<unsigned>(opTensorShape[d]), shapePerCTATile[d]);
     elemsPerThread[d] = numReps * sizePerThread[d];
   }
-  elemsPerThread[kDim] = opTensorShape[kDim];
   return elemsPerThread;
 }
 
@@ -150,13 +148,60 @@ struct Indexes {
   unsigned nonK;
 };
 
+Value computeSwizzledOffset(ConversionPatternRewriter &rewriter, Location loc,
+                            const Indexes &i, const DimNumbers &dim,
+                            Value bTileOffset, Value nonKTileOffset,
+                            unsigned shapePerCTABTile,
+                            unsigned shapePerCTANonKTile,
+                            SharedEncodingAttr sharedLayout,
+                            ArrayRef<int64_t> opTensorShape,
+                            ArrayRef<Value> strides) {
+  Value offset = i32_val(0);
+  SmallVector<Value> elemMultiDimIndices(3);
+  elemMultiDimIndices[dim.batch] =
+      add(bTileOffset, i32_val(i.bTile * shapePerCTABTile + i.b));
+  elemMultiDimIndices[dim.nonK] =
+      add(nonKTileOffset, i32_val(i.nonKTile * shapePerCTANonKTile + i.nonK));
+  elemMultiDimIndices[dim.k] = i32_val(i.k);
+
+  SmallVector<Value> swizzledIndices =
+      swizzleIndices(rewriter, loc, elemMultiDimIndices, sharedLayout);
+
+  for (int dim = 0; dim < 3; ++dim) {
+    auto wrappedDimIndex =
+        urem(swizzledIndices[dim], i32_val(opTensorShape[dim]));
+    auto dimOffset = mul(wrappedDimIndex, strides[dim]);
+    offset = add(offset, dimOffset);
+  }
+  return offset;
+}
+
+Value computeNonSwizzledOffset(ConversionPatternRewriter &rewriter,
+                               Location loc, const Indexes &i,
+                               const DimNumbers &dim,
+                               ArrayRef<int64_t> tensorShape,
+                               unsigned shapePerCTABTile,
+                               unsigned shapePerCTANonKTile,
+                               ArrayRef<Value> strides) {
+  Value offset = i32_val(0);
+  SmallVector<Value> offsetIndices(3);
+  offsetIndices[dim.batch] =
+      i32_val((i.bTile * shapePerCTABTile + i.b) % tensorShape[dim.batch]);
+  offsetIndices[dim.nonK] = i32_val(
+      (i.nonKTile * shapePerCTANonKTile + i.nonK) % tensorShape[dim.nonK]);
+  offsetIndices[dim.k] = i32_val(i.k);
+
+  for (int dim = 0; dim < 3; ++dim)
+    offset = add(offset, mul(offsetIndices[dim], strides[dim]));
+  return offset;
+}
+
 Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
                 Value thread, Location loc,
                 const LLVMTypeConverter *typeConverter,
                 ConversionPatternRewriter &rewriter, const int dotOpNo) {
   verifyCTALayout(dLayout.getCTALayout());
 
-  auto ctx = dotOp.getContext();
   DimNumbers dim;
   dim.batch = 0;
   dim.k = dotOpNo == 0 ? 2 : 1;
@@ -179,8 +224,10 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
 
   auto shapePerCTATile =
       expandMatrixShapeWithBatch(ArrayRef(getShapePerCTATile(dLayout)));
+  shapePerCTATile[dim.k] = K;
   auto sizePerThread =
       expandMatrixShapeWithBatch(ArrayRef(getSizePerThread(dLayout)));
+  sizePerThread[dim.k] = K;
   auto threadsPerWarp =
       expandMatrixShapeWithBatch(ArrayRef(dLayout.getThreadsPerWarp()));
   auto warpsPerCTA =
@@ -206,11 +253,11 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
       add(nonKTileOffset, mul(warpIds[dim.nonK], i32_val(sizePerWarpNonK)));
 
   auto elemTy = typeConverter->convertType(opTensorTy.getElementType());
-  Type ptrTy = ptr_ty(ctx, 3);
+  Type ptrTy = ptr_ty(dotOp.getContext(), 3);
 
   auto sharedOrder = expandMatrixOrderWithBatch(sharedLayout.getOrder());
-  unsigned vectorSize =
-      sharedOrder[0] == dim.k ? K : sizePerThread[sharedOrder[0]];
+  // compute contiguity of fastest dimension in shared layout.
+  unsigned vectorSize = sizePerThread[sharedOrder[0]];
   if (sharedLayout.getMaxPhase() > 1)
     vectorSize = std::min(vectorSize, sharedLayout.getVec());
   auto vecTy = vec_ty(elemTy, vectorSize);
@@ -225,9 +272,8 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   auto numBTiles = std::max(1u, B / shapePerCTABTile);
   auto numNonKTiles = std::max(1u, NonK / shapePerCTANonKTile);
 
-  // TODO implement DotOperandEncodingAttr::getElemsPerThread and use it instead
-  auto perThreadShape = getElemsPerThreadInOp(opTensorShape, shapePerCTATile,
-                                              sizePerThread, dim.k);
+  auto perThreadShape =
+      getElemsPerThreadInOp(opTensorShape, shapePerCTATile, sizePerThread);
 
   SmallVector<Value> opValues(numBTiles * sizeBPerThread * K * numNonKTiles *
                               sizeNonKPerThread);
@@ -238,7 +284,7 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   if (swizzlePath) {
     basePtr = smem.base;
   } else {
-    auto laneOffset = getUnswizzledLaneOffset(
+    auto laneOffset = getUnswizzledFirstElemOffset(
         rewriter, loc, B, NonK, bTileOffset, nonKTileOffset, strides[dim.batch],
         strides[dim.nonK]);
     basePtr = gep(ptrTy, elemTy, smem.base, laneOffset);
@@ -251,40 +297,17 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
           for (unsigned nonK = 0; nonK < sizeNonKPerThread;
                nonK += dimStep[dim.nonK]) {
             Value offset = i32_val(0);
+            Indexes idx = {bTile, b, k, nonKTile, nonK};
 
-            // rewriter, loc, [bTile, b, k, nonKTile, nonK], [dim.batch,
-            // dim.nonK, kDim], bTileOffset, nonKTileOffset, shapePerCTABTile,
-            // shapePerCTANonKTile, sharedLayout, opTensorShape, strides
             if (swizzlePath) {
-              SmallVector<Value> elemMultiDimIndices(3);
-              elemMultiDimIndices[dim.batch] =
-                  add(bTileOffset, i32_val(bTile * shapePerCTABTile + b));
-              elemMultiDimIndices[dim.nonK] =
-                  add(nonKTileOffset,
-                      i32_val(nonKTile * shapePerCTANonKTile + nonK));
-              elemMultiDimIndices[dim.k] = i32_val(k);
-
-              SmallVector<Value> swizzledIndices = swizzleIndices(
-                  rewriter, loc, elemMultiDimIndices, sharedLayout);
-
-              for (int dim = 0; dim < opOrder.size(); ++dim) {
-                auto wrappedDimIndex =
-                    urem(swizzledIndices[dim], i32_val(opTensorShape[dim]));
-                auto dimOffset = mul(wrappedDimIndex, strides[dim]);
-                offset = add(offset, dimOffset);
-              }
+              offset = computeSwizzledOffset(
+                  rewriter, loc, idx, dim, bTileOffset, nonKTileOffset,
+                  shapePerCTABTile, shapePerCTANonKTile, sharedLayout,
+                  opTensorShape, strides);
             } else {
-              // rewriter, loc, [bTile, b, k, nonKTile, nonK], [dim.batch,
-              // dim.nonK, kDim], shapePerCTABTile, shapePerCTANonKTile, strides
-              SmallVector<Value> offsetIndices(3);
-              offsetIndices[dim.batch] =
-                  i32_val((bTile * shapePerCTABTile + b) % B);
-              offsetIndices[dim.nonK] =
-                  i32_val((nonKTile * shapePerCTANonKTile + nonK) % NonK);
-              offsetIndices[dim.k] = i32_val(k);
-
-              for (int dim = 0; dim < opOrder.size(); ++dim)
-                offset = add(offset, mul(offsetIndices[dim], strides[dim]));
+              offset = computeNonSwizzledOffset(rewriter, loc, idx, dim,
+                                                opTensorShape, shapePerCTABTile,
+                                                shapePerCTANonKTile, strides);
             }
 
             Value elemAddr = gep(ptrTy, elemTy, basePtr, offset);
