@@ -148,6 +148,8 @@ struct Indexes {
   unsigned nonK;
 };
 
+/// @brief computes linear memory offset of a given element relative to
+/// beginning of shared memory object
 Value computeSwizzledOffset(ConversionPatternRewriter &rewriter, Location loc,
                             const Indexes &i, const DimNumbers &dim,
                             Value bTileOffset, Value nonKTileOffset,
@@ -157,6 +159,7 @@ Value computeSwizzledOffset(ConversionPatternRewriter &rewriter, Location loc,
                             ArrayRef<int64_t> opTensorShape,
                             ArrayRef<Value> strides) {
   Value offset = i32_val(0);
+  // Compute unswizzled multi dim indices
   SmallVector<Value> elemMultiDimIndices(3);
   elemMultiDimIndices[dim.batch] =
       add(bTileOffset, i32_val(i.bTile * shapePerCTABTile + i.b));
@@ -176,6 +179,8 @@ Value computeSwizzledOffset(ConversionPatternRewriter &rewriter, Location loc,
   return offset;
 }
 
+/// @brief computes linear memory offset of a given element relative to the
+/// first element
 Value computeNonSwizzledOffset(ConversionPatternRewriter &rewriter,
                                Location loc, const Indexes &i,
                                const DimNumbers &dim,
@@ -253,7 +258,7 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
       add(nonKTileOffset, mul(warpIds[dim.nonK], i32_val(sizePerWarpNonK)));
 
   auto elemTy = typeConverter->convertType(opTensorTy.getElementType());
-  Type ptrTy = ptr_ty(dotOp.getContext(), 3);
+  Type ptrTy = smem.base.getType();
 
   auto sharedOrder = expandMatrixOrderWithBatch(sharedLayout.getOrder());
   // compute contiguity of fastest dimension in shared layout.
@@ -261,7 +266,7 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   if (sharedLayout.getMaxPhase() > 1)
     vectorSize = std::min(vectorSize, sharedLayout.getVec());
   auto vecTy = vec_ty(elemTy, vectorSize);
-
+  // loop increments depend on fastest dim
   unsigned dimStep[3] = {1, 1, 1};
   dimStep[sharedOrder[0]] = vectorSize;
 
@@ -280,6 +285,13 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
 
   bool swizzlePath = isSwizzled(sharedLayout);
 
+  // In swizzled memory case basePtr stores pointer to the beginning of shared
+  // memmory object
+  //
+  // If memory is not swizzled, algorithm breaks element offset pointer into
+  // constant and non-constant part. Non-constant (depends on thread id) part is
+  // same for all elements, so it is computed only once. basePtr stores this
+  // non-constant part
   Value basePtr;
   if (swizzlePath) {
     basePtr = smem.base;
@@ -290,6 +302,12 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
     basePtr = gep(ptrTy, elemTy, smem.base, laneOffset);
   }
 
+  // This loop nest iterates over all values loaded in one thread across batch,
+  // k and nonK dimensions. Blocked layout allocates data in tiles of size
+  // <sizePerThread>*<threadsPerWarp>*<numberWarps> for batch and nonK
+  // dimensions, if tensor shape is larger than tile, pattern repeats. To take
+  // these repeats into account iterations for batch and nonK are split into
+  // "intra tile" + "inter tile" indexes, i.e.
   for (unsigned bTile = 0; bTile < numBTiles; ++bTile)
     for (unsigned b = 0; b < sizeBPerThread; b += dimStep[dim.batch])
       for (unsigned k = 0; k < K; k += dimStep[dim.k])
@@ -299,6 +317,8 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
             Value offset = i32_val(0);
             Indexes idx = {bTile, b, k, nonKTile, nonK};
 
+            // swizzled variant is more general, but it limits optimization of
+            // address computation,
             if (swizzlePath) {
               offset = computeSwizzledOffset(
                   rewriter, loc, idx, dim, bTileOffset, nonKTileOffset,
