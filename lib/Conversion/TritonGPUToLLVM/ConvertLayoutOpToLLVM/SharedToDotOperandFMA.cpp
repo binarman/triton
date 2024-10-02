@@ -102,6 +102,33 @@ void verifyCTALayout(CTALayoutAttr ctaLayout) {
   }
 }
 
+Value getUnswizzledLaneOffset(ConversionPatternRewriter &rewriter, Location loc,
+                              unsigned B, unsigned NonK, Value bTileOffset,
+                              Value nonKTileOffset, Value bStride,
+                              Value nonKStride) {
+  auto ctx = rewriter.getContext();
+  auto bOffset = mul(urem(bTileOffset, i32_val(B)), bStride);
+  auto nonKOffset = mul(urem(nonKTileOffset, i32_val(NonK)), nonKStride);
+  Value threadIdDependantOffset = add(bOffset, nonKOffset);
+  return threadIdDependantOffset;
+}
+
+// TODO move this code to DotOperandEncodingAttr::getElemsPerThread
+SmallVector<unsigned> getElemsPerThreadInOp(ArrayRef<int64_t> opTensorShape,
+                                            ArrayRef<unsigned> shapePerCTATile,
+                                            ArrayRef<unsigned> sizePerThread,
+                                            unsigned kDim) {
+  SmallVector<unsigned> elemsPerThread;
+  int rank = opTensorShape.size();
+  for (int d = 0; d < rank; ++d) {
+    auto numReps =
+        ceil(static_cast<unsigned>(opTensorShape[d]), shapePerCTATile[d]);
+    elemsPerThread[d] = numReps * sizePerThread[d];
+  }
+  elemsPerThread[kDim] = opTensorShape[kDim];
+  return elemsPerThread;
+}
+
 Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
                 Value thread, Location loc,
                 const LLVMTypeConverter *typeConverter,
@@ -115,8 +142,6 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   auto opTensorTy = cast<MemDescType>(dotOp.getType());
   auto opTensorShape = expandMatrixShapeWithBatch(opTensorTy.getShape());
   auto sharedLayout = cast<SharedEncodingAttr>(opTensorTy.getEncoding());
-  auto opShapePerCTA =
-      expandMatrixShapeWithBatch(ArrayRef(getShapePerCTA(opTensorTy)));
 
   auto opOrder = expandMatrixOrderWithBatch(dLayout.getOrder());
 
@@ -175,10 +200,8 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   auto numBTiles = std::max(1u, B / shapePerCTABTile);
   auto numNonKTiles = std::max(1u, NonK / shapePerCTANonKTile);
 
-  // TODO support in triton::gpu::getElemsPerThread
-  SmallVector<unsigned> perThreadShape = {numBTiles * sizeBPerThread, 1, 1};
-  perThreadShape[nonKDim] = numNonKTiles * sizeNonKPerThread;
-  perThreadShape[kDim] = K;
+  auto perThreadShape = getElemsPerThreadInOp(opTensorShape, shapePerCTATile,
+                                              sizePerThread, kDim);
 
   SmallVector<Value> opValues(numBTiles * sizeBPerThread * K * numNonKTiles *
                               sizeNonKPerThread);
@@ -189,12 +212,10 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   if (swizzlePath) {
     basePtr = smem.base;
   } else {
-    auto bOffset = mul(urem(bTileOffset, i32_val(B)), strides[bDim]);
-    auto nonKOffset =
-        mul(urem(nonKTileOffset, i32_val(NonK)), strides[nonKDim]);
-    Value threadIdDependantOffset = add(bOffset, nonKOffset);
-
-    basePtr = gep(ptrTy, elemTy, smem.base, threadIdDependantOffset);
+    auto laneOffset = getUnswizzledLaneOffset(rewriter, loc, B, NonK,
+                                              bTileOffset, nonKTileOffset,
+                                              strides[bDim], strides[nonKDim]);
+    basePtr = gep(ptrTy, elemTy, smem.base, laneOffset);
   }
 
   for (unsigned bTile = 0; bTile < numBTiles; ++bTile)
