@@ -102,6 +102,14 @@ void verifyCTALayout(CTALayoutAttr ctaLayout) {
   }
 }
 
+/// @brief get an offset of first element loaded by thread
+///
+/// In unswizzled case offset of any element computed with formula:
+/// smem.base + first_element_offset + constant_offset.
+///
+/// first_element_offset depends on lane Id and warp Id
+/// constant_offset depends on value number, which is same for all threads.
+/// @returns first_element_offset
 Value getUnswizzledLaneOffset(ConversionPatternRewriter &rewriter, Location loc,
                               unsigned B, unsigned NonK, Value bTileOffset,
                               Value nonKTileOffset, Value bStride,
@@ -113,13 +121,13 @@ Value getUnswizzledLaneOffset(ConversionPatternRewriter &rewriter, Location loc,
   return threadIdDependantOffset;
 }
 
-// TODO move this code to DotOperandEncodingAttr::getElemsPerThread
+/// @returns number of elements stored by one thread across each dimension
 SmallVector<unsigned> getElemsPerThreadInOp(ArrayRef<int64_t> opTensorShape,
                                             ArrayRef<unsigned> shapePerCTATile,
                                             ArrayRef<unsigned> sizePerThread,
                                             unsigned kDim) {
-  SmallVector<unsigned> elemsPerThread;
   int rank = opTensorShape.size();
+  SmallVector<unsigned> elemsPerThread(rank);
   for (int d = 0; d < rank; ++d) {
     auto numReps =
         ceil(static_cast<unsigned>(opTensorShape[d]), shapePerCTATile[d]);
@@ -200,6 +208,7 @@ Value loadFMAOp(Value dotOp, Value llA, BlockedEncodingAttr dLayout,
   auto numBTiles = std::max(1u, B / shapePerCTABTile);
   auto numNonKTiles = std::max(1u, NonK / shapePerCTANonKTile);
 
+  // TODO implement DotOperandEncodingAttr::getElemsPerThread and use it instead
   auto perThreadShape = getElemsPerThreadInOp(opTensorShape, shapePerCTATile,
                                               sizePerThread, kDim);
 
