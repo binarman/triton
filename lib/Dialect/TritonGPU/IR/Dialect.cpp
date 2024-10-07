@@ -767,7 +767,7 @@ AMDMfmaEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape,
 
   SmallVector<unsigned> elemsPerThread(rank);
   auto mDim = getMDim();
-  auto nDim = getMDim();
+  auto nDim = getNDim();
   auto elemsPerThreadPerTile = (mDim == 32 ? 16 : 4);
   if (rank == 3)
     elemsPerThread[0] = ceil<unsigned>(shape[0], getWarpsPerCTA()[0]);
