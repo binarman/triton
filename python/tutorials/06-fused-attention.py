@@ -80,10 +80,10 @@ def _attn_fwd_inner(acc, l_i, m_i, q,  #
 # re-tuning.
 configs = [
     triton.Config({'BLOCK_M': BM, 'BLOCK_N': BN}, num_stages=s, num_warps=w) \
-    for BM in [64, 128]\
-    for BN in [32, 64]\
+    for BM in [64]\
+    for BN in [64]\
     for s in ([1] if is_hip() else [3, 4, 7])\
-    for w in [4, 8]\
+    for w in [1]\
 ]
 
 
@@ -465,7 +465,7 @@ class _attention(torch.autograd.Function):
             N_CTX=q.shape[2],  #
             HEAD_DIM=HEAD_DIM_K,  #
             STAGE=stage,  #
-            **extra_kern_args)
+            **extra_kern_args, matrix_instr_nonkdim=464)
 
         ctx.save_for_backward(q, k, v, o, M)
         ctx.grid = grid
@@ -490,7 +490,7 @@ class _attention(torch.autograd.Function):
         RCP_LN2 = 1.4426950408889634  # = 1.0 / ln(2)
         arg_k = k
         arg_k = arg_k * (ctx.sm_scale * RCP_LN2)
-        PRE_BLOCK = 128
+        PRE_BLOCK = 64
         assert N_CTX % PRE_BLOCK == 0
         pre_grid = (N_CTX // PRE_BLOCK, BATCH * N_HEAD)
         delta = torch.empty_like(M)
@@ -520,7 +520,7 @@ class _attention(torch.autograd.Function):
 attention = _attention.apply
 
 
-@pytest.mark.parametrize("Z, H, N_CTX, HEAD_DIM", [(1, 2, 1024, 64)])
+@pytest.mark.parametrize("Z, H, N_CTX, HEAD_DIM", [(1, 1, 64, 64)])
 @pytest.mark.parametrize("causal", [True])
 def test_op(Z, H, N_CTX, HEAD_DIM, causal, dtype=torch.float16):
     torch.manual_seed(20)

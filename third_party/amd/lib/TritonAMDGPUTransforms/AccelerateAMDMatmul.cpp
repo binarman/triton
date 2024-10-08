@@ -290,6 +290,7 @@ public:
   }
 
   bool isSecondDot(tt::DotOp &dotOp) const {
+    return true;
     auto filter = [&dotOp](Operation *op) {
       return op->getParentRegion() == dotOp->getParentRegion();
     };
@@ -307,8 +308,8 @@ public:
 
   /// @brief Choose MFMA instruction parameters
   /// @param dot target dot operation
-  /// @return pair {mDim, nDim, kDim, kBaseA, kBaseB} sizes of one MFMA instruction
-  /// arguments
+  /// @return pair {mDim, nDim, kDim, kBaseA, kBaseB} sizes of one MFMA
+  /// instruction arguments
   std::tuple<unsigned, unsigned, unsigned, unsigned, unsigned>
   chooseMfmaDimensions(tt::DotOp dot) const {
     // number of matrix elements along k dim per one MFMA intruction
@@ -468,7 +469,8 @@ public:
     //   kWidth = kDim;
     // }
 
-    llvm::outs() <<"kWidthA = " << kWidthA << ", kWidthB = " << kWidthB << "\n";
+    llvm::outs() << "kWidthA = " << kWidthA << ", kWidthB = " << kWidthB
+                 << "\n";
 
     // We want to extend kWidth by kPack (kPack=1 means no extension)
     // to increase ds_read vector size

@@ -3072,7 +3072,7 @@ def convert_fp8_to_fp32(x, device, dtype_str):
                           for warp in [1, 2, 4, 8]
                           for kpack in [1, 2]
                           for shape in [(64, 128, 128), (32, 128, 128), (32, 64, 64), (64, 64, 64)]
-                          for epilogue in ['none']
+                          for epilogue in ['none', 'add-matrix', 'softmax', 'add-rows', 'add-cols', 'chain-dot']
                           for input_precision in ['tf32', 'tf32x3', 'ieee']
                           for in_dtype, out_dtype in [('float16', 'float16')]
                           if not (input_precision != 'ieee' and (in_dtype in ['float16']))])
@@ -3092,6 +3092,8 @@ def convert_fp8_to_fp32(x, device, dtype_str):
 #  for float8_type in ["float8e5", "float8e4nv"]])
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dtype, out_dtype, kpack, num_ctas, device):
+    if epilogue == 'chain-dot' and M != N:
+        pytest.skip("unsupported sizes")
     if K < 64 * kpack:
         pytest.skip("incompatible kpack with given k block size")
     if is_interpreter():

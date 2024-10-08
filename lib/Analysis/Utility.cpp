@@ -528,6 +528,7 @@ bool supportMMA(Value value, int version) {
 }
 
 bool isMfmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
+  return false;
   auto mfmaLayout = dyn_cast<AMDMfmaEncodingAttr>(srcTy.getEncoding());
   auto dotOperandLayout = dyn_cast<DotOperandEncodingAttr>(dstTy.getEncoding());
   if (mfmaLayout == nullptr || dotOperandLayout == nullptr)
@@ -540,7 +541,7 @@ bool isMfmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
          dotOperandLayout.getKWidth() == getContigPerThread(mfmaLayout)[1] &&
          dotOperandLayout.getParent() == mfmaLayout &&
          (mfmaLayout.getMDim() == 32 || mfmaLayout.getMDim() == 16 ||
-         (mfmaLayout.getMDim() == 4 && mfmaLayout.getNDim() == 64)) &&
+          (mfmaLayout.getMDim() == 4 && mfmaLayout.getNDim() == 64)) &&
          (srcTy.getElementType().isF16() || srcTy.getElementType().isBF16());
 }
 
