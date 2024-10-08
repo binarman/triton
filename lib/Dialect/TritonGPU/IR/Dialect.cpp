@@ -1520,8 +1520,8 @@ AMDMfmaEncodingAttr::getShapePerCTATile(ArrayRef<int64_t> tensorShape) const {
   auto warpsPerCTA = getWarpsPerCTA();
   auto rank = warpsPerCTA.size();
   SmallVector<unsigned> shapePerCTATile(warpsPerCTA.begin(), warpsPerCTA.end());
-  shapePerCTATile[rank - 1] *= getMDim();
-  shapePerCTATile[rank - 2] *= getNDim();
+  shapePerCTATile[rank - 1] *= getNDim();
+  shapePerCTATile[rank - 2] *= getMDim();
   return shapePerCTATile;
 }
 
