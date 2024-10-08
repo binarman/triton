@@ -3067,30 +3067,33 @@ def convert_fp8_to_fp32(x, device, dtype_str):
 
 
 @pytest.mark.interpreter
-@pytest.mark.parametrize(
-    "M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dtype, out_dtype, kpack",
-    [(*shape, 8, False, True, epilogue, input_precision, in_dtype, out_dtype, 2)
-     for shape in [(32, 128, 128)]
-     for epilogue in ['none']
-     for input_precision in ['tf32', 'tf32x3', 'ieee']
-     for in_dtype, out_dtype in [('float16', 'float16')]
-     if not (input_precision != 'ieee' and (in_dtype in ['float16']))])
-    # [(*shape_nw, col_a, col_b, 'none', input_precision, in_dtype, out_dtype, kpack)
-    #  for shape_nw in [[128, 256, 32, 8], [128, 16, 32, 4], [32, 128, 64, 4], [128, 128, 64, 4], [64, 128, 128, 4],
-    #                   [32, 128, 64, 2], [64, 64, 32, 4], [32, 32, 128, 16], [128, 128, 64, 2], [64, 128, 128, 2]]
-    #  for input_precision in ["ieee" if is_hip() else "tf32"]
-    #  for col_a in [True, False]
-    #  for col_b in [True, False]
-    #  for in_dtype, out_dtype in [('int8', 'int8'), ('float16', 'float16'), ('float16', 'float32'), ('float32',
-    #                                                                                                 'float32')]
-    #  for kpack in [1, 2 if is_hip() else 1]] + [(64, 64, 64, 4, col_a, col_b, 'none', 'ieee', 'float32', 'float32', 1)
-    #                                             for col_a in [True, False]
-    #                                             for col_b in [True, False]] +
-    # [(64, 64, 64, 4, False, False, 'chain-dot', 'ieee', 'bfloat16', 'float32', 1)] +
-    # [(128, 128, 64, 4, False, False, 'chain-dot', 'ieee', float8_type, 'float32', 1)
-    #  for float8_type in ["float8e5", "float8e4nv"]])
+@pytest.mark.parametrize("M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dtype, out_dtype, kpack",
+                         [(*shape, warp, False, True, epilogue, input_precision, in_dtype, out_dtype, kpack)
+                          for warp in [1, 2, 4, 8]
+                          for kpack in [1, 2]
+                          for shape in [(64, 128, 128), (32, 128, 128), (32, 64, 64), (64, 64, 64)]
+                          for epilogue in ['none']
+                          for input_precision in ['tf32', 'tf32x3', 'ieee']
+                          for in_dtype, out_dtype in [('float16', 'float16')]
+                          if not (input_precision != 'ieee' and (in_dtype in ['float16']))])
+# [(*shape_nw, col_a, col_b, 'none', input_precision, in_dtype, out_dtype, kpack)
+#  for shape_nw in [[128, 256, 32, 8], [128, 16, 32, 4], [32, 128, 64, 4], [128, 128, 64, 4], [64, 128, 128, 4],
+#                   [32, 128, 64, 2], [64, 64, 32, 4], [32, 32, 128, 16], [128, 128, 64, 2], [64, 128, 128, 2]]
+#  for input_precision in ["ieee" if is_hip() else "tf32"]
+#  for col_a in [True, False]
+#  for col_b in [True, False]
+#  for in_dtype, out_dtype in [('int8', 'int8'), ('float16', 'float16'), ('float16', 'float32'), ('float32',
+#                                                                                                 'float32')]
+#  for kpack in [1, 2 if is_hip() else 1]] + [(64, 64, 64, 4, col_a, col_b, 'none', 'ieee', 'float32', 'float32', 1)
+#                                             for col_a in [True, False]
+#                                             for col_b in [True, False]] +
+# [(64, 64, 64, 4, False, False, 'chain-dot', 'ieee', 'bfloat16', 'float32', 1)] +
+# [(128, 128, 64, 4, False, False, 'chain-dot', 'ieee', float8_type, 'float32', 1)
+#  for float8_type in ["float8e5", "float8e4nv"]])
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
 def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dtype, out_dtype, kpack, num_ctas, device):
+    if K < 64 * kpack:
+        pytest.skip("incompatible kpack with given k block size")
     if is_interpreter():
         if in_dtype == 'bfloat16':
             pytest.skip("bfloat16 is not supported in the interpreter")
@@ -3182,6 +3185,11 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
         x = (x.view('uint32') & np.uint32(0xffffe000)).view('float32')
         y = (y.view('uint32') & np.uint32(0xffffe000)).view('float32')
         w = (w.view('uint32') & np.uint32(0xffffe000)).view('float32')
+    #for m in range(M):
+    #    for n in range(N):
+    #        for k in range(K):
+    #            x[m, k] = k
+    #            y[k, n] = 1.0 if k == 4 else 0.0
     x_tri = to_triton(x, device=device, dst_type=in_dtype)
     y_tri = to_triton(y, device=device, dst_type=in_dtype)
     w_tri = to_triton(w, device=device, dst_type=in_dtype)
@@ -3209,7 +3217,7 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
         'COL_A': col_a, 'COL_B': col_b, 'BLOCK_M': M, 'BLOCK_K': K, 'BLOCK_N': N, 'ADD_MATRIX':
         epilogue == 'add-matrix', 'ADD_ROWS': epilogue == 'add-rows', 'ADD_COLS': epilogue == 'add-cols', 'DO_SOFTMAX':
         epilogue == 'softmax', 'CHAIN_DOT': epilogue == 'chain-dot', 'INPUT_PRECISION': input_precision, 'num_warps':
-        num_warps, 'num_ctas': num_ctas, 'out_dtype': out_dtype, 'matrix_instr_nonkdim': 16
+        num_warps, 'num_ctas': num_ctas, 'out_dtype': out_dtype, 'matrix_instr_nonkdim': 464
     }
 
     if is_hip():

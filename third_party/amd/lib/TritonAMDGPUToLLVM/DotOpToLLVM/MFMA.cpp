@@ -70,7 +70,8 @@ struct DotOpMFMAConversionHelper {
     Type valType = val.getType();
     Value broadcasted;
     if (valType.isInteger(32)) {
-      broadcasted = rewriter.create<ROCDL::DsBpermuteOp>(loc, val.getType(), permuteAddr, val);
+      broadcasted = rewriter.create<ROCDL::DsBpermuteOp>(loc, val.getType(),
+                                                         permuteAddr, val);
     }
 
     if (valType.isF32()) {
@@ -98,11 +99,10 @@ struct DotOpMFMAConversionHelper {
     }
     assert(broadcasted);
     return broadcasted;
-
   }
 
   Value generateMFMAOp(StringRef mfmaInsnName, Value valA, Value valB,
-                       Value valC, int cbsz = 0, int abid = 0, 
+                       Value valC, int cbsz = 0, int abid = 0,
                        int blgp = 0) const {
     assert(cbsz >= 0 && cbsz <= 4);
     assert(abid >= 0 && abid <= 15);
@@ -135,7 +135,8 @@ struct DotOpMFMAConversionHelper {
       for (int kRep = 0; kRep < numRepeats; ++kRep) {
         if (mDim == 4 and (not transpose)) {
           assert(valA.size() == 1 and valB.size() == 16);
-          acc = generateMFMAOp(mfmaInsnName, valA[0], valB[kRep], acc, broadcastCtrl, kRep);
+          acc = generateMFMAOp(mfmaInsnName, valA[0], valB[kRep], acc,
+                               broadcastCtrl, kRep);
         }
         if (mDim == 4 and transpose) {
           assert(valA.size() == 1 and valB.size() == 16);
@@ -151,7 +152,7 @@ struct DotOpMFMAConversionHelper {
           assert(valA.size() == 16 && valB.size() == 1);
           acc = generateMFMAOp(mfmaInsnName, valB[0], valA[kRep], acc,
                                broadcastCtrl, kRep);
-        }        
+        }
       }
     }
 
@@ -288,7 +289,8 @@ struct DotOpMFMAConversionHelper {
         mfmaLayout.getMFMARepForOperands(aTensorTy.getShape(), kWidthA, 0);
     auto repB =
         mfmaLayout.getMFMARepForOperands(bTensorTy.getShape(), kWidthB, 1);
-    llvm::outs() << "repA[2] = " << repA[2] << ", repB[1] = " << repB[1] << "\n";
+    llvm::outs() << "repA[2] = " << repA[2] << ", repB[1] = " << repB[1]
+                 << "\n";
 
     assert(repA[2] == repB[1]);
 
@@ -322,7 +324,8 @@ struct DotOpMFMAConversionHelper {
     auto elemsPerVec = mDim * nDim * subBlocks / warpSize;
 
     auto vecTy = vec_ty(dstElemTy, elemsPerVec);
-    llvm::outs() << "numRepM = " << numRepM << ", numRepN = " << numRepN << "\n";
+    llvm::outs() << "numRepM = " << numRepM << ", numRepN = " << numRepN
+                 << "\n";
     for (int b = 0; b < numRepB; ++b) {
       for (int m = 0; m < numRepM; ++m) {
         for (int n = 0; n < numRepN; ++n) {
@@ -338,12 +341,14 @@ struct DotOpMFMAConversionHelper {
 
           for (int k = 0; k < numRepK; k++) {
             for (int kPack = 0; kPack < kWidthA / kBaseA; ++kPack) {
-              acc = generateMFMATile(mfmaInsnName, operandA[kPack][{b, m, k}], operandB[kPack][{b, n, k}], acc, mDim, nDim, mfmaLayout.getIsTransposed());
-                  // mfmaLayout.getIsTransposed()
-                  //     ? generateMFMAOp(mfmaInsnName, operandB[kPack][{b, n, k}],
-                  //                      operandA[kPack][{b, m, k}], acc)
-                  //     : generateMFMAOp(mfmaInsnName, operandA[kPack][{b, m, k}],
-                  //                      operandB[kPack][{b, n, k}], acc);
+              acc = generateMFMATile(mfmaInsnName, operandA[kPack][{b, m, k}],
+                                     operandB[kPack][{b, n, k}], acc, mDim,
+                                     nDim, mfmaLayout.getIsTransposed());
+              // mfmaLayout.getIsTransposed()
+              //     ? generateMFMAOp(mfmaInsnName, operandB[kPack][{b, n, k}],
+              //                      operandA[kPack][{b, m, k}], acc)
+              //     : generateMFMAOp(mfmaInsnName, operandA[kPack][{b, m, k}],
+              //                      operandB[kPack][{b, n, k}], acc);
             }
           }
           acc = reduceSubBlocks(subBlocks, acc);
@@ -359,7 +364,8 @@ struct DotOpMFMAConversionHelper {
     // replace with new packed result
     Type structTy = LLVM::LLVMStructType::getLiteral(
         ctx, SmallVector<Type>(fc.size(), dstElemTy));
-    llvm::outs() << "convertDot2, fc_size = " << fc.size() << ", strucTy = " << structTy << "\n";
+    llvm::outs() << "convertDot2, fc_size = " << fc.size()
+                 << ", strucTy = " << structTy << "\n";
     Value res = packLLElements(loc, typeConverter, fc, rewriter, structTy);
     llvm::outs() << "convertDot3\n";
     rewriter.replaceOp(op, res);
@@ -373,15 +379,17 @@ struct DotOpMFMAConversionHelper {
    * rawElems is a vector of kWidth elements. We need to prepare vector(s) of
    * kBase elements for each mfma instruction
    */
-  SmallVector<SmallVector<Value>> extractOperands(Value rawElems, int kWidth, int kBase,
-                                     Type type) const {
+  SmallVector<SmallVector<Value>> extractOperands(Value rawElems, int kWidth,
+                                                  int kBase, Type type) const {
     llvm::outs() << "kWidth = " << kWidth << ", kBase = " << kBase << "\n";
     int kpack = kWidth / kBase;
     bool wideOperand = kWidth >= 16;
     int numIntrinsics = wideOperand ? 16 : 1;
     auto rawTy = mlir::cast<VectorType>(rawElems.getType());
-    int intrinsicK = rawTy.getNumElements() / numIntrinsics / kpack;
-    llvm::outs() << "elemNum = " << rawTy.getNumElements() << ", numIntrinsics = " << numIntrinsics << ", kpack = " << kpack << "\n";
+    int intrinsicK = kBase / numIntrinsics;
+    llvm::outs() << "elemNum = " << rawTy.getNumElements()
+                 << ", numIntrinsics = " << numIntrinsics
+                 << ", kpack = " << kpack << "\n";
 
     llvm::outs() << "intrinsicK = " << intrinsicK << "\n";
 
@@ -394,8 +402,9 @@ struct DotOpMFMAConversionHelper {
       Value vec = undef(vecTy);
       for (int intrinsic = 0; intrinsic < numIntrinsics; ++intrinsic) {
         for (int elemId = 0; elemId < intrinsicK; ++elemId) {
-          int elemOff = elemId + intrinsic * intrinsicK + k * kBase;
-          auto val = extract_element(type, rawElems, i32_val(elemId + k * kBase));
+          int elemOff =
+              elemId + intrinsic * intrinsicK * kpack + k * intrinsicK;
+          auto val = extract_element(type, rawElems, i32_val(elemOff));
           if (type.isBF16()) {
             // rocdl.mfma.f32.32x32x8bf16.1k calls for input of i16 type
             auto cast = bitcast(val, i16_ty);
@@ -445,8 +454,8 @@ struct DotOpMFMAConversionHelper {
           Value convertedElems;
           if (type.isF32()) {
             for (int k = 0; k < kpack; ++k)
-              dotOpVals[k][{b, i, j}] =
-                  {extract_element(type, rawElems, i32_val(k))};
+              dotOpVals[k][{b, i, j}] = {
+                  extract_element(type, rawElems, i32_val(k))};
           } else {
             SmallVector<SmallVector<Value>> vals;
             if (type.getIntOrFloatBitWidth() == 8) {
