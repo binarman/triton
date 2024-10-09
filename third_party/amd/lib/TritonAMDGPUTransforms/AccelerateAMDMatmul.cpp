@@ -290,7 +290,7 @@ public:
   }
 
   bool isSecondDot(tt::DotOp &dotOp) const {
-    return true;
+    return false;
     auto filter = [&dotOp](Operation *op) {
       return op->getParentRegion() == dotOp->getParentRegion();
     };
