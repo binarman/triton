@@ -328,7 +328,13 @@ public:
 
     unsigned mDim = 0;
     unsigned nDim = 0;
-    if (enforcedNonKDim != 0) {
+    static int dotNo = 0;
+    const char *noStr = std::getenv("FORCE_DOT_NO");
+    int forcedDotNo = -1;
+    if (noStr != nullptr)
+      forcedDotNo = std::stoi(noStr);
+    dotNo++;
+    if (dotNo++ == forcedDotNo && enforcedNonKDim != 0) {
       if (enforcedNonKDim == 32 || enforcedNonKDim == 16 ||
           enforcedNonKDim == 4) {
         mDim = enforcedNonKDim;
