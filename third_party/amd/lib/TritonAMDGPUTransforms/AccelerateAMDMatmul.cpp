@@ -273,6 +273,7 @@ public:
         mfmaVersion(mfmaVersion), enforcedNonKDim(nonKDim), kPack(kPack) {}
 
   bool isChainDot(tt::DotOp &dotOp) const {
+    return false;
     auto filter = [&dotOp](Operation *op) {
       return op->getParentRegion() == dotOp->getParentRegion();
     };
