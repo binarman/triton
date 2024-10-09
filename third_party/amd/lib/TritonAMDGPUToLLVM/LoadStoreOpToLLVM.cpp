@@ -21,7 +21,8 @@ namespace {
 // Return the mask for the unique data accessed by given tensor type.
 // Used to mask out the redundant data accessed by threads.
 Value redundantDataMask(Type valueTy, ConversionPatternRewriter &rewriter,
-                        Location loc, const AMD::TargetInfo &targetInfo) {
+                        Location loc, const AMD::TargetInfo &targetInfo,
+                        size_t regNo) {
   auto tensorTy = dyn_cast<RankedTensorType>(valueTy);
   Value mask = int_val(1, 1);
   auto tid = tid_val();
@@ -30,29 +31,48 @@ Value redundantDataMask(Type valueTy, ConversionPatternRewriter &rewriter,
     auto layout = tensorTy.getEncoding();
     auto shape = tensorTy.getShape();
     unsigned rank = shape.size();
-    auto sizePerThread = triton::gpu::getSizePerThread(layout);
-    auto threadsPerWarp = triton::gpu::getThreadsPerWarp(layout);
-    auto warpsPerCTA = triton::gpu::getWarpsPerCTA(layout);
-    auto order = triton::gpu::getOrder(layout);
+
     auto shapePerCTATile = triton::gpu::getShapePerCTATile(layout, shape);
+    SmallVector<int64_t> tileShape;
+    for (auto i : shapePerCTATile)
+      tileShape.push_back(i);
+    auto tileLinearLayoutCandidate =
+        triton::gpu::toLinearLayout(tileShape, layout);
+    assert(tileLinearLayoutCandidate.has_value());
+    auto tileLinearLayout = tileLinearLayoutCandidate.value();
+
     Value warpSize = i32_val(triton::gpu::getWarpSize(layout));
     Value laneId = urem(tid, warpSize);
     Value warpId = udiv(tid, warpSize);
-    SmallVector<Value> multiDimWarpId =
-        delinearize(rewriter, loc, warpId, warpsPerCTA, order);
-    SmallVector<Value> multiDimThreadId =
-        delinearize(rewriter, loc, laneId, threadsPerWarp, order);
+
+    auto ctx = valueTy.getContext();
+
+    StringAttr kRegister = str_attr("register");
+    StringAttr kLane = str_attr("lane");
+    StringAttr kWarp = str_attr("warp");
+    StringAttr kBlock = str_attr("block");
+
+    SmallVector<StringAttr> outDimNames;
+    for (int i = 0; i < rank; ++i)
+      outDimNames.push_back(str_attr("dim" + llvm::Twine(i)));
+    tileLinearLayout = tileLinearLayout.transposeOuts(outDimNames);
+
     for (unsigned dim = 0; dim < rank; ++dim) {
       // if there is no data replication across threads on this dimension
       if (shape[dim] >= shapePerCTATile[dim])
         continue;
-      // Otherwise, we need to mask threads that will replicate data on this
-      // dimension. Calculate the thread index on this dimension for the CTA
-      Value threadDim =
-          add(mul(multiDimWarpId[dim], i32_val(threadsPerWarp[dim])),
-              multiDimThreadId[dim]);
-      mask = and_(mask, icmp_slt(mul(threadDim, i32_val(sizePerThread[dim])),
-                                 i32_val(shape[dim])));
+
+      // todo set register
+      SmallVector<std::pair<StringAttr, Value>> indices{
+          {kRegister, i32_val(regNo)},
+          {kLane, laneId},
+          {kWarp, warpId},
+          {kBlock, i32_val(0)}};
+      auto elementPosition =
+          applyLinearLayout(loc, rewriter, tileLinearLayout, indices);
+
+      mask = and_(mask,
+                  icmp_slt(elementPosition[dim].second, i32_val(shape[dim])));
     }
     // Do not write duplicated data when multicast is enabled
     if (triton::gpu::getNumCTAs(layout) > 1) {
@@ -307,8 +327,9 @@ struct StoreOpConversion : public ConvertOpToLLVMPattern<triton::StoreOp>,
 
     auto cacheMod = op.getCache();
     const int numVecs = elemsPerThread / vec;
-    Value rDataMask = redundantDataMask(valueTy, rewriter, loc, targetInfo);
     for (size_t vecStart = 0; vecStart < elemsPerThread; vecStart += vec) {
+      Value rDataMask =
+          redundantDataMask(valueTy, rewriter, loc, targetInfo, vecStart);
       size_t in_off = 0;
       Value pred = mask ? and_(maskElems[vecStart], rDataMask) : rDataMask;
       auto vecTy = LLVM::getFixedVectorType(valueElemTy, vec);
@@ -405,7 +426,6 @@ struct AtomicCASOpConversion
       vec = std::min<unsigned>(vec, valTy.getElementType().isF16() ? 2 : 1);
     }
 
-    Value mask = redundantDataMask(valueTy, rewriter, loc, targetInfo);
     auto vecTy = vec_ty(valueElemTy, vec);
     SmallVector<Value> resultVals(elemsPerThread);
 

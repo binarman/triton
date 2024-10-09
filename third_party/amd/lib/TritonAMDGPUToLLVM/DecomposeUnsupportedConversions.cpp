@@ -39,7 +39,7 @@ struct DecomposeUnsupportedAMDConversions
     triton::gpu::decomposeSplatOpToSharedLayoutConversion(mod);
 
     triton::gpu::decomposeTensorCoreToDotLayoutConversion(mod,
-                                                          isMfmaToDotShortcut);
+                                                          cvtReordersRegisters);
 
     /* -------------------------------- */
     // Replace `wmma -> dot_op` with `wmma -> blocked -> dot_op`
