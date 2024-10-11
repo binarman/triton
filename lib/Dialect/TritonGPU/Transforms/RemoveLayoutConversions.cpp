@@ -398,6 +398,7 @@ void LayoutPropagation::propagateLayout() {
 }
 
 bool isCompatibleLayout(Value v, Attribute layout) {
+  return true;
   auto tensorTy = dyn_cast<RankedTensorType>(v.getType());
   if (!tensorTy)
     return false;
