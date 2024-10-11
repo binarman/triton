@@ -341,7 +341,6 @@ public:
 
     kDim = maybeMfmaInsn->getKDim();
     assert(kDim != 0);
-    assert(M % mDim == 0 && N % nDim == 0);
     assert(opType.getShape()[rank - 1] % kDim == 0);
     return maybeMfmaInsn;
   }
