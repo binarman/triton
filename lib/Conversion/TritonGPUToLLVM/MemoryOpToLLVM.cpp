@@ -101,6 +101,14 @@ struct LocalDeallocOpConversion
 };
 
 struct LocalLoadOpConversion : public ConvertOpToLLVMPattern<LocalLoadOp> {
+
+  static bool isSupportedDotOp(Attribute layout) {
+    auto dotOpLayout = dyn_cast<DotOperandEncodingAttr>(layout);
+    if (isa<AMDMfmaEncodingAttr>(dotOpLayout.getParent()))
+      return true;
+    return false;
+  }
+
 public:
   LocalLoadOpConversion(LLVMTypeConverter &typeConverter,
                         const TargetInfoBase &targetInfo,
@@ -116,8 +124,9 @@ public:
     Attribute srcLayout = srcTy.getEncoding();
     Attribute dstLayout = dstTy.getEncoding();
     if (isa<SharedEncodingAttr>(srcLayout) &&
-        isa<BlockedEncodingAttr, MmaEncodingTrait, SliceEncodingAttr,
-            DotOperandEncodingAttr>(dstLayout)) {
+        (isa<BlockedEncodingAttr, MmaEncodingTrait, SliceEncodingAttr>(
+             dstLayout) ||
+         isSupportedDotOp(dstLayout))) {
       return lowerSharedToDistributed(op, adaptor, getTypeConverter(),
                                       rewriter);
     }
