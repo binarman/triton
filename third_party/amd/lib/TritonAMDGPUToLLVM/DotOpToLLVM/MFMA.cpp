@@ -316,22 +316,23 @@ struct DotOpMFMAConversionHelper {
    * appropriate for mfma instructions
    */
   SmallVector<ValueTable>
-  getValuesFromDotOperandLayoutStruct(Value value, int batch, int n0, int n1,
-                                      int kWidth, int kBase, Type type) const {
+  getValuesFromDotOperandLayoutStruct(Value value, int batch, int nonKRep,
+                                      int kRep, int kWidth, int kBase,
+                                      Type type) const {
     auto elems = unpackLLElements(loc, value, rewriter);
     int kpack = kWidth / kBase;
     SmallVector<ValueTable> dotOpVals(kpack);
     for (int b = 0; b < batch; ++b) {
-      for (int i = 0; i < n0; i++) {
-        for (int j = 0; j < n1; j++) {
+      for (int i = 0; i < nonKRep; i++) {
+        for (int j = 0; j < kRep; j++) {
           Type elemTy = typeConverter->convertType(type);
           Type ty = vec_ty(elemTy, kWidth);
           Value rawElems = undef(ty);
           for (int k = 0; k < kWidth; ++k) {
-            rawElems = insert_element(
-                ty, rawElems,
-                elems[kWidth * n1 * n0 * b + kWidth * n1 * i + kWidth * j + k],
-                i32_val(k));
+            rawElems = insert_element(ty, rawElems,
+                                      elems[i + (k + j * kWidth) * nonKRep +
+                                            b * nonKRep * kRep * kWidth],
+                                      i32_val(k));
           }
 
           Value convertedElems;
