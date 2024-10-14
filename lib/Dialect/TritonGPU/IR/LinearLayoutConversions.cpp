@@ -584,6 +584,8 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   int mIndex = 0 + hasBatchDim;
 
   int32_t kWidth = dotMfmaLayout.getKWidth();
+  auto kDim = dotMfmaLayout.getOpIdx() == 0 ? rank - 1 : rank - 2;
+  int32_t kSize = shape[kDim];
   auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
   MLIRContext *ctx = dotMfmaLayout.getContext();
@@ -595,14 +597,15 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
 
   SmallVector<unsigned> order = triton::gpu::getOrder(dotMfmaLayout);
 
-  // Lane holds all kWidth elements sequentially along k dimension, so
-  // register base vectors are inisialized in following way:
+  // Lane holds kWidth consecutive elements along k dimension, so
+  // base vectors for one tile are initialized in following way:
   // {1, 0}, {2, 0} ... {kWidth/2, 0}
   std::vector<std::vector<int32_t>> registerBase;
   for (int32_t elem = 1; elem < kWidth; elem *= 2)
     registerBase.emplace_back(std::vector<int32_t>{0, elem});
 
   std::vector<std::vector<int32_t>> laneBase;
+  int32_t kTileSize = -1;
 
   if (mfmaLayout.getMDim() == 32) {
     // Canonical MFMA linear layout handles 4 consecutive elements along
@@ -612,6 +615,7 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     // will be an identity along N dim. Thread 32 will be mapped to element
     // kWidth in K dimension.
     laneBase = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, kWidth}};
+    kTileSize = kWidth * 2;
   } else {
     assert(mfmaLayout.getMDim() == 16);
     // For lane dim, since the MFMA thread arrangement is {K, N} = {4, 16}, this
@@ -619,7 +623,12 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     // identity along N dim. Thread 16 will be mapped to element kWisth in K
     // dimension. Thread 32 is mapped to element 2*kWidth in K dim.
     laneBase = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, kWidth}, {0, kWidth * 2}};
+    kTileSize = kWidth * 4;
   }
+  assert(kTileSize != -1);
+  // Add repeats of registers along K dimension to register base
+  for (int32_t elem = kTileSize; elem < kSize; elem *= 2)
+    registerBase.emplace_back(std::vector<int32_t>{0, elem});
   LinearLayout tileLayout({{kRegister, registerBase}, {kLane, laneBase}},
                           {outDimNames[order[0]], outDimNames[order[1]]});
 
