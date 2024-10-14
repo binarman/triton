@@ -629,8 +629,9 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   // Add repeats of registers along K dimension to register base
   for (int32_t elem = kTileSize; elem < kSize; elem *= 2)
     registerBase.emplace_back(std::vector<int32_t>{0, elem});
+
   LinearLayout tileLayout({{kRegister, registerBase}, {kLane, laneBase}},
-                          {outDimNames[order[0]], outDimNames[order[1]]});
+                          {outDimNames[order[1]], outDimNames[order[0]]});
 
   if (hasBatchDim) {
     assert(order[2] == 0);
