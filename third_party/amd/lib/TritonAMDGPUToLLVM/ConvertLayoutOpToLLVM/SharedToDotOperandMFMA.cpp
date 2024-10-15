@@ -241,7 +241,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   auto numReps = mfmaLayout.getMFMARepForOperands(shape, kWidth, opIdx);
   auto numRepNonK = numReps[nonKDimIdx];
   auto numRepK = numReps[kDimIdx];
-  auto numRepB = numReps[0];
+  auto repB = numReps[0];
   // TODO(Lixun): make it simpler
   // getMFMARepForOperands always returns a 3D vector
   if (rank == 2) {
@@ -275,6 +275,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   Value warpIdInBatch = urem(linearWarpId, i32_val(warpsPerBatch));
   elemTy = typeConverter->convertType(elemTy);
 
+  SmallVector<Value> loadedValues;
   SmallVector<Value> offsets;
   Value smemBase;
   bool isFastPath =
@@ -337,25 +338,13 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   assert(numOfElems % loadsPerThread == 0);
 
   VectorType loadVecTy = vec_ty(elemTy, elemsPerLoad);
-  // Dot operand layout has order:
-  //  - Operand A order is [0, 1, 2]
-  //  - Operand B order is [1, 0, 2]
-  //
-  // Both of this cases translates to [non k dim, k dim, batch dim]
-  //
-  // To layout loaded values properly, algorithm below puts loaded values into
-  // linearized version of table with dimensions:
-  // [numRepNonK, elemsPerLoad, loadsPerThread, numRepK, numRepB]
-  //  \non k dim/ \             k dim                 / \ batch /
-  // numRepNonK is the fastest dimension
-  auto totalElemNum =
-      numRepB * numRepK * loadsPerThread * elemsPerLoad * numRepNonK;
-  SmallVector<Value> loadedValues(totalElemNum);
-  for (int b = 0; b < numRepB; ++b) {
+  for (int b = 0; b < repB; ++b) {
     int operandSize = shape[rank - 1] * shape[rank - 2];
     Value batchOffset = mul(i32_val(operandSize),
                             add(warpIdInBatch, i32_val(b * warpsPerBatch)));
     for (int nonK = 0; nonK < numRepNonK; ++nonK) {
+      int blockNonKOffset = nonK * mfmaInstrNonK * warpsPerBlockNonK;
+      Value warpBlockOffAdjust = i32_val(blockNonKOffset * shape[order[0]]);
       for (int k = 0; k < numRepK; ++k) {
         auto vecTy = vec_ty(resElemTy, numOfElems);
         for (unsigned loadId = 0; loadId < loadsPerThread; ++loadId) {
@@ -368,13 +357,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
           for (int elemId = 0; elemId < elemsPerLoad; ++elemId) {
             Value elemVal =
                 extract_element(elemTy, loadedValue, i32_val(elemId));
-            // linearize [nonK, elemId, loadId, k, b] indices
-            auto idx = b * numRepNonK * elemsPerLoad * loadsPerThread * numRepK;
-            idx += k * numRepNonK * elemsPerLoad * loadsPerThread;
-            idx += loadId * numRepNonK * elemsPerLoad;
-            idx += elemId * numRepNonK + nonK;
-
-            loadedValues[idx] = elemVal;
+            loadedValues.push_back(elemVal);
           }
         }
       }
@@ -384,14 +367,14 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   for (auto op : tensor.getUsers()) {
     if (auto localLoadOp = llvm::dyn_cast<triton::gpu::LocalLoadOp>(op)) {
       const size_t numDsReadsCount =
-          numRepB * numRepNonK * numRepK * loadsPerThread;
+          repB * numRepNonK * numRepK * loadsPerThread;
       setNumGeneratedDsReads(localLoadOp, numDsReadsCount, loadVecTy);
     }
   }
 
   MLIRContext *ctx = mfmaLayout.getContext();
   Type structTy = LLVM::LLVMStructType::getLiteral(
-      ctx, SmallVector<Type>(loadedValues.size(), elemTy));
+      ctx, SmallVector<Type>(loadedValues.size(), loadedValues[0].getType()));
   auto result =
       packLLElements(loc, typeConverter, loadedValues, rewriter, structTy);
   return result;
