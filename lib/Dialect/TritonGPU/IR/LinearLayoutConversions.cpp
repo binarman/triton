@@ -595,7 +595,7 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   StringAttr kLane = S("lane");
   StringAttr kWarp = S("warp");
 
-  // register order
+  // register and warp order
   // operand A: [1, 0] / [2, 1, 0]
   // operand B: [0, 1] / [1, 2, 0]
   // for both cases it is [k, nonk, batch]
@@ -650,7 +650,11 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   LinearLayout warpLayout = identityND(kWarp, warpsPerCTA, order, outDimNames);
   LinearLayout ctaLayout = tileLayout * warpLayout;
 
-  return combineCtaCgaWithShape(ctaLayout, mfmaLayout.getCTALayout(), shape);
+  auto res =
+      combineCtaCgaWithShape(ctaLayout, mfmaLayout.getCTALayout(), shape);
+  llvm::errs() << "converting layout: " << dotMfmaLayout << " [" << shape[0]
+               << ", " << shape[1] << "] to" << res << "\n";
+  return res;
 }
 
 std::optional<LinearLayout>
