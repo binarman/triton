@@ -601,8 +601,6 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   // for both cases it is [k, nonk, batch]
   SmallVector<unsigned> order = triton::gpu::getOrder(dotMfmaLayout);
   SmallVector<unsigned> warpOrder = triton::gpu::getWarpOrder(dotMfmaLayout);
-  for (int i = 0; i < rank; ++i)
-    assert(order[i] == warpOrder[i]);
 
   // Lane holds kWidth consecutive elements along k dimension, so
   // base register vectors for one tile are initialized in following way:
@@ -649,8 +647,8 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     tileLayout *= LinearLayout::identity1D(1, kLane, outDimNames[order[2]]);
   }
 
-  // TODO reorder warps, warp order is different from register order
-  LinearLayout warpLayout = identityND(kWarp, warpsPerCTA, order, outDimNames);
+  LinearLayout warpLayout =
+      identityND(kWarp, warpsPerCTA, warpOrder, outDimNames);
   LinearLayout ctaLayout = tileLayout * warpLayout;
 
   auto res =
