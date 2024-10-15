@@ -595,11 +595,14 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   StringAttr kLane = S("lane");
   StringAttr kWarp = S("warp");
 
-  // register and warp order
+  // register order
   // operand A: [1, 0] / [2, 1, 0]
   // operand B: [0, 1] / [1, 2, 0]
-  // for both cases it is [k, nonk, batch]
+  // for both cases it is [k, nonk]/[k, nonk, batch]
   SmallVector<unsigned> order = triton::gpu::getOrder(dotMfmaLayout);
+  // warp order
+  // common for both operand A and B: [0, 1] / [0, 1, 2]
+  // in both cases it is [M dim, N dim]/[batch, M dim, N dim]
   SmallVector<unsigned> warpOrder = triton::gpu::getWarpOrder(dotMfmaLayout);
 
   // Lane holds kWidth consecutive elements along k dimension, so
@@ -649,7 +652,9 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
 
   LinearLayout warpLayout =
       identityND(kWarp, warpsPerCTA, warpOrder, outDimNames);
-  LinearLayout ctaLayout = tileLayout * warpLayout;
+
+  LinearLayout ctaLayout = tileLayout.transposeOuts(outDimNames) *
+                           warpLayout.transposeOuts(outDimNames);
 
   auto res =
       combineCtaCgaWithShape(ctaLayout, mfmaLayout.getCTALayout(), shape);
