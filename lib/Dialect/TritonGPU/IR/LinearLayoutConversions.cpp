@@ -600,6 +600,9 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   // operand B: [0, 1] / [1, 2, 0]
   // for both cases it is [k, nonk, batch]
   SmallVector<unsigned> order = triton::gpu::getOrder(dotMfmaLayout);
+  SmallVector<unsigned> warpOrder = triton::gpu::getWarpOrder(dotMfmaLayout);
+  for (int i = 0; i < rank; ++i)
+    assert(order[i] == warpOrder[i]);
 
   // Lane holds kWidth consecutive elements along k dimension, so
   // base register vectors for one tile are initialized in following way:
@@ -652,6 +655,7 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
 
   auto res =
       combineCtaCgaWithShape(ctaLayout, mfmaLayout.getCTALayout(), shape);
+
   llvm::errs() << "converting layout: " << dotMfmaLayout << " [" << shape[0]
                << ", " << shape[1] << "] to" << res << "\n";
   return res;
