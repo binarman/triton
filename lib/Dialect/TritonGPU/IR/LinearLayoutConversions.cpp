@@ -595,14 +595,18 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   StringAttr kLane = S("lane");
   StringAttr kWarp = S("warp");
 
+  // register order
+  // operand A: [1, 0] / [2, 1, 0]
+  // operand B: [0, 1] / [1, 2, 0]
+  // for both cases it is [k, nonk, batch]
   SmallVector<unsigned> order = triton::gpu::getOrder(dotMfmaLayout);
 
   // Lane holds kWidth consecutive elements along k dimension, so
-  // base vectors for one tile are initialized in following way:
+  // base register vectors for one tile are initialized in following way:
   // {1, 0}, {2, 0} ... {kWidth/2, 0}
   std::vector<std::vector<int32_t>> registerBase;
   for (int32_t elem = 1; elem < kWidth; elem *= 2)
-    registerBase.emplace_back(std::vector<int32_t>{0, elem});
+    registerBase.emplace_back(std::vector<int32_t>{elem, 0});
 
   std::vector<std::vector<int32_t>> laneBase;
   int32_t kTileSize = -1;
@@ -614,7 +618,7 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     // 32}, this means that mapping of first 5 base (up to thread 16) vectors
     // will be an identity along N dim. Thread 32 will be mapped to element
     // kWidth in K dimension.
-    laneBase = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {0, kWidth}};
+    laneBase = {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {kWidth, 0}};
     kTileSize = kWidth * 2;
   } else {
     assert(mfmaLayout.getMDim() == 16);
@@ -622,13 +626,14 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     // means that mapping of first 4 base (up to thread 16) vectors will be an
     // identity along N dim. Thread 16 will be mapped to element kWisth in K
     // dimension. Thread 32 is mapped to element 2*kWidth in K dim.
-    laneBase = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, kWidth}, {0, kWidth * 2}};
+    laneBase = {{0, 1},  {0, 2},      {0, 4},         {0, 8},
+                {0, 16}, {kWidth, 0}, {kWidth * 2, 0}};
     kTileSize = kWidth * 4;
   }
   assert(kTileSize != -1);
-  // Add repeats of registers along K dimension to register base
+  // Add repeats of registers along K dimension to register base vectors
   for (int32_t elem = kTileSize; elem < kSize; elem *= 2)
-    registerBase.emplace_back(std::vector<int32_t>{0, elem});
+    registerBase.emplace_back(std::vector<int32_t>{elem, 0});
 
   LinearLayout tileLayout({{kRegister, registerBase}, {kLane, laneBase}},
                           {outDimNames[order[0]], outDimNames[order[1]]});
@@ -641,6 +646,7 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     tileLayout *= LinearLayout::identity1D(1, kLane, outDimNames[order[2]]);
   }
 
+  // TODO reorder warps, warp order is different from register order
   LinearLayout warpLayout = identityND(kWarp, warpsPerCTA, order, outDimNames);
   LinearLayout ctaLayout = tileLayout * warpLayout;
 
