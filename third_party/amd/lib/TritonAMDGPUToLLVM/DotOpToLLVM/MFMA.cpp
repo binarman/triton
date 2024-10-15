@@ -329,10 +329,13 @@ struct DotOpMFMAConversionHelper {
           Type ty = vec_ty(elemTy, kWidth);
           Value rawElems = undef(ty);
           for (int k = 0; k < kWidth; ++k) {
-            rawElems = insert_element(ty, rawElems,
-                                      elems[i + (k + j * kWidth) * nonKRep +
-                                            b * nonKRep * kRep * kWidth],
-                                      i32_val(k));
+            // linearize [i, k, j b] indexes
+            auto elemIdx = b * nonKRep * kRep * kWidth;
+            elemIdx += j * kWidth * nonKRep;
+            elemIdx += k * nonKRep + i;
+
+            Value elem = elems[elemIdx];
+            rawElems = insert_element(ty, rawElems, elem, i32_val(k));
           }
 
           Value convertedElems;
