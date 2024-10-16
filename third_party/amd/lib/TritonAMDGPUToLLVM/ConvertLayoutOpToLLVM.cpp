@@ -145,7 +145,7 @@ private:
     auto loc = op.getLoc();
     RankedTensorType srcTy = op.getSrc().getType();
     RankedTensorType dstTy = op.getType();
-    if (isMfmaToDotShortcut(srcTy, dstTy)) {
+    if (cvtReordersRegisters(srcTy, dstTy)) {
       // vecSize is an number of sequential elements stored by one thread
       // - For MFMA encoding (encoding of the result tensor of dot
       // operation) it is 4

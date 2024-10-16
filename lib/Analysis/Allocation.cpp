@@ -113,7 +113,7 @@ ScratchConfig getScratchConfigForCvt(RankedTensorType srcTy,
   Attribute srcLayout = srcTy.getEncoding();
   Attribute dstLayout = dstTy.getEncoding();
 
-  assert(!isMfmaToDotShortcut(srcTy, dstTy));
+  assert(!cvtReordersRegisters(srcTy, dstTy));
 
   auto [inOrd, outOrd] = getCvtOrder(srcLayout, dstLayout);
   scratchConfig.order = outOrd;
