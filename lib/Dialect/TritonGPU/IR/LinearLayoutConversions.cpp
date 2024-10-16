@@ -630,8 +630,7 @@ dotOperandMfmaToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     // means that mapping of first 4 base (up to thread 16) vectors will be an
     // identity along N dim. Thread 16 will be mapped to element kWisth in K
     // dimension. Thread 32 is mapped to element 2*kWidth in K dim.
-    laneBase = {{0, 1},  {0, 2},      {0, 4},         {0, 8},
-                {0, 16}, {kWidth, 0}, {kWidth * 2, 0}};
+    laneBase = {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {kWidth, 0}, {kWidth * 2, 0}};
     kTileSize = kWidth * 4;
   }
   assert(kTileSize != -1);
