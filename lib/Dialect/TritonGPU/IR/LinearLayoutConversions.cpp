@@ -546,7 +546,11 @@ AMDMfmaEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
       identityND(S("warp"), getWarpsPerCTA(), order, outDimNames);
   LinearLayout ctaLayout = tileLayout * warpLayout;
 
-  return combineCtaCgaWithShape(ctaLayout, getCTALayout(), shape);
+  auto res = combineCtaCgaWithShape(ctaLayout, getCTALayout(), shape);
+  llvm::errs() << "converting layout: " << *this << " [" << shape[0] << ", "
+               << shape[1] << "] to" << res << "\n";
+
+  return res;
 }
 
 std::optional<LinearLayout>
