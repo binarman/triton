@@ -838,6 +838,7 @@ SliceEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
     // output dimension would work.
     ret *= LinearLayout::zeros1D(extraZeros, S("register"), S("dim0"));
   }
+  llvm::errs() << "converting layout: " << *this << "\nto\n" << ret << "\n";
   return ret;
 }
 
