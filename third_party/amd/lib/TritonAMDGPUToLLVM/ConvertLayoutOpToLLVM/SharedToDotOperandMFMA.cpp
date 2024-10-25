@@ -209,6 +209,11 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
   auto nDim = mfmaLayout.getNDim();
   assert((mDim == nDim && (mDim == 32 || mDim == 16 || mDim == 4)) ||
          (mDim == 64 && nDim == 4) || (mDim == 4 && nDim == 64));
+
+  // Drop non 32 and 16 cases, support mfma4 with Linear Layout converter
+  if (!(mDim == 32 && nDim == 32) && !(mDim == 16 && nDim == 16))
+    return Value();
+
   auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
   auto sharedLayout = cast<SharedEncodingAttr>(aTensorTy.getEncoding());

@@ -420,7 +420,9 @@ AMDMfmaEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
   (void)mIndex, (void)nIndex;
 
   assert(((getMDim() == 32 && getNDim() == 32) ||
-          (getMDim() == 16 && getNDim() == 16)) &&
+          (getMDim() == 16 && getNDim() == 16) ||
+          (getMDim() == 4 && getNDim() == 64) ||
+          (getMDim() == 64 && getNDim() == 4)) &&
          "Unsupported mfma type");
 
   MLIRContext *ctx = getContext();
@@ -437,7 +439,10 @@ AMDMfmaEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
   SmallVector<unsigned> order = triton::gpu::getOrder(*this);
   auto tileLayout = LinearLayout::empty();
 
-  if (getMDim() == 32) {
+  auto mDim = getMDim();
+  auto nDim = getNDim();
+  if (mDim == 32) {
+    assert(nDim == 32);
     // For mfma with 32x32 output, each of the 64 threads holds 16 elements.
     //
     // For the register (i.e., element) dimension, these 16 elements are along
@@ -458,8 +463,8 @@ AMDMfmaEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
           {{kRegister, {{1, 0}, {2, 0}, {8, 0}, /*gap*/ {16, 0}}},
            {kLane, {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, /*gap*/ {4, 0}}}},
           {outDimNames[order[0]], outDimNames[order[1]]});
-  } else {
-    assert(getMDim() == 16);
+  } else if (mDim == 16) {
+    assert(nDim == 16);
     // For mfma with 16x16 output, each of the 64 threads holds 4 elements.
     //
     // For the register (i.e., element) dimension, these 4 elements are along
@@ -478,6 +483,48 @@ AMDMfmaEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
       tileLayout = LinearLayout(
           {{kRegister, {{1, 0}, {2, 0}}},
            {kLane, {{0, 1}, {0, 2}, {0, 4}, {0, 8}, /*gap*/ {4, 0}, {8, 0}}}},
+          {outDimNames[order[0]], outDimNames[order[1]]});
+  } else if (mDim == 4) {
+    assert(nDim == 64);
+    // For mfma with 4x64 output, each of the 64 threads holds 4 elements.
+    //
+    // For the register (i.e., element) dimension, these 4 elements are along
+    // the matrix C's M dimension, with 4 consecutive elements spanning 4 rows.
+    //
+    // For the lane (i.e., thread) dimension, these threads are along the
+    // matrix C's N dimension, with 16 consecutive threads covering a whole
+    // row and the next 16 threads start after a gap spanning 4 rows.
+    tileLayout = LinearLayout(
+        {{kRegister, {{0, 1}, {0, 2}}},
+         {kLane, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {32, 0}}}},
+        {outDimNames[order[0]], outDimNames[order[1]]});
+    // For mfma.transposed layout, the element ownership among threads are
+    // "transposed" within each warp.
+    if (getIsTransposed())
+      tileLayout = LinearLayout(
+          {{kRegister, {{1, 0}, {2, 0}}},
+           {kLane, {{0, 1}, {0, 2}, {4, 0}, {8, 0}, {16, 0}, {32, 0}}}},
+          {outDimNames[order[0]], outDimNames[order[1]]});
+  } else if (mDim == 64) {
+    assert(nDim == 4);
+    // For mfma with 64x4 output, each of the 64 threads holds 4 elements.
+    //
+    // For the register (i.e., element) dimension, these 4 elements are along
+    // the matrix C's M dimension, with 4 consecutive elements spanning 4 rows.
+    //
+    // For the lane (i.e., thread) dimension, these threads are along the
+    // matrix C's N dimension, with 16 consecutive threads covering a whole
+    // row and the next 16 threads start after a gap spanning 4 rows.
+    tileLayout = LinearLayout(
+        {{kRegister, {{0, 1}, {0, 2}}},
+         {kLane, {{1, 0}, {2, 0}, {0, 4}, {0, 8}, {0, 16}, {0, 32}}}},
+        {outDimNames[order[0]], outDimNames[order[1]]});
+    // For mfma.transposed layout, the element ownership among threads are
+    // "transposed" within each warp.
+    if (getIsTransposed())
+      tileLayout = LinearLayout(
+          {{kRegister, {{1, 0}, {2, 0}}},
+           {kLane, {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {0, 32}}}},
           {outDimNames[order[0]], outDimNames[order[1]]});
   }
   if (hasBatchDim) {
@@ -532,7 +579,8 @@ mfmaDotToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   int mIndex = 0 + hasBatchDim;
 
   int32_t kWidth = dotMfmaLayout.getKWidth();
-  auto kDim = dotMfmaLayout.getOpIdx() == 0 ? rank - 1 : rank - 2;
+  auto opIdx = dotMfmaLayout.getOpIdx();
+  auto kDim = opIdx == 0 ? rank - 1 : rank - 2;
   int32_t kSize = shape[kDim];
   auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
@@ -563,7 +611,10 @@ mfmaDotToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
   std::vector<std::vector<int32_t>> laneBase;
   int32_t kTileSize = -1;
 
-  if (mfmaLayout.getMDim() == 32) {
+  auto mDim = mfmaLayout.getMDim();
+  auto nDim = mfmaLayout.getNDim();
+  if (mDim == 32) {
+    assert(nDim == 32);
     // Canonical MFMA linear layout handles 4 consecutive elements along
     // the register dimension. Dot operand handles varaible kWidth consecutive
     // elements. For lane dim, since the MFMA thread arrangement is {K, N} = {2,
@@ -572,14 +623,48 @@ mfmaDotToLinearLayout(DotOperandEncodingAttr dotMfmaLayout,
     // kWidth in K dimension.
     laneBase = {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {kWidth, 0}};
     kTileSize = kWidth * 2;
-  } else {
-    assert(mfmaLayout.getMDim() == 16);
+  } else if (mDim == 16) {
+    assert(nDim == 16);
     // For lane dim, since the MFMA thread arrangement is {K, N} = {4, 16}, this
     // means that mapping of first 4 base (up to thread 16) vectors will be an
     // identity along N dim. Thread 16 will be mapped to element kWisth in K
     // dimension. Thread 32 is mapped to element 2*kWidth in K dim.
     laneBase = {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {kWidth, 0}, {kWidth * 2, 0}};
     kTileSize = kWidth * 4;
+  } else if (mDim == 4) {
+    assert(nDim == 64);
+    // Canonical MFMA linear layout handles 4 consecutive elements along
+    // the register dimension. Dot operand handles varaible kWidth consecutive
+    // elements. For lane dim, since the MFMA thread arrangement is {K, N} = {2,
+    // 32}, this means that mapping of first 5 base (up to thread 16) vectors
+    // will be an identity along N dim. Thread 32 will be mapped to element
+    // kWidth in K dimension.
+    if (opIdx == 0) {
+      laneBase = {{0, 1},          {0, 2},          {kWidth, 0},
+                  {kWidth * 2, 0}, {kWidth * 4, 0}, {kWidth * 8, 0}};
+      kTileSize = kWidth * 16;
+    } else {
+      assert(opIdx == 1);
+      laneBase = {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {0, 32}};
+      kTileSize = kWidth;
+    }
+  } else if (nDim == 4) {
+    assert(mDim == 64);
+    // Canonical MFMA linear layout handles 4 consecutive elements along
+    // the register dimension. Dot operand handles varaible kWidth consecutive
+    // elements. For lane dim, since the MFMA thread arrangement is {K, N} = {2,
+    // 32}, this means that mapping of first 5 base (up to thread 16) vectors
+    // will be an identity along N dim. Thread 32 will be mapped to element
+    // kWidth in K dimension.
+    if (opIdx == 0) {
+      laneBase = {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {0, 32}};
+      kTileSize = kWidth;
+    } else {
+      assert(opIdx == 1);
+      laneBase = {{0, 1},          {0, 2},          {kWidth, 0},
+                  {kWidth * 2, 0}, {kWidth * 4, 0}, {kWidth * 8, 0}};
+      kTileSize = kWidth * 16;
+    }
   }
   assert(kTileSize != -1);
   // Add repeats of registers along K dimension to register base vectors
