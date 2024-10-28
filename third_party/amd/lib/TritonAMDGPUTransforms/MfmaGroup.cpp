@@ -271,7 +271,8 @@ unsigned MfmaInsn::getKDim() { return attr.k; }
 unsigned MfmaInsn::getMDim() { return attr.m; }
 unsigned MfmaInsn::getNDim() { return attr.n; }
 StringRef MfmaInsn::getInsnName() { return attr.insn; }
-unsigned MfmaInsn::getKBase() { return attr.kBase; }
+unsigned MfmaInsn::getKBaseA() { return attr.kBaseA; }
+unsigned MfmaInsn::getKBaseB() { return attr.kBaseB; }
 Type MfmaInsn::getElementTypeA() { return elementTypeA; }
 Type MfmaInsn::getElementTypeB() { return elementTypeB; }
 } // namespace mlir

@@ -187,7 +187,9 @@ struct DotOpMFMAConversionHelper {
       llvm::report_fatal_error("No match found in MFMA database\n");
 
     mfmaInsnName = maybeMfmaInsn->getInsnName();
-    unsigned kBase = maybeMfmaInsn->getKBase();
+    unsigned kBaseA = maybeMfmaInsn->getKBaseA();
+    unsigned kBaseB = maybeMfmaInsn->getKBaseB();
+    assert(kBaseA == kBaseB);
 
     auto aEncoding = cast<DotOperandEncodingAttr>(aTensorTy.getEncoding());
     auto bEncoding = cast<DotOperandEncodingAttr>(bTensorTy.getEncoding());
@@ -210,10 +212,10 @@ struct DotOpMFMAConversionHelper {
     assert(repA[0] == repB[0]);
 
     auto operandA = getValuesFromDotOperandLayoutStruct(
-        loadedA, numRepB, numRepM, numRepK, kWidth, kBase,
+        loadedA, numRepB, numRepM, numRepK, kWidth, kBaseA,
         aTensorTy.getElementType());
     auto operandB = getValuesFromDotOperandLayoutStruct(
-        loadedB, numRepB, numRepN, numRepK, kWidth, kBase,
+        loadedB, numRepB, numRepN, numRepK, kWidth, kBaseB,
         aTensorTy.getElementType());
 
     auto dstElemTy = dTensorTy.getElementType();
@@ -240,7 +242,7 @@ struct DotOpMFMAConversionHelper {
           }
           acc = zeroAuxiliarBlocks(subBlocks, acc);
           for (int k = 0; k < numRepK; k++) {
-            for (int kPack = 0; kPack < kWidth / kBase; ++kPack)
+            for (int kPack = 0; kPack < kWidth / kBaseA; ++kPack)
               acc =
                   mfmaLayout.getIsTransposed()
                       ? generateMFMAOp(mfmaInsnName, operandB[kPack][{b, n, k}],

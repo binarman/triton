@@ -74,5 +74,5 @@
 
 // -----
 
-// expected-error@+1 {{(M, N) cases other than (32, 32) or (16, 16) unimplemented}}
+// expected-error@+1 {{(M, N) cases other than (32, 32), (16, 16), (4, 64) or (64, 4) unimplemented}}
 #mfma = #triton_gpu.amd_mfma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 1, 1], instrShape = [16, 8], isTransposed = false}>

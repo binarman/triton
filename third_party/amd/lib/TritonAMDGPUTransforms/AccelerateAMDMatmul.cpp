@@ -97,10 +97,10 @@ warpsPerTileWMMA(Operation *dotOp, ArrayRef<int64_t> shape, int numWarps) {
 // Chooses a proper MFMA instruction that can used to compute the given dot op.
 // If enforcedNonKDim is not zero, it will be used to overwrite the default
 // logic to chose a MFMA with matching M/N dim.
-FailureOr<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
-                                          Type aElemType, Type bElemType,
-                                          int inputKSize, int mfmaVersion,
-                                          int enforcedNonKDim) {
+std::optional<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
+                                              Type aElemType, Type bElemType,
+                                              int inputKSize, int mfmaVersion,
+                                              int enforcedNonKDim) {
   // number of matrix elements along k dim per one MFMA intruction
   unsigned kDim = 0;
 
@@ -112,7 +112,20 @@ FailureOr<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
   unsigned mDim = 0;
   unsigned nDim = 0;
   if (enforcedNonKDim != 0) {
-    mDim = nDim = enforcedNonKDim;
+    if (enforcedNonKDim == 32 || enforcedNonKDim == 16 ||
+        enforcedNonKDim == 4) {
+      mDim = enforcedNonKDim;
+      nDim = enforcedNonKDim;
+    } else if (enforcedNonKDim == 464) {
+      mDim = 4;
+      nDim = 64;
+    } else if (enforcedNonKDim == 644) {
+      mDim = 64;
+      nDim = 4;
+    } else {
+      llvm::report_fatal_error("Invalid MFMA nonKDim option, supported "
+                               "values are: 32, 16, 4, 464, 644");
+    }
   } else {
     int minSize = std::min(M, N);
     if (minSize >= 32) {
@@ -131,29 +144,28 @@ FailureOr<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
         mDim = 64;
         nDim = 4;
       } else {
-        assert(inputKSize >= 64 &&
-               "k should be at least 64 to use this layout");
-        mDim = 4;
-        nDim = 4;
+        return std::nullopt;
       }
     }
   }
+
   assert(mDim != 0 && nDim != 0);
 
   auto maybeMfmaInsn =
       MfmaInsn::selectMfma(mDim, nDim, aElemType, bElemType, mfmaVersion);
   if (failed(maybeMfmaInsn))
-    llvm::report_fatal_error("No match found in MFMA database\n");
+    return std::nullopt;
 
   kDim = maybeMfmaInsn->getKDim();
+
   assert(kDim != 0);
   assert(M % mDim == 0 && N % nDim == 0);
   assert(inputKSize % kDim == 0);
   return maybeMfmaInsn;
 }
 
-FailureOr<MfmaInsn> chooseMfmaInstruction(tt::DotOp dot, int mfmaVersion,
-                                          int nonKDim) {
+std::optional<MfmaInsn> chooseMfmaInstruction(tt::DotOp dot, int mfmaVersion,
+                                              int nonKDim) {
   RankedTensorType aType = dot.getA().getType();
   return chooseMfmaInstruction(dot.getC().getType(), aType.getElementType(),
                                dot.getB().getType().getElementType(),
@@ -390,11 +402,17 @@ public:
 
     ttg::AMDMfmaEncodingAttr mfmaEnc;
 
-    auto mfmaInstr = chooseMfmaInstruction(dotOp, mfmaVersion, nonKDim);
-    auto mDim = mfmaInstr.value().getMDim();
-    auto nDim = mfmaInstr.value().getNDim();
-    auto kDim = mfmaInstr.value().getKDim();
-    auto kBase = mfmaInstr.value().getKBase();
+    auto mfmaInstrRes = chooseMfmaInstruction(dotOp, mfmaVersion, nonKDim);
+    if (!mfmaInstrRes.has_value())
+      return failure();
+
+    auto mfmaInstr = mfmaInstrRes.value();
+
+    auto mDim = mfmaInstr.getMDim();
+    auto nDim = mfmaInstr.getNDim();
+    auto kDim = mfmaInstr.getKDim();
+    auto kBaseA = mfmaInstr.getKBaseA();
+    auto kBaseB = mfmaInstr.getKBaseB();
 
     auto warpsPerTile =
         warpsPerTileMFMA(dotOp, retShape, numWarps, {mDim, nDim});
@@ -442,28 +460,26 @@ public:
     //        can only consume kBase elements from each thread.
     //    Note that we cannot have larger kPack since kPack = 2 means
     //    ds_read_b128, which is the largest vector size for shared memory load.
-    auto kWidth = kBase;
-    // in mfma 4x4 case argument matrix groups in 16 groups
-    if (mDim == 4 && nDim == 4)
-      kWidth = kDim / 16;
-    if ((mDim == 4 && nDim == 64) || (mDim == 64 && nDim == 4))
-      kWidth = kDim;
+    auto kWidthA = kBaseA;
+    auto kWidthB = kBaseB;
 
     // We want to extend kWidth by kPack (kPack=1 means no extension)
     // to increase ds_read vector size
     // However, in FA, the second dot can only use kWidth = kBase since it's
     // limited by the result of the first dot, which is of mfmaLayout.
-    if (!isSecondDot(dotOp))
-      kWidth *= kPack;
+    if (!isSecondDot(dotOp)) {
+      kWidthA *= kPack;
+      kWidthB *= kPack;
+    }
 
     auto newAEncoding =
-        ttg::DotOperandEncodingAttr::get(ctx, 0, mfmaEnc, kWidth);
+        ttg::DotOperandEncodingAttr::get(ctx, 0, mfmaEnc, kWidthA);
     auto newBEncoding =
-        ttg::DotOperandEncodingAttr::get(ctx, 1, mfmaEnc, kWidth);
+        ttg::DotOperandEncodingAttr::get(ctx, 1, mfmaEnc, kWidthB);
     a = convertAndCastTensor(rewriter, a, newAEncoding,
-                             mfmaInstr.value().getElementTypeA());
+                             mfmaInstr.getElementTypeA());
     b = convertAndCastTensor(rewriter, b, newBEncoding,
-                             mfmaInstr.value().getElementTypeB());
+                             mfmaInstr.getElementTypeB());
     auto newDot = rewriter.create<tt::DotOp>(
         dotOp.getLoc(), newAcc.getType(), a, b, newAcc,
         dotOp.getInputPrecision(), dotOp.getMaxNumImpreciseAcc());
