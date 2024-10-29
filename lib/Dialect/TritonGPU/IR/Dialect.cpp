@@ -1658,12 +1658,13 @@ AMDMfmaEncodingAttr::getInstrShapeForOperand(int kWidth, int opIdx) const {
   int kGroups = -1;
   if (mDim == 32 && nDim == 32)
     kGroups = 2;
-  if (mDim == 16 && nDim == 32)
+  if (mDim == 16 && nDim == 16)
     kGroups = 4;
   if (mDim == 4 && nDim == 64)
     kGroups = opIdx == 0 ? 16 : 1;
   if (mDim == 64 && nDim == 4)
     kGroups = opIdx == 0 ? 1 : 16;
+  assert(kGroups > 0 && "unexpected mfma layout variant");
   int64_t kDim = kWidth * kGroups;
   if (opIdx == 0)
     return {mDim, kDim};
