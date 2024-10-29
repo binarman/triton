@@ -3298,9 +3298,9 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
     }
 
     if is_hip():
-        if matrix_instr_nonkdim == 464 and (N < 64 or K < 64):
+        if matrix_instr_nonkdim == 464 and (N < 64 or K < 64 * kpack):
             pytest.skip("given matrix_instr_nonkdim=464 is not compatible with given N or K")
-        if matrix_instr_nonkdim == 644 and (M < 64 or K < 64):
+        if matrix_instr_nonkdim == 644 and (M < 64 or K < 64 * kpack):
             pytest.skip("given matrix_instr_nonkdim=644 is not compatible with given M or K")
         if matrix_instr_nonkdim == 32 and (M < 32 or N < 32):
             pytest.skip("given matrix_instr_nonkdim=32 is not compatible with given M or N")
