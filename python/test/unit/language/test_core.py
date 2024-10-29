@@ -57,6 +57,14 @@ def promotion_numpy_2_0():
 # num_ctas_list = [1, 4] if torch.cuda.get_device_capability()[0] == 9 else [1]
 num_ctas_list = [1]
 
+# Handle for choosing different mfma instructions
+# 0 is a fully auto mode
+# 32 forces generation of mfma_32x32xK instrucitons, operand tile shapes are (32 x K) x (K x 32) -> (32x32)
+# 16 forces generation of mfma_16x16xK instrucitons, operand tile shapes are (16 x K) x (K x 16) -> (16x16)
+# 464 forces generation of mfma_4x4xK instrucitons, operand tile shapes are (4 x 16*K) x (16*K x 64) -> (4x64)
+# 644 forces generation of mfma_4x4xK instrucitons, operand tile shapes are (64 x 16*K) x (16*K x 4) -> (64x4)
+matrix_instr_nonkdim_list = [0, 32, 16, 464, 644] if is_hip() else [0]
+
 GPU_DIALECT = "triton_gpu"
 if is_interpreter():
     THREADS_PER_WARP = 1
@@ -3165,7 +3173,9 @@ def convert_fp8_to_fp32(x, device, dtype_str):
     [(128, 128, 64, 4, False, False, 'chain-dot', 'ieee', float8_type, 'float32', 1)
      for float8_type in ["float8e5", "float8e4nv"]])
 @pytest.mark.parametrize("num_ctas", num_ctas_list)
-def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dtype, out_dtype, kpack, num_ctas, device):
+@pytest.mark.parametrize("matrix_instr_nonkdim", matrix_instr_nonkdim_list)
+def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dtype, out_dtype, kpack, num_ctas,
+             matrix_instr_nonkdim, device):
     if is_interpreter():
         if in_dtype == 'bfloat16':
             pytest.skip("bfloat16 is not supported in the interpreter")
@@ -3288,7 +3298,14 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
     }
 
     if is_hip():
+        if matrix_instr_nonkdim == 464 and (N < 64 or K < 64):
+            pytest.skip("given matrix_instr_nonkdim=464 is not compatible with given N or K")
+        if matrix_instr_nonkdim == 644 and (M < 64 or K < 64):
+            pytest.skip("given matrix_instr_nonkdim=644 is not compatible with given M or K")
+        if matrix_instr_nonkdim == 32 and (M < 32 or N < 32):
+            pytest.skip("given matrix_instr_nonkdim=32 is not compatible with given M or N")
         kern_kwargs['kpack'] = kpack
+        kern_kwargs['matrix_instr_nonkdim'] = matrix_instr_nonkdim
 
     pgm = kernel[(1, 1)](x_tri, x_tri.stride(0), x_tri.stride(1), y_tri, y_tri.stride(0), y_tri.stride(1), w_tri,
                          w_tri.stride(0), w_tri.stride(1), z_tri, z_tri.stride(0), z_tri.stride(1), **kern_kwargs)
