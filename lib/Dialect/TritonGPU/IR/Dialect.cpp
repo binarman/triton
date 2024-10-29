@@ -1629,14 +1629,23 @@ SmallVector<unsigned> AMDMfmaEncodingAttr::getSizePerThread() const {
   unsigned rows, cols;
   auto rank = ::getOrder(*this).size();
   SmallVector<unsigned> res(rank, 1);
-  if (getMDim() == 32) {
+  auto mDim = getMDim();
+  auto nDim = getNDim();
+  if (mDim == 32 && nDim == 32) {
     rows = 16;
     cols = 1;
-  } else if (getMDim() == 16) {
+  } else if (mDim == 16 && nDim == 16) {
     rows = 4;
     cols = 1;
-  } else
+  } else if (mDim == 4 && nDim == 64) {
+    rows = 4;
+    cols = 1;
+  } else if (mDim == 64 && nDim == 4) {
+    rows = 4;
+    cols = 1;
+  } else {
     llvm_unreachable("Unexpected mfma non-k dim");
+  }
 
   if (getIsTransposed()) {
     res[rank - 1] = rows;
