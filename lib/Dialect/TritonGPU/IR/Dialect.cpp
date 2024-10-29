@@ -2261,9 +2261,27 @@ struct TritonGPUInferLayoutInterface
       return success();
     // Verify that the encodings are valid.
     if (!aEncoding || !bEncoding)
+      return op->emitError("Operand encodings are not defined");
+    if (aEncoding.getParent() != bEncoding.getParent())
       return op->emitError("mismatching encoding between A and B operands");
-    if (aEncoding.getKWidth() != bEncoding.getKWidth())
+    auto parent = aEncoding.getParent();
+    if (isa<BlockedEncodingAttr, AMDWmmaEncodingAttr, NvidiaMmaEncodingAttr>(
+            parent) &&
+        aEncoding.getKWidth() != bEncoding.getKWidth())
       return op->emitError("mismatching kWidth between A and B operands");
+    if (auto mfma = dyn_cast<AMDMfmaEncodingAttr>(parent)) {
+      if ((mfma.getMDim() == 16 || mfma.getMDim() == 32) &&
+          aEncoding.getKWidth() != bEncoding.getKWidth())
+        return op->emitError("mismatching kWidth between A and B operands");
+      if ((mfma.getMDim() == 4 && mfma.getNDim() == 64) &&
+          16 * aEncoding.getKWidth() != bEncoding.getKWidth())
+        return op->emitError(
+            "imcompatible kWidth between A and B MFMA dot operands");
+      if ((mfma.getMDim() == 64 && mfma.getNDim() == 4) &&
+          aEncoding.getKWidth() != 16 * bEncoding.getKWidth())
+        return op->emitError(
+            "imcompatible kWidth between A and B MFMA dot operands");
+    }
     return success();
   }
 
