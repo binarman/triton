@@ -1646,11 +1646,17 @@ AMDMfmaEncodingAttr::getInstrShapeForOperand(int kWidth, int opIdx) const {
   assert((mDim == nDim) && (mDim == 32 || mDim == 16 || mDim == 4) ||
          (mDim == 64 && nDim == 4) || (mDim == 4 && nDim == 64));
   constexpr int warpSize = 64; // MFMA is always based on the 64-wide warps.
+  // kGroups is a number of kWidth element groups across K dimension processed
+  // by one instruction
   int kGroups = -1;
-  if (mDim == nDim)
-    kGroups = warpSize / mDim;
-  if (mDim == 64 && nDim == 4 || mDim == 4 && nDim == 64)
-    kGroups = 1;
+  if (mDim == 32 && nDim == 32)
+    kGroups = 2;
+  if (mDim == 16 && nDim == 32)
+    kGroups = 4;
+  if (mDim == 4 && nDim == 64)
+    kGroups = opIdx == 0 ? 16 : 1;
+  if (mDim == 64 && nDim == 4)
+    kGroups = opIdx == 0 ? 1 : 16;
   int64_t kDim = kWidth * kGroups;
   if (opIdx == 0)
     return {mDim, kDim};
