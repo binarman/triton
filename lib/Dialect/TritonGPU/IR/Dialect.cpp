@@ -1598,13 +1598,22 @@ SmallVector<unsigned> AMDMfmaEncodingAttr::getThreadsPerWarp() const {
   unsigned rows, cols;
   auto rank = ::getOrder(*this).size();
   SmallVector<unsigned> res(rank, 1);
-  if (getMDim() == 32) {
+  auto mDim = getMDim();
+  auto nDim = getNDim();
+  if (mDim == 32 && nDim == 32) {
     cols = 2;
     rows = 32;
-  } else {
-    assert(getMDim() == 16);
+  } else if (mDim == 16 && nDim == 16) {
     cols = 4;
     rows = 16;
+  } else if (mDim == 4 && nDim == 64) {
+    cols = 1;
+    rows = 64;
+  } else if (mDim == 64 && nDim == 4) {
+    cols = 16;
+    rows = 4;
+  } else {
+    assert(false && "unexpected MFMA layout m/n combination");
   }
   if (getIsTransposed()) {
     res[rank - 1] = cols;
