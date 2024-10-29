@@ -376,38 +376,47 @@ struct DotOpMFMAConversionHelper {
   SmallVector<SmallVector<Value>> extractOperands(Value rawElems, int kWidth,
                                                   int kBase, Type type) const {
     int kpack = kWidth / kBase;
-    bool wideOperand = kWidth >= 16;
+    bool wideOperand = kBase >= 16;
     int numIntrinsics = wideOperand ? 16 : 1;
     auto rawTy = mlir::cast<VectorType>(rawElems.getType());
     int intrinsicK = kBase / numIntrinsics;
 
     SmallVector<SmallVector<Value>> results;
-    auto vecTy = vec_ty(type, intrinsicK);
-    if (type.isBF16())
-      vecTy = vec_ty(i16_ty, intrinsicK);
+    Type intrinsicOpTy;
+    if (type.isF32())
+      intrinsicOpTy = type;
+    else if (type.isBF16())
+      intrinsicOpTy = vec_ty(i16_ty, intrinsicK);
+    else
+      intrinsicOpTy = vec_ty(type, intrinsicK);
+
     for (int k = 0; k < kpack; ++k) {
       SmallVector<Value> resPack;
-      Value vec = undef(vecTy);
+      Value intrinsicOp = undef(intrinsicOpTy);
       for (int intrinsic = 0; intrinsic < numIntrinsics; ++intrinsic) {
         for (int elemId = 0; elemId < intrinsicK; ++elemId) {
           int elemOff =
               elemId + intrinsic * intrinsicK * kpack + k * intrinsicK;
           auto val = extract_element(type, rawElems, i32_val(elemOff));
-          if (type.isBF16()) {
+          if (type.isF32()) {
+            intrinsicOp = val;
+          } else if (type.isBF16()) {
             // rocdl.mfma.f32.32x32x8bf16.1k calls for input of i16 type
             auto cast = bitcast(val, i16_ty);
-            vec = insert_element(vecTy, vec, cast, i32_val(elemId));
+            intrinsicOp = insert_element(intrinsicOpTy, intrinsicOp, cast,
+                                         i32_val(elemId));
           } else
-            vec = insert_element(vecTy, vec, val, i32_val(elemId));
+            intrinsicOp = insert_element(intrinsicOpTy, intrinsicOp, val,
+                                         i32_val(elemId));
         }
         if (type.getIntOrFloatBitWidth() == 8) {
           if (4 == kBase / numIntrinsics)
             // This is for int8 on pre- MI300 GPUs
-            resPack.push_back(bitcast(vec, i32_ty));
+            resPack.push_back(bitcast(intrinsicOp, i32_ty));
           if (8 == kBase / numIntrinsics)
-            resPack.push_back(bitcast(vec, i64_ty));
+            resPack.push_back(bitcast(intrinsicOp, i64_ty));
         } else {
-          resPack.push_back(vec);
+          resPack.push_back(intrinsicOp);
         }
       }
       results.push_back(resPack);
@@ -438,25 +447,19 @@ struct DotOpMFMAConversionHelper {
                 i32_val(k));
           }
 
-          Value convertedElems;
+          SmallVector<SmallVector<Value>> vals;
           if (type.isF32()) {
-            for (int k = 0; k < kpack; ++k)
-              dotOpVals[k][{b, i, j}] = {
-                  extract_element(type, rawElems, i32_val(k))};
+            vals = extractOperands(rawElems, kWidth, kBase, f32_ty);
+          } else if (type.getIntOrFloatBitWidth() == 8) {
+            vals = extractOperands(rawElems, kWidth, kBase, i8_ty);
+          } else if (type.isBF16()) {
+            vals = extractOperands(rawElems, kWidth, kBase, bf16_ty);
           } else {
-            SmallVector<SmallVector<Value>> vals;
-            if (type.getIntOrFloatBitWidth() == 8) {
-              vals = extractOperands(rawElems, kWidth, kBase, i8_ty);
-            } else if (type.isBF16()) {
-              vals = extractOperands(rawElems, kWidth, kBase, bf16_ty);
-            } else {
-              assert(type.isF16() && "Unsupported data type");
-              vals = extractOperands(rawElems, kWidth, kBase, f16_ty);
-            }
-            for (int k = 0; k < kpack; ++k) {
-              dotOpVals[k][{b, i, j}] = vals[k];
-            }
+            assert(type.isF16() && "Unsupported data type");
+            vals = extractOperands(rawElems, kWidth, kBase, f16_ty);
           }
+          for (int k = 0; k < kpack; ++k)
+            dotOpVals[k][{b, i, j}] = vals[k];
         }
       }
     }
