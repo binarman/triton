@@ -1584,33 +1584,35 @@ SmallVector<unsigned> AMDMfmaEncodingAttr::getThreadOrder() const {
   return order;
 }
 SmallVector<unsigned> AMDMfmaEncodingAttr::getThreadsPerWarp() const {
-  unsigned rows, cols;
+  // consider tensor size [B x M x N] or [M x N]
+  unsigned mThreads = 0, nThreads = 0;
   auto rank = ::getOrder(*this).size();
   SmallVector<unsigned> res(rank, 1);
   auto mDim = getMDim();
   auto nDim = getNDim();
-  if (mDim == 32 && nDim == 32) {
-    cols = 2;
-    rows = 32;
-  } else if (mDim == 16 && nDim == 16) {
-    cols = 4;
-    rows = 16;
+  auto isT = getIsTransposed();
+  if (mDim == nDim) {
+    if (mDim == 32) {
+      mThreads = 2;
+      nThreads = 32;
+    }
+    if (mDim == 16) {
+      mThreads = 4;
+      nThreads = 16;
+    }
+    if (isT)
+      std::swap(mThreads, nThreads);
   } else if (mDim == 4 && nDim == 64) {
-    cols = 1;
-    rows = 64;
+    mThreads = isT ? 4 : 1;
+    nThreads = isT ? 16 : 64;
   } else if (mDim == 64 && nDim == 4) {
-    cols = 16;
-    rows = 4;
+    mThreads = isT ? 64 : 16;
+    nThreads = isT ? 1 : 4;
   } else {
     assert(false && "unexpected MFMA layout m/n combination");
   }
-  if (getIsTransposed()) {
-    res[rank - 1] = cols;
-    res[rank - 2] = rows;
-  } else {
-    res[rank - 1] = rows;
-    res[rank - 2] = cols;
-  }
+  res[rank - 2] = mThreads;
+  res[rank - 1] = nThreads;
   return res;
 }
 
