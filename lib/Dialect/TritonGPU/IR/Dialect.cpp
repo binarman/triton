@@ -1591,17 +1591,12 @@ SmallVector<unsigned> AMDMfmaEncodingAttr::getThreadsPerWarp() const {
   auto mDim = getMDim();
   auto nDim = getNDim();
   auto isT = getIsTransposed();
-  if (mDim == nDim) {
-    if (mDim == 32) {
-      mThreads = 2;
-      nThreads = 32;
-    }
-    if (mDim == 16) {
-      mThreads = 4;
-      nThreads = 16;
-    }
-    if (isT)
-      std::swap(mThreads, nThreads);
+  if (mDim == 32 && nDim == 32) {
+    mThreads = isT ? 32 : 2;
+    nThreads = isT ? 2 : 32;
+  } else if (mDim == 16 && nDim == 16) {
+    mThreads = isT ? 16 : 4;
+    nThreads = isT ? 4 : 16;
   } else if (mDim == 4 && nDim == 64) {
     mThreads = isT ? 4 : 1;
     nThreads = isT ? 16 : 64;
