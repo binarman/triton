@@ -165,9 +165,7 @@ struct TritonAMDGPUBypassLDSForDotOperandPass
     // srcBlocked.getOrder[0] == 0 is the requirement for opIdx 1 tensor to be K
     // major (required condition 1) from the above doc).
     auto mfmaLayout = dyn_cast<ttg::AMDMfmaEncodingAttr>(dstDotOp.getParent());
-    return mfmaLayout && dstDotOp.getKWidth() == 8 &&
-           mfmaLayout.getWarpsPerCTA()[0] == 1 && dstDotOp.getOpIdx() == 1 &&
-           srcBlocked.getOrder()[0] == 0;
+    return mfmaLayout;
   }
 };
 
