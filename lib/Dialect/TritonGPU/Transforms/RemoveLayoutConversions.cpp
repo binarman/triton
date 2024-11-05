@@ -974,9 +974,9 @@ void LayoutRematerialization::backwardRematerialization(
   // TODO: Fix this logic to avoid propagating conversions backward unless
   // it reduces the total number of conversions.
   RankedTensorType targetType = convertOp.getType();
-  auto dotEnc = dyn_cast<DotOperandEncodingAttr>(targetType.getEncoding());
-  if (dotEnc && dotEnc.getOpIdx() == 0)
-    return;
+  // auto dotEnc = dyn_cast<DotOperandEncodingAttr>(targetType.getEncoding());
+  // if (dotEnc && dotEnc.getOpIdx() == 0)
+  //   return;
   Value oldV = convertOp->getOperand(0);
   LDBG("check backward remat with source " << oldV << " encoding "
                                            << targetType.getEncoding());
