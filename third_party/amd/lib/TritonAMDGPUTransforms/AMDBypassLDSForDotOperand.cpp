@@ -115,8 +115,6 @@ struct TritonAMDGPUBypassLDSForDotOperandPass
     ModuleOp module = getOperation();
     auto convertOps = collectConvertOps(module);
 
-    module.dump();
-
     for (ttg::ConvertLayoutOp &convertOp : convertOps) {
       auto loadInsts = getAllLoadOpsReachingOp(convertOp, module);
       assert(!loadInsts.empty());
