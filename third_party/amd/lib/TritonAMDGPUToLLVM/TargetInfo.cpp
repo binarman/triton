@@ -227,14 +227,14 @@ void TargetInfo::assertFail(RewriterBase &rewriter, Location loc,
                             StringRef message, StringRef file, StringRef func,
                             int line) const {
   // Compose and print an assert message.
-  llvm::SmallString<256> msgBuffer;
-  llvm::Twine("device assertion failed: '" + message + "', in " + func +
-              " at " + file + ":" + llvm::Twine(line) + "\n\0")
-      .toStringRef(msgBuffer);
-  Value msgValue =
-      LLVM::addStringToModule(loc, rewriter, "printfFormat_", msgBuffer);
-  printfImpl(msgValue, msgBuffer.size_in_bytes(), /*args=*/ValueRange(),
-             rewriter, /*useStdError=*/true);
+  // llvm::SmallString<256> msgBuffer;
+  // llvm::Twine("device assertion failed: '" + message + "', in " + func +
+  //             " at " + file + ":" + llvm::Twine(line) + "\n\0")
+  //     .toStringRef(msgBuffer);
+  // Value msgValue =
+  //     LLVM::addStringToModule(loc, rewriter, "printfFormat_", msgBuffer);
+  // printfImpl(msgValue, msgBuffer.size_in_bytes(), /*args=*/ValueRange(),
+  //            rewriter, /*useStdError=*/true);
 
   // Set block barrrier before aborting kernel, give a chance for all
   // the threads in a block to check/print the assert failure.
