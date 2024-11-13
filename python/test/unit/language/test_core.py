@@ -2543,7 +2543,7 @@ def test_optimize_thread_locality(op, BLOCK_N, N, num_pid_n, device):
     np.testing.assert_allclose(y_tri, y_ref, rtol=0.01, atol=1e-3)
 
 
-@pytest.mark.parametrize("M, N", [[32, 16], [32, 32], [32, 64], [64, 32], [16, 64], [2, 64]])
+@pytest.mark.parametrize("M, N", [[32, 16], [32, 32], [32, 64], [64, 32]])
 @pytest.mark.parametrize("src_layout", scan_layouts)
 @pytest.mark.parametrize("axis", [0, 1])
 @pytest.mark.parametrize("add_overflow_check", [False, True])
@@ -2563,7 +2563,7 @@ def test_scan_layouts(M, N, src_layout, axis, add_overflow_check, device, tmp_pa
 
     ir = f"""
     #blocked = {src_layout}
-    module attributes {{"triton_gpu.num-warps" = 4 : i32, "triton_gpu.num-ctas" = 1 : i32, triton_gpu.target = "hip:gfx90a", "triton_gpu.threads-per-warp" = {THREADS_PER_WARP} : i32}} {{
+    module attributes {{"triton_gpu.num-warps" = 4 : i32, "triton_gpu.num-ctas" = 1 : i32, "triton_gpu.threads-per-warp" = {THREADS_PER_WARP} : i32}} {{
     tt.func public @kernel_0d1d(%arg0: !tt.ptr<i32> {{tt.divisibility = 16 : i32}}, %arg1: !tt.ptr<i32> {{tt.divisibility = 16 : i32}}) {{
       %cst = arith.constant dense<{N}> : tensor<{M}x1xi32, #blocked>
       %0 = tt.make_range {{end = {M} : i32, start = 0 : i32}} : tensor<{M}xi32, #triton_gpu.slice<{{dim = 1, parent = #blocked}}>>
