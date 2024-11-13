@@ -146,6 +146,7 @@ std::string translateLLVMIRToASM(llvm::Module &module,
     auto fileType = isObject ? llvm::CodeGenFileType::ObjectFile
                              : llvm::CodeGenFileType::AssemblyFile;
     machine->addPassesToEmitFile(pass, pstream, nullptr, fileType);
+    llvm::outs() << "module right before translation:\n" << module << "\n";
     pass.run(module);
 
     if (enabledTiming) {
