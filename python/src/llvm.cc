@@ -104,8 +104,11 @@ std::string translateLLVMIRToASM(llvm::Module &module,
 
   // inline everything
   for (llvm::Function &f : module.functions())
-    if (!f.hasFnAttribute(llvm::Attribute::NoInline))
-      f.addFnAttr(llvm::Attribute::AlwaysInline);
+    if (!f.hasFnAttribute(llvm::Attribute::NoInline)) {
+      if (f.getName() != "__ockl_fprintf_stderr_begin" &&
+          f.getName() != "__ockl_printf_append_string_n")
+        f.addFnAttr(llvm::Attribute::AlwaysInline);
+    }
   // verify and store llvm
   llvm::legacy::PassManager pm;
   pm.add(llvm::createAlwaysInlinerLegacyPass());
@@ -140,13 +143,14 @@ std::string translateLLVMIRToASM(llvm::Module &module,
     llvm::raw_string_ostream stream(result);
     llvm::buffer_ostream pstream(stream);
     for (llvm::Function &f : module.functions())
-      f.addFnAttr(llvm::Attribute::AlwaysInline);
+      if (f.getName() != "__ockl_fprintf_stderr_begin" &&
+          f.getName() != "__ockl_printf_append_string_n")
+        f.addFnAttr(llvm::Attribute::AlwaysInline);
     llvm::legacy::PassManager pass;
     // emit
     auto fileType = isObject ? llvm::CodeGenFileType::ObjectFile
                              : llvm::CodeGenFileType::AssemblyFile;
     machine->addPassesToEmitFile(pass, pstream, nullptr, fileType);
-    llvm::outs() << "module right before translation:\n" << module << "\n";
     pass.run(module);
 
     if (enabledTiming) {
