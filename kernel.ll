@@ -6,772 +6,772 @@ target triple = "amdgcn-amd-amdhsa"
 %0 = type { i64, i64, i32, i32 }
 %1 = type { [64 x [8 x i64]] }
 
-@printfFormat_29 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_28 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_27 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_26 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_25 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_24 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_23 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_22 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_21 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_20 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_19 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_18 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_17 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_16 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_15 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_14 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_13 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_12 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_11 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_10 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_9 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_8 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_7 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_6 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_5 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_4 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_3 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_2 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_1 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
-@printfFormat_0 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_29 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_28 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_27 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_26 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_25 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_24 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_23 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_22 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_21 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_20 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_19 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_18 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_17 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_16 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_15 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_14 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_13 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_12 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_11 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_10 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_9 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_8 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_7 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_6 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_5 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_4 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_3 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_2 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_1 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
+@printfFormat_0 = internal constant [150 x i8] c"device assertion failed: 'overflow detected', in unknown at /tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0/test_scan_layouts.ttgir:28\0A"
 @global_smem = external local_unnamed_addr addrspace(3) global [0 x i8], align 16
 
 ; Function Attrs: nounwind
-define amdgpu_kernel void @kernel_0d1d(ptr addrspace(1) inreg nocapture readonly %0, ptr addrspace(1) inreg nocapture writeonly %1, ptr addrspace(1) inreg nocapture readnone %2) local_unnamed_addr #0 !dbg !6 {
-  %4 = tail call i32 @llvm.amdgcn.workitem.id.x(), !dbg !9
-  %5 = and i32 %4, 63, !dbg !9
-  %6 = lshr i32 %4, 6, !dbg !9
-  %7 = lshr i32 %4, 2, !dbg !9
-  %8 = and i32 %7, 14, !dbg !9
-  %9 = lshr i32 %4, 3, !dbg !9
-  %10 = and i32 %9, 16, !dbg !9
-  %11 = or disjoint i32 %8, %10, !dbg !9
-  %12 = shl nuw nsw i32 %11, 6, !dbg !10
-  %13 = or disjoint i32 %12, 64, !dbg !10
-  %14 = zext nneg i32 %12 to i64, !dbg !11
-  %15 = getelementptr i32, ptr addrspace(1) %0, i64 %14, !dbg !11
-  %16 = zext nneg i32 %13 to i64, !dbg !11
-  %17 = getelementptr i32, ptr addrspace(1) %0, i64 %16, !dbg !11
-  %18 = shl i32 %4, 1, !dbg !12
-  %19 = and i32 %18, 14, !dbg !12
-  %20 = and i32 %7, 16, !dbg !12
-  %21 = or disjoint i32 %19, %20, !dbg !12
-  %22 = or disjoint i32 %21, 32, !dbg !12
-  %23 = zext nneg i32 %21 to i64, !dbg !13
-  %24 = getelementptr i32, ptr addrspace(1) %15, i64 %23, !dbg !13
-  %25 = getelementptr i32, ptr addrspace(1) %17, i64 %23, !dbg !13
-  %26 = zext nneg i32 %22 to i64, !dbg !13
-  %27 = getelementptr i32, ptr addrspace(1) %15, i64 %26, !dbg !13
-  %28 = getelementptr i32, ptr addrspace(1) %17, i64 %26, !dbg !13
-  %unmaskedload = load <2 x i32>, ptr addrspace(1) %24, align 16, !dbg !14
-  %29 = extractelement <2 x i32> %unmaskedload, i64 0, !dbg !14
-  %30 = extractelement <2 x i32> %unmaskedload, i64 1, !dbg !14
-  %unmaskedload1 = load <2 x i32>, ptr addrspace(1) %25, align 16, !dbg !14
-  %31 = extractelement <2 x i32> %unmaskedload1, i64 0, !dbg !14
-  %unmaskedload2 = load <2 x i32>, ptr addrspace(1) %27, align 16, !dbg !14
-  %32 = extractelement <2 x i32> %unmaskedload2, i64 0, !dbg !14
-  %33 = extractelement <2 x i32> %unmaskedload2, i64 1, !dbg !14
-  %unmaskedload3 = load <2 x i32>, ptr addrspace(1) %28, align 16, !dbg !14
-  %34 = extractelement <2 x i32> %unmaskedload3, i64 0, !dbg !14
-  %35 = extractelement <2 x i32> %unmaskedload3, i64 1, !dbg !14
-  %36 = and i32 %4, 7, !dbg !15
-  %37 = lshr i32 %5, 3, !dbg !15
-  %38 = and i32 %6, 1, !dbg !15
-  %39 = lshr i32 %4, 4, !dbg !15
-  %40 = and i32 %39, 8, !dbg !15
-  %41 = or disjoint i32 %37, %40, !dbg !15
-  %42 = add i32 %29, %30, !dbg !16
-  %43 = sext i32 %29 to i64, !dbg !17
-  %44 = sext i32 %30 to i64, !dbg !18
-  %45 = add nsw i64 %43, -2147483647, !dbg !19
-  %46 = add nsw i64 %45, %44, !dbg !20
-  %47 = icmp ult i64 %46, -4294967295, !dbg !20
-  br i1 %47, label %48, label %50, !dbg !21
+define amdgpu_kernel void @kernel_0d1d(ptr addrspace(1) inreg nocapture readonly %0, ptr addrspace(1) inreg nocapture writeonly %1) local_unnamed_addr #0 !dbg !6 {
+  %3 = tail call i32 @llvm.amdgcn.workitem.id.x(), !dbg !9
+  %4 = and i32 %3, 63, !dbg !9
+  %5 = lshr i32 %3, 6, !dbg !9
+  %6 = lshr i32 %3, 2, !dbg !9
+  %7 = and i32 %6, 14, !dbg !9
+  %8 = lshr i32 %3, 3, !dbg !9
+  %9 = and i32 %8, 16, !dbg !9
+  %10 = or disjoint i32 %7, %9, !dbg !9
+  %11 = shl nuw nsw i32 %10, 6, !dbg !10
+  %12 = or disjoint i32 %11, 64, !dbg !10
+  %13 = zext nneg i32 %11 to i64, !dbg !11
+  %14 = getelementptr i32, ptr addrspace(1) %0, i64 %13, !dbg !11
+  %15 = zext nneg i32 %12 to i64, !dbg !11
+  %16 = getelementptr i32, ptr addrspace(1) %0, i64 %15, !dbg !11
+  %17 = shl i32 %3, 1, !dbg !12
+  %18 = and i32 %17, 14, !dbg !12
+  %19 = and i32 %6, 16, !dbg !12
+  %20 = or disjoint i32 %18, %19, !dbg !12
+  %21 = or disjoint i32 %20, 32, !dbg !12
+  %22 = zext nneg i32 %20 to i64, !dbg !13
+  %23 = getelementptr i32, ptr addrspace(1) %14, i64 %22, !dbg !13
+  %24 = getelementptr i32, ptr addrspace(1) %16, i64 %22, !dbg !13
+  %25 = zext nneg i32 %21 to i64, !dbg !13
+  %26 = getelementptr i32, ptr addrspace(1) %14, i64 %25, !dbg !13
+  %27 = getelementptr i32, ptr addrspace(1) %16, i64 %25, !dbg !13
+  %unmaskedload = load <2 x i32>, ptr addrspace(1) %23, align 16, !dbg !14
+  %28 = extractelement <2 x i32> %unmaskedload, i64 0, !dbg !14
+  %29 = extractelement <2 x i32> %unmaskedload, i64 1, !dbg !14
+  %unmaskedload1 = load <2 x i32>, ptr addrspace(1) %24, align 16, !dbg !14
+  %30 = extractelement <2 x i32> %unmaskedload1, i64 0, !dbg !14
+  %unmaskedload2 = load <2 x i32>, ptr addrspace(1) %26, align 16, !dbg !14
+  %31 = extractelement <2 x i32> %unmaskedload2, i64 0, !dbg !14
+  %32 = extractelement <2 x i32> %unmaskedload2, i64 1, !dbg !14
+  %unmaskedload3 = load <2 x i32>, ptr addrspace(1) %27, align 16, !dbg !14
+  %33 = extractelement <2 x i32> %unmaskedload3, i64 0, !dbg !14
+  %34 = extractelement <2 x i32> %unmaskedload3, i64 1, !dbg !14
+  %35 = and i32 %3, 7, !dbg !15
+  %36 = lshr i32 %4, 3, !dbg !15
+  %37 = and i32 %5, 1, !dbg !15
+  %38 = lshr i32 %3, 4, !dbg !15
+  %39 = and i32 %38, 8, !dbg !15
+  %40 = or disjoint i32 %36, %39, !dbg !15
+  %41 = add i32 %28, %29, !dbg !16
+  %42 = sext i32 %28 to i64, !dbg !17
+  %43 = sext i32 %29 to i64, !dbg !18
+  %44 = add nsw i64 %42, -2147483647, !dbg !19
+  %45 = add nsw i64 %44, %43, !dbg !20
+  %46 = icmp ult i64 %45, -4294967295, !dbg !20
+  br i1 %46, label %47, label %49, !dbg !21
 
-48:                                               ; preds = %3
-  %49 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %49, ptr nonnull @printfFormat_0)
+47:                                               ; preds = %2
+  %48 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %48, ptr nonnull @printfFormat_0)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-50:                                               ; preds = %3
-  %51 = extractelement <2 x i32> %unmaskedload1, i64 1, !dbg !14
-  %52 = add i32 %31, %51, !dbg !16
-  %53 = sext i32 %31 to i64, !dbg !17
-  %54 = sext i32 %51 to i64, !dbg !18
-  %55 = add nsw i64 %53, -2147483647, !dbg !19
-  %56 = add nsw i64 %55, %54, !dbg !20
-  %57 = icmp ult i64 %56, -4294967295, !dbg !20
-  br i1 %57, label %58, label %60, !dbg !21
+49:                                               ; preds = %2
+  %50 = extractelement <2 x i32> %unmaskedload1, i64 1, !dbg !14
+  %51 = add i32 %30, %50, !dbg !16
+  %52 = sext i32 %30 to i64, !dbg !17
+  %53 = sext i32 %50 to i64, !dbg !18
+  %54 = add nsw i64 %52, -2147483647, !dbg !19
+  %55 = add nsw i64 %54, %53, !dbg !20
+  %56 = icmp ult i64 %55, -4294967295, !dbg !20
+  br i1 %56, label %57, label %59, !dbg !21
 
-58:                                               ; preds = %50
-  %59 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %59, ptr nonnull @printfFormat_1)
+57:                                               ; preds = %49
+  %58 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %58, ptr nonnull @printfFormat_1)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-60:                                               ; preds = %50
-  %61 = add i32 %32, %33, !dbg !16
-  %62 = sext i32 %32 to i64, !dbg !17
-  %63 = sext i32 %33 to i64, !dbg !18
-  %64 = add nsw i64 %62, -2147483647, !dbg !19
-  %65 = add nsw i64 %64, %63, !dbg !20
-  %66 = icmp ult i64 %65, -4294967295, !dbg !20
-  br i1 %66, label %67, label %69, !dbg !21
+59:                                               ; preds = %49
+  %60 = add i32 %31, %32, !dbg !16
+  %61 = sext i32 %31 to i64, !dbg !17
+  %62 = sext i32 %32 to i64, !dbg !18
+  %63 = add nsw i64 %61, -2147483647, !dbg !19
+  %64 = add nsw i64 %63, %62, !dbg !20
+  %65 = icmp ult i64 %64, -4294967295, !dbg !20
+  br i1 %65, label %66, label %68, !dbg !21
 
-67:                                               ; preds = %60
-  %68 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %68, ptr nonnull @printfFormat_2)
+66:                                               ; preds = %59
+  %67 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %67, ptr nonnull @printfFormat_2)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-69:                                               ; preds = %60
-  %70 = add i32 %34, %35, !dbg !16
-  %71 = sext i32 %34 to i64, !dbg !17
-  %72 = sext i32 %35 to i64, !dbg !18
-  %73 = add nsw i64 %71, -2147483647, !dbg !19
-  %74 = add nsw i64 %73, %72, !dbg !20
-  %75 = icmp ult i64 %74, -4294967295, !dbg !20
-  br i1 %75, label %76, label %78, !dbg !21
+68:                                               ; preds = %59
+  %69 = add i32 %33, %34, !dbg !16
+  %70 = sext i32 %33 to i64, !dbg !17
+  %71 = sext i32 %34 to i64, !dbg !18
+  %72 = add nsw i64 %70, -2147483647, !dbg !19
+  %73 = add nsw i64 %72, %71, !dbg !20
+  %74 = icmp ult i64 %73, -4294967295, !dbg !20
+  br i1 %74, label %75, label %77, !dbg !21
 
-76:                                               ; preds = %69
-  %77 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %77, ptr nonnull @printfFormat_3)
+75:                                               ; preds = %68
+  %76 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %76, ptr nonnull @printfFormat_3)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-78:                                               ; preds = %69
-  %79 = tail call i32 @llvm.usub.sat.i32(i32 %5, i32 1), !dbg !15
-  %80 = shl nuw nsw i32 %79, 2, !dbg !15
-  %81 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %42), !dbg !15
-  %.not = icmp eq i32 %36, 0, !dbg !15
-  br i1 %.not, label %82, label %405, !dbg !15
+77:                                               ; preds = %68
+  %78 = tail call i32 @llvm.usub.sat.i32(i32 %4, i32 1), !dbg !15
+  %79 = shl nuw nsw i32 %78, 2, !dbg !15
+  %80 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %41), !dbg !15
+  %.not = icmp eq i32 %35, 0, !dbg !15
+  br i1 %.not, label %81, label %404, !dbg !15
 
-82:                                               ; preds = %405, %78
-  %83 = phi i32 [ %42, %78 ], [ %406, %405 ], !dbg !15
-  %84 = icmp samesign ult i32 %5, 2, !dbg !15
-  %85 = shl nuw nsw i32 %5, 2, !dbg !15
-  %86 = add nsw i32 %85, -8, !dbg !15
-  %87 = select i1 %84, i32 %85, i32 %86, !dbg !15
-  %88 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %87, i32 %83), !dbg !15
-  %89 = icmp samesign ugt i32 %36, 1, !dbg !15
-  br i1 %89, label %396, label %90, !dbg !15
+81:                                               ; preds = %404, %77
+  %82 = phi i32 [ %41, %77 ], [ %405, %404 ], !dbg !15
+  %83 = icmp samesign ult i32 %4, 2, !dbg !15
+  %84 = shl nuw nsw i32 %4, 2, !dbg !15
+  %85 = add nsw i32 %84, -8, !dbg !15
+  %86 = select i1 %83, i32 %84, i32 %85, !dbg !15
+  %87 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %86, i32 %82), !dbg !15
+  %88 = icmp samesign ugt i32 %35, 1, !dbg !15
+  br i1 %88, label %395, label %89, !dbg !15
 
-90:                                               ; preds = %396, %82
-  %91 = phi i32 [ %83, %82 ], [ %397, %396 ], !dbg !15
-  %92 = icmp samesign ult i32 %5, 4, !dbg !15
-  %93 = add nsw i32 %85, -16, !dbg !15
-  %94 = select i1 %92, i32 %85, i32 %93, !dbg !15
-  %95 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %94, i32 %91), !dbg !15
-  %96 = icmp samesign ugt i32 %36, 3, !dbg !15
-  br i1 %96, label %387, label %97, !dbg !15
+89:                                               ; preds = %395, %81
+  %90 = phi i32 [ %82, %81 ], [ %396, %395 ], !dbg !15
+  %91 = icmp samesign ult i32 %4, 4, !dbg !15
+  %92 = add nsw i32 %84, -16, !dbg !15
+  %93 = select i1 %91, i32 %84, i32 %92, !dbg !15
+  %94 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %93, i32 %90), !dbg !15
+  %95 = icmp samesign ugt i32 %35, 3, !dbg !15
+  br i1 %95, label %386, label %96, !dbg !15
 
-97:                                               ; preds = %387, %90
-  %98 = phi i32 [ %91, %90 ], [ %388, %387 ], !dbg !15
-  %99 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %52), !dbg !15
-  br i1 %.not, label %100, label %378, !dbg !15
+96:                                               ; preds = %386, %89
+  %97 = phi i32 [ %90, %89 ], [ %387, %386 ], !dbg !15
+  %98 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %51), !dbg !15
+  br i1 %.not, label %99, label %377, !dbg !15
 
-100:                                              ; preds = %378, %97
-  %101 = phi i32 [ %52, %97 ], [ %379, %378 ], !dbg !15
-  %102 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %87, i32 %101), !dbg !15
-  br i1 %89, label %369, label %103, !dbg !15
+99:                                               ; preds = %377, %96
+  %100 = phi i32 [ %51, %96 ], [ %378, %377 ], !dbg !15
+  %101 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %86, i32 %100), !dbg !15
+  br i1 %88, label %368, label %102, !dbg !15
 
-103:                                              ; preds = %369, %100
-  %104 = phi i32 [ %101, %100 ], [ %370, %369 ], !dbg !15
-  %105 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %94, i32 %104), !dbg !15
-  br i1 %96, label %360, label %106, !dbg !15
+102:                                              ; preds = %368, %99
+  %103 = phi i32 [ %100, %99 ], [ %369, %368 ], !dbg !15
+  %104 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %93, i32 %103), !dbg !15
+  br i1 %95, label %359, label %105, !dbg !15
 
-106:                                              ; preds = %360, %103
-  %107 = phi i32 [ %104, %103 ], [ %361, %360 ], !dbg !15
-  %108 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %61), !dbg !15
-  br i1 %.not, label %109, label %351, !dbg !15
+105:                                              ; preds = %359, %102
+  %106 = phi i32 [ %103, %102 ], [ %360, %359 ], !dbg !15
+  %107 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %60), !dbg !15
+  br i1 %.not, label %108, label %350, !dbg !15
 
-109:                                              ; preds = %351, %106
-  %110 = phi i32 [ %61, %106 ], [ %352, %351 ], !dbg !15
-  %111 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %87, i32 %110), !dbg !15
-  br i1 %89, label %342, label %112, !dbg !15
+108:                                              ; preds = %350, %105
+  %109 = phi i32 [ %60, %105 ], [ %351, %350 ], !dbg !15
+  %110 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %86, i32 %109), !dbg !15
+  br i1 %88, label %341, label %111, !dbg !15
 
-112:                                              ; preds = %342, %109
-  %113 = phi i32 [ %110, %109 ], [ %343, %342 ], !dbg !15
-  %114 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %94, i32 %113), !dbg !15
-  br i1 %96, label %333, label %115, !dbg !15
+111:                                              ; preds = %341, %108
+  %112 = phi i32 [ %109, %108 ], [ %342, %341 ], !dbg !15
+  %113 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %93, i32 %112), !dbg !15
+  br i1 %95, label %332, label %114, !dbg !15
 
-115:                                              ; preds = %333, %112
-  %116 = phi i32 [ %113, %112 ], [ %334, %333 ], !dbg !15
-  %117 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %70), !dbg !15
-  br i1 %.not, label %118, label %324, !dbg !15
+114:                                              ; preds = %332, %111
+  %115 = phi i32 [ %112, %111 ], [ %333, %332 ], !dbg !15
+  %116 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %69), !dbg !15
+  br i1 %.not, label %117, label %323, !dbg !15
 
-118:                                              ; preds = %324, %115
-  %119 = phi i32 [ %70, %115 ], [ %325, %324 ], !dbg !15
-  %120 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %87, i32 %119), !dbg !15
-  br i1 %89, label %315, label %121, !dbg !15
+117:                                              ; preds = %323, %114
+  %118 = phi i32 [ %69, %114 ], [ %324, %323 ], !dbg !15
+  %119 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %86, i32 %118), !dbg !15
+  br i1 %88, label %314, label %120, !dbg !15
 
-121:                                              ; preds = %315, %118
-  %122 = phi i32 [ %119, %118 ], [ %316, %315 ], !dbg !15
-  %123 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %94, i32 %122), !dbg !15
-  br i1 %96, label %306, label %124, !dbg !15
+120:                                              ; preds = %314, %117
+  %121 = phi i32 [ %118, %117 ], [ %315, %314 ], !dbg !15
+  %122 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %93, i32 %121), !dbg !15
+  br i1 %95, label %305, label %123, !dbg !15
 
-124:                                              ; preds = %306, %121
-  %125 = phi i32 [ %122, %121 ], [ %307, %306 ], !dbg !15
-  %126 = icmp eq i32 %36, 7, !dbg !15
-  br i1 %126, label %.critedge, label %.critedge9, !dbg !15
+123:                                              ; preds = %305, %120
+  %124 = phi i32 [ %121, %120 ], [ %306, %305 ], !dbg !15
+  %125 = icmp eq i32 %35, 7, !dbg !15
+  br i1 %125, label %.critedge, label %.critedge9, !dbg !15
 
-.critedge:                                        ; preds = %124
-  %127 = shl nuw nsw i32 %38, 4, !dbg !15
-  %128 = or disjoint i32 %41, %127, !dbg !15
-  %129 = or disjoint i32 %128, 96
-  %130 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %129
-  %131 = or disjoint i32 %128, 64
-  %132 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %131
-  %133 = or disjoint i32 %128, 32
-  %134 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %133
-  %135 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %128
-  store i32 %98, ptr addrspace(3) %135, align 4, !dbg !15
-  store i32 %107, ptr addrspace(3) %134, align 4, !dbg !15
-  store i32 %116, ptr addrspace(3) %132, align 4, !dbg !15
-  store i32 %125, ptr addrspace(3) %130, align 4, !dbg !15
+.critedge:                                        ; preds = %123
+  %126 = shl nuw nsw i32 %37, 4, !dbg !15
+  %127 = or disjoint i32 %40, %126, !dbg !15
+  %128 = or disjoint i32 %127, 96
+  %129 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %128
+  %130 = or disjoint i32 %127, 64
+  %131 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %130
+  %132 = or disjoint i32 %127, 32
+  %133 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %132
+  %134 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %127
+  store i32 %97, ptr addrspace(3) %134, align 4, !dbg !15
+  store i32 %106, ptr addrspace(3) %133, align 4, !dbg !15
+  store i32 %115, ptr addrspace(3) %131, align 4, !dbg !15
+  store i32 %124, ptr addrspace(3) %129, align 4, !dbg !15
   br label %.critedge9, !dbg !15
 
-.critedge9:                                       ; preds = %124, %.critedge
+.critedge9:                                       ; preds = %123, %.critedge
   fence syncscope("workgroup") release, !dbg !15
   tail call void @llvm.amdgcn.s.barrier(), !dbg !15
   fence syncscope("workgroup") acquire, !dbg !15
-  %.not5 = icmp eq i32 %38, 0, !dbg !15
-  %136 = or i32 %38, %36, !dbg !15
-  %.not4 = icmp eq i32 %136, 0, !dbg !15
-  %137 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %41, !dbg !15
-  %138 = load i32, ptr addrspace(3) %137, align 4, !dbg !15
-  %139 = or disjoint i32 %41, 16, !dbg !15
-  %140 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %139, !dbg !15
-  %141 = load i32, ptr addrspace(3) %140, align 4, !dbg !15
-  %142 = add i32 %141, %138, !dbg !16
-  %143 = sext i32 %138 to i64, !dbg !17
-  %144 = sext i32 %141 to i64, !dbg !18
-  %145 = add nsw i64 %143, -2147483647, !dbg !19
-  %146 = add nsw i64 %145, %144, !dbg !20
-  %147 = icmp ult i64 %146, -4294967295, !dbg !20
-  br i1 %147, label %148, label %150, !dbg !21
+  %.not5 = icmp eq i32 %37, 0, !dbg !15
+  %135 = or i32 %37, %35, !dbg !15
+  %.not4 = icmp eq i32 %135, 0, !dbg !15
+  %136 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %40, !dbg !15
+  %137 = load i32, ptr addrspace(3) %136, align 4, !dbg !15
+  %138 = or disjoint i32 %40, 16, !dbg !15
+  %139 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %138, !dbg !15
+  %140 = load i32, ptr addrspace(3) %139, align 4, !dbg !15
+  %141 = add i32 %140, %137, !dbg !16
+  %142 = sext i32 %137 to i64, !dbg !17
+  %143 = sext i32 %140 to i64, !dbg !18
+  %144 = add nsw i64 %142, -2147483647, !dbg !19
+  %145 = add nsw i64 %144, %143, !dbg !20
+  %146 = icmp ult i64 %145, -4294967295, !dbg !20
+  br i1 %146, label %147, label %149, !dbg !21
 
-148:                                              ; preds = %.critedge9
-  %149 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %149, ptr nonnull @printfFormat_16)
+147:                                              ; preds = %.critedge9
+  %148 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %148, ptr nonnull @printfFormat_16)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-150:                                              ; preds = %.critedge9
-  br i1 %.not5, label %151, label %298, !dbg !15
+149:                                              ; preds = %.critedge9
+  br i1 %.not5, label %150, label %297, !dbg !15
 
-151:                                              ; preds = %298, %150
-  %152 = phi i32 [ %98, %150 ], [ %299, %298 ], !dbg !15
-  %153 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %152), !dbg !15
-  br i1 %.not4, label %154, label %290, !dbg !15
+150:                                              ; preds = %297, %149
+  %151 = phi i32 [ %97, %149 ], [ %298, %297 ], !dbg !15
+  %152 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %151), !dbg !15
+  br i1 %.not4, label %153, label %289, !dbg !15
 
-154:                                              ; preds = %290, %151
-  %155 = phi i32 [ %29, %151 ], [ %292, %290 ], !dbg !15
-  %156 = or disjoint i32 %41, 32, !dbg !15
-  %157 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %156, !dbg !15
-  %158 = load i32, ptr addrspace(3) %157, align 4, !dbg !15
-  %159 = or disjoint i32 %41, 48, !dbg !15
-  %160 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %159, !dbg !15
-  %161 = load i32, ptr addrspace(3) %160, align 4, !dbg !15
-  %162 = add i32 %161, %158, !dbg !16
-  %163 = sext i32 %158 to i64, !dbg !17
-  %164 = sext i32 %161 to i64, !dbg !18
-  %165 = add nsw i64 %163, -2147483647, !dbg !19
-  %166 = add nsw i64 %165, %164, !dbg !20
-  %167 = icmp ult i64 %166, -4294967295, !dbg !20
-  br i1 %167, label %168, label %170, !dbg !21
+153:                                              ; preds = %289, %150
+  %154 = phi i32 [ %28, %150 ], [ %291, %289 ], !dbg !15
+  %155 = or disjoint i32 %40, 32, !dbg !15
+  %156 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %155, !dbg !15
+  %157 = load i32, ptr addrspace(3) %156, align 4, !dbg !15
+  %158 = or disjoint i32 %40, 48, !dbg !15
+  %159 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %158, !dbg !15
+  %160 = load i32, ptr addrspace(3) %159, align 4, !dbg !15
+  %161 = add i32 %160, %157, !dbg !16
+  %162 = sext i32 %157 to i64, !dbg !17
+  %163 = sext i32 %160 to i64, !dbg !18
+  %164 = add nsw i64 %162, -2147483647, !dbg !19
+  %165 = add nsw i64 %164, %163, !dbg !20
+  %166 = icmp ult i64 %165, -4294967295, !dbg !20
+  br i1 %166, label %167, label %169, !dbg !21
 
-168:                                              ; preds = %154
-  %169 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %169, ptr nonnull @printfFormat_19)
+167:                                              ; preds = %153
+  %168 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %168, ptr nonnull @printfFormat_19)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-170:                                              ; preds = %154
-  br i1 %.not5, label %171, label %282, !dbg !15
+169:                                              ; preds = %153
+  br i1 %.not5, label %170, label %281, !dbg !15
 
-171:                                              ; preds = %282, %170
-  %172 = phi i32 [ %107, %170 ], [ %283, %282 ], !dbg !15
-  %173 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %172), !dbg !15
-  br i1 %.not4, label %174, label %274, !dbg !15
+170:                                              ; preds = %281, %169
+  %171 = phi i32 [ %106, %169 ], [ %282, %281 ], !dbg !15
+  %172 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %171), !dbg !15
+  br i1 %.not4, label %173, label %273, !dbg !15
 
-174:                                              ; preds = %274, %171
-  %175 = phi i32 [ %31, %171 ], [ %276, %274 ], !dbg !15
-  %176 = or disjoint i32 %41, 64, !dbg !15
-  %177 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %176, !dbg !15
-  %178 = load i32, ptr addrspace(3) %177, align 4, !dbg !15
-  %179 = sext i32 %142 to i64, !dbg !17
-  %180 = sext i32 %178 to i64, !dbg !18
-  %181 = add nsw i64 %179, -2147483647, !dbg !19
-  %182 = add nsw i64 %181, %180, !dbg !20
-  %183 = icmp ult i64 %182, -4294967295, !dbg !20
-  br i1 %183, label %184, label %186, !dbg !21
+173:                                              ; preds = %273, %170
+  %174 = phi i32 [ %30, %170 ], [ %275, %273 ], !dbg !15
+  %175 = or disjoint i32 %40, 64, !dbg !15
+  %176 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %175, !dbg !15
+  %177 = load i32, ptr addrspace(3) %176, align 4, !dbg !15
+  %178 = sext i32 %141 to i64, !dbg !17
+  %179 = sext i32 %177 to i64, !dbg !18
+  %180 = add nsw i64 %178, -2147483647, !dbg !19
+  %181 = add nsw i64 %180, %179, !dbg !20
+  %182 = icmp ult i64 %181, -4294967295, !dbg !20
+  br i1 %182, label %183, label %185, !dbg !21
 
-184:                                              ; preds = %174
-  %185 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %185, ptr nonnull @printfFormat_22)
+183:                                              ; preds = %173
+  %184 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %184, ptr nonnull @printfFormat_22)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-186:                                              ; preds = %174
-  %187 = add i32 %178, %142, !dbg !16
-  %188 = select i1 %.not5, i32 %142, i32 %187, !dbg !15
-  %189 = or disjoint i32 %41, 80, !dbg !15
-  %190 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %189, !dbg !15
-  %191 = load i32, ptr addrspace(3) %190, align 4, !dbg !15
-  %192 = sext i32 %187 to i64, !dbg !17
-  %193 = sext i32 %191 to i64, !dbg !18
-  %194 = add nsw i64 %192, -2147483647, !dbg !19
-  %195 = add nsw i64 %194, %193, !dbg !20
-  %196 = icmp ult i64 %195, -4294967295, !dbg !20
-  br i1 %196, label %197, label %199, !dbg !21
+185:                                              ; preds = %173
+  %186 = add i32 %177, %141, !dbg !16
+  %187 = select i1 %.not5, i32 %141, i32 %186, !dbg !15
+  %188 = or disjoint i32 %40, 80, !dbg !15
+  %189 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %188, !dbg !15
+  %190 = load i32, ptr addrspace(3) %189, align 4, !dbg !15
+  %191 = sext i32 %186 to i64, !dbg !17
+  %192 = sext i32 %190 to i64, !dbg !18
+  %193 = add nsw i64 %191, -2147483647, !dbg !19
+  %194 = add nsw i64 %193, %192, !dbg !20
+  %195 = icmp ult i64 %194, -4294967295, !dbg !20
+  br i1 %195, label %196, label %198, !dbg !21
 
-197:                                              ; preds = %186
-  %198 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %198, ptr nonnull @printfFormat_23)
+196:                                              ; preds = %185
+  %197 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %197, ptr nonnull @printfFormat_23)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-199:                                              ; preds = %186
-  %200 = add i32 %188, %116, !dbg !16
-  %201 = sext i32 %188 to i64, !dbg !17
-  %202 = sext i32 %116 to i64, !dbg !18
-  %203 = add nsw i64 %202, -2147483647, !dbg !19
-  %204 = add nsw i64 %203, %201, !dbg !20
-  %205 = icmp ult i64 %204, -4294967295, !dbg !20
-  br i1 %205, label %206, label %208, !dbg !21
+198:                                              ; preds = %185
+  %199 = add i32 %187, %115, !dbg !16
+  %200 = sext i32 %187 to i64, !dbg !17
+  %201 = sext i32 %115 to i64, !dbg !18
+  %202 = add nsw i64 %201, -2147483647, !dbg !19
+  %203 = add nsw i64 %202, %200, !dbg !20
+  %204 = icmp ult i64 %203, -4294967295, !dbg !20
+  br i1 %204, label %205, label %207, !dbg !21
 
-206:                                              ; preds = %199
-  %207 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %207, ptr nonnull @printfFormat_24)
+205:                                              ; preds = %198
+  %206 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %206, ptr nonnull @printfFormat_24)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-208:                                              ; preds = %199
-  %209 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %200), !dbg !15
-  %210 = select i1 %.not, i32 %188, i32 %209, !dbg !15
-  %211 = sext i32 %210 to i64, !dbg !17
-  %212 = add nsw i64 %64, %211, !dbg !20
-  %213 = icmp ult i64 %212, -4294967295, !dbg !20
-  br i1 %213, label %214, label %216, !dbg !21
+207:                                              ; preds = %198
+  %208 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %199), !dbg !15
+  %209 = select i1 %.not, i32 %187, i32 %208, !dbg !15
+  %210 = sext i32 %209 to i64, !dbg !17
+  %211 = add nsw i64 %63, %210, !dbg !20
+  %212 = icmp ult i64 %211, -4294967295, !dbg !20
+  br i1 %212, label %213, label %215, !dbg !21
 
-214:                                              ; preds = %208
-  %215 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %215, ptr nonnull @printfFormat_25)
+213:                                              ; preds = %207
+  %214 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %214, ptr nonnull @printfFormat_25)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-216:                                              ; preds = %208
-  %217 = or disjoint i32 %41, 96, !dbg !15
-  %218 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %217, !dbg !15
-  %219 = load i32, ptr addrspace(3) %218, align 4, !dbg !15
-  %220 = sext i32 %162 to i64, !dbg !17
-  %221 = sext i32 %219 to i64, !dbg !18
-  %222 = add nsw i64 %220, -2147483647, !dbg !19
-  %223 = add nsw i64 %222, %221, !dbg !20
-  %224 = icmp ult i64 %223, -4294967295, !dbg !20
-  br i1 %224, label %225, label %227, !dbg !21
+215:                                              ; preds = %207
+  %216 = or disjoint i32 %40, 96, !dbg !15
+  %217 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %216, !dbg !15
+  %218 = load i32, ptr addrspace(3) %217, align 4, !dbg !15
+  %219 = sext i32 %161 to i64, !dbg !17
+  %220 = sext i32 %218 to i64, !dbg !18
+  %221 = add nsw i64 %219, -2147483647, !dbg !19
+  %222 = add nsw i64 %221, %220, !dbg !20
+  %223 = icmp ult i64 %222, -4294967295, !dbg !20
+  br i1 %223, label %224, label %226, !dbg !21
 
-225:                                              ; preds = %216
-  %226 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %226, ptr nonnull @printfFormat_26)
+224:                                              ; preds = %215
+  %225 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %225, ptr nonnull @printfFormat_26)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-227:                                              ; preds = %216
-  %228 = add i32 %219, %162, !dbg !16
-  %229 = select i1 %.not5, i32 %162, i32 %228, !dbg !15
-  %230 = or disjoint i32 %41, 112, !dbg !15
-  %231 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %230, !dbg !15
-  %232 = load i32, ptr addrspace(3) %231, align 4, !dbg !15
-  %233 = sext i32 %228 to i64, !dbg !17
-  %234 = sext i32 %232 to i64, !dbg !18
-  %235 = add nsw i64 %233, -2147483647, !dbg !19
-  %236 = add nsw i64 %235, %234, !dbg !20
-  %237 = icmp ult i64 %236, -4294967295, !dbg !20
-  br i1 %237, label %238, label %240, !dbg !21
+226:                                              ; preds = %215
+  %227 = add i32 %218, %161, !dbg !16
+  %228 = select i1 %.not5, i32 %161, i32 %227, !dbg !15
+  %229 = or disjoint i32 %40, 112, !dbg !15
+  %230 = getelementptr i32, ptr addrspace(3) @global_smem, i32 %229, !dbg !15
+  %231 = load i32, ptr addrspace(3) %230, align 4, !dbg !15
+  %232 = sext i32 %227 to i64, !dbg !17
+  %233 = sext i32 %231 to i64, !dbg !18
+  %234 = add nsw i64 %232, -2147483647, !dbg !19
+  %235 = add nsw i64 %234, %233, !dbg !20
+  %236 = icmp ult i64 %235, -4294967295, !dbg !20
+  br i1 %236, label %237, label %239, !dbg !21
 
-238:                                              ; preds = %227
-  %239 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %239, ptr nonnull @printfFormat_27)
+237:                                              ; preds = %226
+  %238 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %238, ptr nonnull @printfFormat_27)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-240:                                              ; preds = %227
-  %241 = add i32 %229, %125, !dbg !16
-  %242 = sext i32 %229 to i64, !dbg !17
-  %243 = sext i32 %125 to i64, !dbg !18
-  %244 = add nsw i64 %243, -2147483647, !dbg !19
-  %245 = add nsw i64 %244, %242, !dbg !20
-  %246 = icmp ult i64 %245, -4294967295, !dbg !20
-  br i1 %246, label %247, label %249, !dbg !21
+239:                                              ; preds = %226
+  %240 = add i32 %228, %124, !dbg !16
+  %241 = sext i32 %228 to i64, !dbg !17
+  %242 = sext i32 %124 to i64, !dbg !18
+  %243 = add nsw i64 %242, -2147483647, !dbg !19
+  %244 = add nsw i64 %243, %241, !dbg !20
+  %245 = icmp ult i64 %244, -4294967295, !dbg !20
+  br i1 %245, label %246, label %248, !dbg !21
 
-247:                                              ; preds = %240
-  %248 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %248, ptr nonnull @printfFormat_28)
+246:                                              ; preds = %239
+  %247 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %247, ptr nonnull @printfFormat_28)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-249:                                              ; preds = %240
-  %250 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %80, i32 %241), !dbg !15
-  %251 = select i1 %.not, i32 %229, i32 %250, !dbg !15
-  %252 = sext i32 %251 to i64, !dbg !17
-  %253 = add nsw i64 %73, %252, !dbg !20
-  %254 = icmp ult i64 %253, -4294967295, !dbg !20
-  br i1 %254, label %255, label %257, !dbg !21
+248:                                              ; preds = %239
+  %249 = tail call i32 @llvm.amdgcn.ds.bpermute(i32 %79, i32 %240), !dbg !15
+  %250 = select i1 %.not, i32 %228, i32 %249, !dbg !15
+  %251 = sext i32 %250 to i64, !dbg !17
+  %252 = add nsw i64 %72, %251, !dbg !20
+  %253 = icmp ult i64 %252, -4294967295, !dbg !20
+  br i1 %253, label %254, label %256, !dbg !21
 
-255:                                              ; preds = %249
-  %256 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %256, ptr nonnull @printfFormat_29)
+254:                                              ; preds = %248
+  %255 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %255, ptr nonnull @printfFormat_29)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-257:                                              ; preds = %249
-  %258 = add i32 %251, %34, !dbg !16
-  %259 = add i32 %210, %32, !dbg !16
-  %260 = getelementptr i32, ptr addrspace(1) %1, i64 %14, !dbg !22
-  %261 = getelementptr i32, ptr addrspace(1) %1, i64 %16, !dbg !22
-  %262 = getelementptr i32, ptr addrspace(1) %260, i64 %23, !dbg !23
-  %263 = getelementptr i32, ptr addrspace(1) %261, i64 %23, !dbg !23
-  %264 = getelementptr i32, ptr addrspace(1) %260, i64 %26, !dbg !23
-  %265 = getelementptr i32, ptr addrspace(1) %261, i64 %26, !dbg !23
-  %266 = insertelement <2 x i32> poison, i32 %155, i64 0, !dbg !24
-  %267 = insertelement <2 x i32> %266, i32 %152, i64 1, !dbg !24
-  store <2 x i32> %267, ptr addrspace(1) %262, align 16, !dbg !24
-  %268 = insertelement <2 x i32> poison, i32 %175, i64 0, !dbg !24
-  %269 = insertelement <2 x i32> %268, i32 %172, i64 1, !dbg !24
-  store <2 x i32> %269, ptr addrspace(1) %263, align 16, !dbg !24
-  %270 = insertelement <2 x i32> poison, i32 %259, i64 0, !dbg !24
-  %271 = insertelement <2 x i32> %270, i32 %200, i64 1, !dbg !24
-  store <2 x i32> %271, ptr addrspace(1) %264, align 16, !dbg !24
-  %272 = insertelement <2 x i32> poison, i32 %258, i64 0, !dbg !24
-  %273 = insertelement <2 x i32> %272, i32 %241, i64 1, !dbg !24
-  store <2 x i32> %273, ptr addrspace(1) %265, align 16, !dbg !24
+256:                                              ; preds = %248
+  %257 = add i32 %250, %33, !dbg !16
+  %258 = add i32 %209, %31, !dbg !16
+  %259 = getelementptr i32, ptr addrspace(1) %1, i64 %13, !dbg !22
+  %260 = getelementptr i32, ptr addrspace(1) %1, i64 %15, !dbg !22
+  %261 = getelementptr i32, ptr addrspace(1) %259, i64 %22, !dbg !23
+  %262 = getelementptr i32, ptr addrspace(1) %260, i64 %22, !dbg !23
+  %263 = getelementptr i32, ptr addrspace(1) %259, i64 %25, !dbg !23
+  %264 = getelementptr i32, ptr addrspace(1) %260, i64 %25, !dbg !23
+  %265 = insertelement <2 x i32> poison, i32 %154, i64 0, !dbg !24
+  %266 = insertelement <2 x i32> %265, i32 %151, i64 1, !dbg !24
+  store <2 x i32> %266, ptr addrspace(1) %261, align 16, !dbg !24
+  %267 = insertelement <2 x i32> poison, i32 %174, i64 0, !dbg !24
+  %268 = insertelement <2 x i32> %267, i32 %171, i64 1, !dbg !24
+  store <2 x i32> %268, ptr addrspace(1) %262, align 16, !dbg !24
+  %269 = insertelement <2 x i32> poison, i32 %258, i64 0, !dbg !24
+  %270 = insertelement <2 x i32> %269, i32 %199, i64 1, !dbg !24
+  store <2 x i32> %270, ptr addrspace(1) %263, align 16, !dbg !24
+  %271 = insertelement <2 x i32> poison, i32 %257, i64 0, !dbg !24
+  %272 = insertelement <2 x i32> %271, i32 %240, i64 1, !dbg !24
+  store <2 x i32> %272, ptr addrspace(1) %264, align 16, !dbg !24
   ret void, !dbg !25
 
-274:                                              ; preds = %171
-  %275 = select i1 %.not, i32 %158, i32 %173, !dbg !15
-  %276 = add i32 %275, %31, !dbg !16
-  %277 = sext i32 %275 to i64, !dbg !17
-  %278 = add nsw i64 %55, %277, !dbg !20
-  %279 = icmp ult i64 %278, -4294967295, !dbg !20
-  br i1 %279, label %280, label %174, !dbg !21
+273:                                              ; preds = %170
+  %274 = select i1 %.not, i32 %157, i32 %172, !dbg !15
+  %275 = add i32 %274, %30, !dbg !16
+  %276 = sext i32 %274 to i64, !dbg !17
+  %277 = add nsw i64 %54, %276, !dbg !20
+  %278 = icmp ult i64 %277, -4294967295, !dbg !20
+  br i1 %278, label %279, label %173, !dbg !21
 
-280:                                              ; preds = %274
-  %281 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %281, ptr nonnull @printfFormat_21)
+279:                                              ; preds = %273
+  %280 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %280, ptr nonnull @printfFormat_21)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-282:                                              ; preds = %170
-  %283 = add i32 %158, %107, !dbg !16
-  %284 = sext i32 %107 to i64, !dbg !18
-  %285 = add nsw i64 %284, -2147483647, !dbg !19
-  %286 = add nsw i64 %285, %163, !dbg !20
-  %287 = icmp ult i64 %286, -4294967295, !dbg !20
-  br i1 %287, label %288, label %171, !dbg !21
+281:                                              ; preds = %169
+  %282 = add i32 %157, %106, !dbg !16
+  %283 = sext i32 %106 to i64, !dbg !18
+  %284 = add nsw i64 %283, -2147483647, !dbg !19
+  %285 = add nsw i64 %284, %162, !dbg !20
+  %286 = icmp ult i64 %285, -4294967295, !dbg !20
+  br i1 %286, label %287, label %170, !dbg !21
 
-288:                                              ; preds = %282
-  %289 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %289, ptr nonnull @printfFormat_20)
+287:                                              ; preds = %281
+  %288 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %288, ptr nonnull @printfFormat_20)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-290:                                              ; preds = %151
-  %291 = select i1 %.not, i32 %138, i32 %153, !dbg !15
-  %292 = add i32 %291, %29, !dbg !16
-  %293 = sext i32 %291 to i64, !dbg !17
-  %294 = add nsw i64 %45, %293, !dbg !20
-  %295 = icmp ult i64 %294, -4294967295, !dbg !20
-  br i1 %295, label %296, label %154, !dbg !21
+289:                                              ; preds = %150
+  %290 = select i1 %.not, i32 %137, i32 %152, !dbg !15
+  %291 = add i32 %290, %28, !dbg !16
+  %292 = sext i32 %290 to i64, !dbg !17
+  %293 = add nsw i64 %44, %292, !dbg !20
+  %294 = icmp ult i64 %293, -4294967295, !dbg !20
+  br i1 %294, label %295, label %153, !dbg !21
 
-296:                                              ; preds = %290
-  %297 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %297, ptr nonnull @printfFormat_18)
+295:                                              ; preds = %289
+  %296 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %296, ptr nonnull @printfFormat_18)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-298:                                              ; preds = %150
-  %299 = add i32 %138, %98, !dbg !16
-  %300 = sext i32 %98 to i64, !dbg !18
-  %301 = add nsw i64 %300, -2147483647, !dbg !19
-  %302 = add nsw i64 %301, %143, !dbg !20
-  %303 = icmp ult i64 %302, -4294967295, !dbg !20
-  br i1 %303, label %304, label %151, !dbg !21
+297:                                              ; preds = %149
+  %298 = add i32 %137, %97, !dbg !16
+  %299 = sext i32 %97 to i64, !dbg !18
+  %300 = add nsw i64 %299, -2147483647, !dbg !19
+  %301 = add nsw i64 %300, %142, !dbg !20
+  %302 = icmp ult i64 %301, -4294967295, !dbg !20
+  br i1 %302, label %303, label %150, !dbg !21
 
-304:                                              ; preds = %298
-  %305 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %305, ptr nonnull @printfFormat_17)
+303:                                              ; preds = %297
+  %304 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %304, ptr nonnull @printfFormat_17)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-306:                                              ; preds = %121
-  %307 = add i32 %123, %122, !dbg !16
-  %308 = sext i32 %123 to i64, !dbg !17
-  %309 = sext i32 %122 to i64, !dbg !18
-  %310 = add nsw i64 %309, -2147483647, !dbg !19
-  %311 = add nsw i64 %310, %308, !dbg !20
-  %312 = icmp ult i64 %311, -4294967295, !dbg !20
-  br i1 %312, label %313, label %124, !dbg !21
+305:                                              ; preds = %120
+  %306 = add i32 %122, %121, !dbg !16
+  %307 = sext i32 %122 to i64, !dbg !17
+  %308 = sext i32 %121 to i64, !dbg !18
+  %309 = add nsw i64 %308, -2147483647, !dbg !19
+  %310 = add nsw i64 %309, %307, !dbg !20
+  %311 = icmp ult i64 %310, -4294967295, !dbg !20
+  br i1 %311, label %312, label %123, !dbg !21
 
-313:                                              ; preds = %306
-  %314 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %314, ptr nonnull @printfFormat_15)
+312:                                              ; preds = %305
+  %313 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %313, ptr nonnull @printfFormat_15)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-315:                                              ; preds = %118
-  %316 = add i32 %120, %119, !dbg !16
-  %317 = sext i32 %120 to i64, !dbg !17
-  %318 = sext i32 %119 to i64, !dbg !18
-  %319 = add nsw i64 %318, -2147483647, !dbg !19
-  %320 = add nsw i64 %319, %317, !dbg !20
-  %321 = icmp ult i64 %320, -4294967295, !dbg !20
-  br i1 %321, label %322, label %121, !dbg !21
+314:                                              ; preds = %117
+  %315 = add i32 %119, %118, !dbg !16
+  %316 = sext i32 %119 to i64, !dbg !17
+  %317 = sext i32 %118 to i64, !dbg !18
+  %318 = add nsw i64 %317, -2147483647, !dbg !19
+  %319 = add nsw i64 %318, %316, !dbg !20
+  %320 = icmp ult i64 %319, -4294967295, !dbg !20
+  br i1 %320, label %321, label %120, !dbg !21
 
-322:                                              ; preds = %315
-  %323 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %323, ptr nonnull @printfFormat_14)
+321:                                              ; preds = %314
+  %322 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %322, ptr nonnull @printfFormat_14)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-324:                                              ; preds = %115
-  %325 = add i32 %117, %70, !dbg !16
-  %326 = sext i32 %117 to i64, !dbg !17
-  %327 = sext i32 %70 to i64, !dbg !18
-  %328 = add nsw i64 %327, -2147483647, !dbg !19
-  %329 = add nsw i64 %328, %326, !dbg !20
-  %330 = icmp ult i64 %329, -4294967295, !dbg !20
-  br i1 %330, label %331, label %118, !dbg !21
+323:                                              ; preds = %114
+  %324 = add i32 %116, %69, !dbg !16
+  %325 = sext i32 %116 to i64, !dbg !17
+  %326 = sext i32 %69 to i64, !dbg !18
+  %327 = add nsw i64 %326, -2147483647, !dbg !19
+  %328 = add nsw i64 %327, %325, !dbg !20
+  %329 = icmp ult i64 %328, -4294967295, !dbg !20
+  br i1 %329, label %330, label %117, !dbg !21
 
-331:                                              ; preds = %324
-  %332 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %332, ptr nonnull @printfFormat_13)
+330:                                              ; preds = %323
+  %331 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %331, ptr nonnull @printfFormat_13)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-333:                                              ; preds = %112
-  %334 = add i32 %114, %113, !dbg !16
-  %335 = sext i32 %114 to i64, !dbg !17
-  %336 = sext i32 %113 to i64, !dbg !18
-  %337 = add nsw i64 %336, -2147483647, !dbg !19
-  %338 = add nsw i64 %337, %335, !dbg !20
-  %339 = icmp ult i64 %338, -4294967295, !dbg !20
-  br i1 %339, label %340, label %115, !dbg !21
+332:                                              ; preds = %111
+  %333 = add i32 %113, %112, !dbg !16
+  %334 = sext i32 %113 to i64, !dbg !17
+  %335 = sext i32 %112 to i64, !dbg !18
+  %336 = add nsw i64 %335, -2147483647, !dbg !19
+  %337 = add nsw i64 %336, %334, !dbg !20
+  %338 = icmp ult i64 %337, -4294967295, !dbg !20
+  br i1 %338, label %339, label %114, !dbg !21
 
-340:                                              ; preds = %333
-  %341 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %341, ptr nonnull @printfFormat_12)
+339:                                              ; preds = %332
+  %340 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %340, ptr nonnull @printfFormat_12)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-342:                                              ; preds = %109
-  %343 = add i32 %111, %110, !dbg !16
-  %344 = sext i32 %111 to i64, !dbg !17
-  %345 = sext i32 %110 to i64, !dbg !18
-  %346 = add nsw i64 %345, -2147483647, !dbg !19
-  %347 = add nsw i64 %346, %344, !dbg !20
-  %348 = icmp ult i64 %347, -4294967295, !dbg !20
-  br i1 %348, label %349, label %112, !dbg !21
+341:                                              ; preds = %108
+  %342 = add i32 %110, %109, !dbg !16
+  %343 = sext i32 %110 to i64, !dbg !17
+  %344 = sext i32 %109 to i64, !dbg !18
+  %345 = add nsw i64 %344, -2147483647, !dbg !19
+  %346 = add nsw i64 %345, %343, !dbg !20
+  %347 = icmp ult i64 %346, -4294967295, !dbg !20
+  br i1 %347, label %348, label %111, !dbg !21
 
-349:                                              ; preds = %342
-  %350 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %350, ptr nonnull @printfFormat_11)
+348:                                              ; preds = %341
+  %349 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %349, ptr nonnull @printfFormat_11)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-351:                                              ; preds = %106
-  %352 = add i32 %108, %61, !dbg !16
-  %353 = sext i32 %108 to i64, !dbg !17
-  %354 = sext i32 %61 to i64, !dbg !18
-  %355 = add nsw i64 %354, -2147483647, !dbg !19
-  %356 = add nsw i64 %355, %353, !dbg !20
-  %357 = icmp ult i64 %356, -4294967295, !dbg !20
-  br i1 %357, label %358, label %109, !dbg !21
+350:                                              ; preds = %105
+  %351 = add i32 %107, %60, !dbg !16
+  %352 = sext i32 %107 to i64, !dbg !17
+  %353 = sext i32 %60 to i64, !dbg !18
+  %354 = add nsw i64 %353, -2147483647, !dbg !19
+  %355 = add nsw i64 %354, %352, !dbg !20
+  %356 = icmp ult i64 %355, -4294967295, !dbg !20
+  br i1 %356, label %357, label %108, !dbg !21
 
-358:                                              ; preds = %351
-  %359 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %359, ptr nonnull @printfFormat_10)
+357:                                              ; preds = %350
+  %358 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %358, ptr nonnull @printfFormat_10)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-360:                                              ; preds = %103
-  %361 = add i32 %105, %104, !dbg !16
-  %362 = sext i32 %105 to i64, !dbg !17
-  %363 = sext i32 %104 to i64, !dbg !18
-  %364 = add nsw i64 %363, -2147483647, !dbg !19
-  %365 = add nsw i64 %364, %362, !dbg !20
-  %366 = icmp ult i64 %365, -4294967295, !dbg !20
-  br i1 %366, label %367, label %106, !dbg !21
+359:                                              ; preds = %102
+  %360 = add i32 %104, %103, !dbg !16
+  %361 = sext i32 %104 to i64, !dbg !17
+  %362 = sext i32 %103 to i64, !dbg !18
+  %363 = add nsw i64 %362, -2147483647, !dbg !19
+  %364 = add nsw i64 %363, %361, !dbg !20
+  %365 = icmp ult i64 %364, -4294967295, !dbg !20
+  br i1 %365, label %366, label %105, !dbg !21
 
-367:                                              ; preds = %360
-  %368 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %368, ptr nonnull @printfFormat_9)
+366:                                              ; preds = %359
+  %367 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %367, ptr nonnull @printfFormat_9)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-369:                                              ; preds = %100
-  %370 = add i32 %102, %101, !dbg !16
-  %371 = sext i32 %102 to i64, !dbg !17
-  %372 = sext i32 %101 to i64, !dbg !18
-  %373 = add nsw i64 %372, -2147483647, !dbg !19
-  %374 = add nsw i64 %373, %371, !dbg !20
-  %375 = icmp ult i64 %374, -4294967295, !dbg !20
-  br i1 %375, label %376, label %103, !dbg !21
+368:                                              ; preds = %99
+  %369 = add i32 %101, %100, !dbg !16
+  %370 = sext i32 %101 to i64, !dbg !17
+  %371 = sext i32 %100 to i64, !dbg !18
+  %372 = add nsw i64 %371, -2147483647, !dbg !19
+  %373 = add nsw i64 %372, %370, !dbg !20
+  %374 = icmp ult i64 %373, -4294967295, !dbg !20
+  br i1 %374, label %375, label %102, !dbg !21
 
-376:                                              ; preds = %369
-  %377 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %377, ptr nonnull @printfFormat_8)
+375:                                              ; preds = %368
+  %376 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %376, ptr nonnull @printfFormat_8)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-378:                                              ; preds = %97
-  %379 = add i32 %99, %52, !dbg !16
-  %380 = sext i32 %99 to i64, !dbg !17
-  %381 = sext i32 %52 to i64, !dbg !18
-  %382 = add nsw i64 %381, -2147483647, !dbg !19
-  %383 = add nsw i64 %382, %380, !dbg !20
-  %384 = icmp ult i64 %383, -4294967295, !dbg !20
-  br i1 %384, label %385, label %100, !dbg !21
+377:                                              ; preds = %96
+  %378 = add i32 %98, %51, !dbg !16
+  %379 = sext i32 %98 to i64, !dbg !17
+  %380 = sext i32 %51 to i64, !dbg !18
+  %381 = add nsw i64 %380, -2147483647, !dbg !19
+  %382 = add nsw i64 %381, %379, !dbg !20
+  %383 = icmp ult i64 %382, -4294967295, !dbg !20
+  br i1 %383, label %384, label %99, !dbg !21
 
-385:                                              ; preds = %378
-  %386 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %386, ptr nonnull @printfFormat_7)
+384:                                              ; preds = %377
+  %385 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %385, ptr nonnull @printfFormat_7)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-387:                                              ; preds = %90
-  %388 = add i32 %95, %91, !dbg !16
-  %389 = sext i32 %95 to i64, !dbg !17
-  %390 = sext i32 %91 to i64, !dbg !18
-  %391 = add nsw i64 %390, -2147483647, !dbg !19
-  %392 = add nsw i64 %391, %389, !dbg !20
-  %393 = icmp ult i64 %392, -4294967295, !dbg !20
-  br i1 %393, label %394, label %97, !dbg !21
+386:                                              ; preds = %89
+  %387 = add i32 %94, %90, !dbg !16
+  %388 = sext i32 %94 to i64, !dbg !17
+  %389 = sext i32 %90 to i64, !dbg !18
+  %390 = add nsw i64 %389, -2147483647, !dbg !19
+  %391 = add nsw i64 %390, %388, !dbg !20
+  %392 = icmp ult i64 %391, -4294967295, !dbg !20
+  br i1 %392, label %393, label %96, !dbg !21
 
-394:                                              ; preds = %387
-  %395 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %395, ptr nonnull @printfFormat_6)
+393:                                              ; preds = %386
+  %394 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %394, ptr nonnull @printfFormat_6)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-396:                                              ; preds = %82
-  %397 = add i32 %88, %83, !dbg !16
-  %398 = sext i32 %88 to i64, !dbg !17
-  %399 = sext i32 %83 to i64, !dbg !18
-  %400 = add nsw i64 %399, -2147483647, !dbg !19
-  %401 = add nsw i64 %400, %398, !dbg !20
-  %402 = icmp ult i64 %401, -4294967295, !dbg !20
-  br i1 %402, label %403, label %90, !dbg !21
+395:                                              ; preds = %81
+  %396 = add i32 %87, %82, !dbg !16
+  %397 = sext i32 %87 to i64, !dbg !17
+  %398 = sext i32 %82 to i64, !dbg !18
+  %399 = add nsw i64 %398, -2147483647, !dbg !19
+  %400 = add nsw i64 %399, %397, !dbg !20
+  %401 = icmp ult i64 %400, -4294967295, !dbg !20
+  br i1 %401, label %402, label %89, !dbg !21
 
-403:                                              ; preds = %396
-  %404 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %404, ptr nonnull @printfFormat_5)
+402:                                              ; preds = %395
+  %403 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %403, ptr nonnull @printfFormat_5)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
   tail call void @llvm.trap(), !dbg !21
   unreachable, !dbg !21
 
-405:                                              ; preds = %78
-  %406 = add i32 %81, %42, !dbg !16
-  %407 = sext i32 %81 to i64, !dbg !17
-  %408 = sext i32 %42 to i64, !dbg !18
-  %409 = add nsw i64 %408, -2147483647, !dbg !19
-  %410 = add nsw i64 %409, %407, !dbg !20
-  %411 = icmp ult i64 %410, -4294967295, !dbg !20
-  br i1 %411, label %412, label %82, !dbg !21
+404:                                              ; preds = %77
+  %405 = add i32 %80, %41, !dbg !16
+  %406 = sext i32 %80 to i64, !dbg !17
+  %407 = sext i32 %41 to i64, !dbg !18
+  %408 = add nsw i64 %407, -2147483647, !dbg !19
+  %409 = add nsw i64 %408, %406, !dbg !20
+  %410 = icmp ult i64 %409, -4294967295, !dbg !20
+  br i1 %410, label %411, label %81, !dbg !21
 
-412:                                              ; preds = %405
-  %413 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
-  tail call fastcc void @__ockl_printf_append_string_n(i64 %413, ptr nonnull @printfFormat_4)
+411:                                              ; preds = %404
+  %412 = tail call fastcc i64 @__ockl_fprintf_stderr_begin()
+  tail call fastcc void @__ockl_printf_append_string_n(i64 %412, ptr nonnull @printfFormat_4)
   fence syncscope("workgroup") release, !dbg !21
   tail call void @llvm.amdgcn.s.barrier(), !dbg !21
   fence syncscope("workgroup") acquire, !dbg !21
@@ -2441,7 +2441,7 @@ attributes #10 = { convergent nounwind }
 !2 = !{i32 1, !"wchar_size", i32 4}
 !3 = !{i32 8, !"PIC Level", i32 0}
 !4 = distinct !DICompileUnit(language: DW_LANG_C, file: !5, producer: "triton", isOptimized: true, runtimeVersion: 0, emissionKind: LineTablesOnly)
-!5 = !DIFile(filename: "test_scan_layouts.ttgir", directory: "/tmp/pytest-of-root/pytest-287/test_scan_layouts_True_1_src_l0")
+!5 = !DIFile(filename: "test_scan_layouts.ttgir", directory: "/tmp/pytest-of-root/pytest-293/test_scan_layouts_True_1_src_l0")
 !6 = distinct !DISubprogram(name: "kernel_0d1d", linkageName: "kernel_0d1d", scope: !5, file: !5, line: 4, type: !7, scopeLine: 4, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !4)
 !7 = !DISubroutineType(cc: DW_CC_normal, types: !8)
 !8 = !{}
