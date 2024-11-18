@@ -392,6 +392,9 @@ struct ConvertLayoutOpUsingLinearLayoutsConversion
             return true;
           }
         }
+        if (isa<AMDMfmaEncodingAttr>(dotOperand.getParent())) {
+          return true;
+        }
         return false;
       }
       if (isa<BlockedEncodingAttr>(layout)) {
