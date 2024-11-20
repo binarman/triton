@@ -97,10 +97,10 @@ warpsPerTileWMMA(Operation *dotOp, ArrayRef<int64_t> shape, int numWarps) {
 // Chooses a proper MFMA instruction that can used to compute the given dot op.
 // If enforcedNonKDim is not zero, it will be used to overwrite the default
 // logic to chose a MFMA with matching M/N dim.
-std::optional<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
-                                              Type aElemType, Type bElemType,
-                                              int inputKSize, int mfmaVersion,
-                                              int enforcedNonKDim) {
+FailureOr<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
+                                          Type aElemType, Type bElemType,
+                                          int inputKSize, int mfmaVersion,
+                                          int enforcedNonKDim) {
   // number of matrix elements along k dim per one MFMA intruction
   unsigned kDim = 0;
 
@@ -144,7 +144,7 @@ std::optional<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
         mDim = 64;
         nDim = 4;
       } else {
-        return std::nullopt;
+        return failure();
       }
     }
   }
@@ -154,7 +154,7 @@ std::optional<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
   auto maybeMfmaInsn =
       MfmaInsn::selectMfma(mDim, nDim, aElemType, bElemType, mfmaVersion);
   if (failed(maybeMfmaInsn))
-    return std::nullopt;
+    return failure();
 
   kDim = maybeMfmaInsn->getKDim();
 
@@ -164,8 +164,8 @@ std::optional<MfmaInsn> chooseMfmaInstruction(RankedTensorType cType,
   return maybeMfmaInsn;
 }
 
-std::optional<MfmaInsn> chooseMfmaInstruction(tt::DotOp dot, int mfmaVersion,
-                                              int nonKDim) {
+FailureOr<MfmaInsn> chooseMfmaInstruction(tt::DotOp dot, int mfmaVersion,
+                                          int nonKDim) {
   RankedTensorType aType = dot.getA().getType();
   return chooseMfmaInstruction(dot.getC().getType(), aType.getElementType(),
                                dot.getB().getType().getElementType(),
@@ -403,7 +403,7 @@ public:
     ttg::AMDMfmaEncodingAttr mfmaEnc;
 
     auto mfmaInstrRes = chooseMfmaInstruction(dotOp, mfmaVersion, nonKDim);
-    if (!mfmaInstrRes.has_value())
+    if (failed(mfmaInstrRes))
       return failure();
 
     auto mfmaInstr = mfmaInstrRes.value();
@@ -551,7 +551,8 @@ public:
     unsigned mDim = mfmaInstr.value().getMDim();
     unsigned nDim = mfmaInstr.value().getNDim();
     unsigned kDim = mfmaInstr.value().getKDim();
-    unsigned kBase = mfmaInstr.value().getKBase();
+    unsigned kBaseA = mfmaInstr.value().getKBaseA();
+    unsigned kBaseB = mfmaInstr.value().getKBaseB();
 
     // For mxfp4 A/B tensor, we pack every two values into one int8 value there.
     // For such cases, we have different initial kWidth for LHS and RHS, which
@@ -562,8 +563,8 @@ public:
     bool isAPacked = aElemType == ScaleDotElemType::E2M1;
     bool isBPacked = bElemType == ScaleDotElemType::E2M1;
     bool isPacked = isAPacked || isBPacked;
-    unsigned kWdiths[] = {isPacked ? (isAPacked ? 4 : 8) : kBase * kPack,
-                          isPacked ? (isAPacked ? 8 : 4) : kBase * kPack};
+    unsigned kWdiths[] = {isPacked ? (isAPacked ? 4 : 8) : kBaseA * kPack,
+                          isPacked ? (isAPacked ? 8 : 4) : kBaseB * kPack};
 
     // For A/B tensor, 32 consecutive elements along K dim share the same scale.
     // We'd like to keep the scale values together with the base values in the

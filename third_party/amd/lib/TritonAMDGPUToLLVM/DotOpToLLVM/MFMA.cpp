@@ -358,7 +358,7 @@ struct DotOpMFMAConversionHelper {
 
     Type elemtTy = elemTyA;
     const size_t mmaCount =
-        numRepB * numRepM * numRepN * numRepK * kWidth / kBase;
+        numRepB * numRepM * numRepN * numRepK * kWidthA / kBaseA;
     setNumGeneratedMMAs(op, mmaCount, maybeMfmaInsn->getMDim(),
                         maybeMfmaInsn->getNDim(), maybeMfmaInsn->getKDim(),
                         elemtTy);
