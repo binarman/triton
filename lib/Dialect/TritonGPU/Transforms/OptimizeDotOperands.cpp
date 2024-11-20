@@ -163,6 +163,9 @@ public:
     if (!cvtEncoding)
       return failure();
 
+    if (isa<AMDMfmaEncodingAttr>(cvtEncoding.getParent()))
+      return failure();
+
     // TODO(Qingyi): need to check whether the CTALayout of innerCvtEnc should
     // be used here. For tests where numCTAs = 1, this is not a problem since
     // all CTALayouts are the same.
