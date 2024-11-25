@@ -38,53 +38,36 @@ int getWmmaVersion(StringRef archGen) {
   return 0;
 }
 
-SmallVector<unsigned, 3>
-warpsPerTile(Operation *dotOp, ArrayRef<int64_t> shape, int numWarps,
-             std::pair<int64_t, int64_t> shapePerWarp) {
+SmallVector<unsigned, 3> warpsPerTile(Operation *dotOp, ArrayRef<int64_t> shape,
+                                      int numWarps,
+                                      ArrayRef<int64_t> shapePerWarp) {
   auto rank = shape.size();
   // Early exit for batched matmul
   if (rank == 3)
     return {(unsigned)numWarps, 1, 1};
 
-  auto filter = [dotOp](Operation *op) {
-    return op->getParentRegion() == dotOp->getParentRegion();
-  };
-  ForwardSliceOptions fwdOpt;
-  fwdOpt.filter = filter;
-  BackwardSliceOptions bwdOpt;
-  bwdOpt.omitBlockArguments = true;
-  bwdOpt.filter = filter;
-  auto slices = getSlice(dotOp, bwdOpt, fwdOpt);
-  for (Operation *op : slices)
-    if (op->hasTrait<OpTrait::DotLike>() && (op != dotOp))
-      return {(unsigned)numWarps, 1};
-
-  SmallVector<int64_t, 2> tensorShape = {shape[0], shape[1]};
-  SmallVector<unsigned, 3> ret = {1, 1};
-  do {
-    if (ret[0] * ret[1] >= numWarps)
-      break;
-    if (tensorShape[0] / (shapePerWarp.first * 2) / ret[0] >=
-        tensorShape[1] / shapePerWarp.second / ret[1]) {
-      if (ret[0] < tensorShape[0] / shapePerWarp.first) {
-        ret[0] *= 2;
-      } else
-        ret[1] *= 2;
+  assert(rank == 2);
+  SmallVector<unsigned, 3> warps = {static_cast<unsigned>(numWarps), 1};
+  // try to balance A and B operand per warp sizes
+  // TODO: detect memory bound workload?
+  while (warps[0] > 1) {
+    auto opAPerWarp =
+        ceil(static_cast<unsigned>(shape[0]), warps[0]) * shapePerWarp[0];
+    auto opBPerWarp =
+        ceil(static_cast<unsigned>(shape[1]), warps[1]) * shapePerWarp[1];
+    if (opAPerWarp > opBPerWarp) {
+      warps[0] /= 2;
+      warps[1] *= 2;
     } else {
-      ret[1] *= 2;
+      break;
     }
-  } while (true);
-
-  if (ret[1] * shapePerWarp.second > tensorShape[1]) {
-    return {ret[1], ret[0]};
   }
-
-  return ret;
+  return warps;
 }
 
-SmallVector<unsigned, 3>
-warpsPerTileMFMA(Operation *dotOp, ArrayRef<int64_t> shape, int numWarps,
-                 std::pair<int64_t, int64_t> shapePerWarp) {
+SmallVector<unsigned, 3> warpsPerTileMFMA(Operation *dotOp,
+                                          ArrayRef<int64_t> shape, int numWarps,
+                                          ArrayRef<int64_t> shapePerWarp) {
   return warpsPerTile(dotOp, shape, numWarps, shapePerWarp);
 }
 
