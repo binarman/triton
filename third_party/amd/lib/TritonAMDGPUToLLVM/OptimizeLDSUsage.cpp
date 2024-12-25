@@ -141,6 +141,8 @@ class OptimizeAMDLDSUsage
     unsigned minLDSUsage = 2 * LDSLimit;
     int minIdx = -1;
     for (int i = 0; i < tmpLayouts.size(); i++) {
+      if (!tmpLayouts[i])
+        continue;
       auto resources = mlir::triton::AMD::estimateResourcesForReplacement(
           builder, cvtOp, tmpLayouts[i]);
       // TODO analyze performance along with LDS consumption
