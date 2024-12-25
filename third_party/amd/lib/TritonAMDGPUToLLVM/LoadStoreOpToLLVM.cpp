@@ -147,6 +147,7 @@ struct LoadStoreConversionBase {
     if (!tensorTy)
       return 1;
     auto contiguity = getContiguity(ptr);
+    contiguity = 1;
     auto pointeeBitWidth = triton::getPointeeBitWidth(tensorTy);
     return std::min<unsigned>(128 / pointeeBitWidth, contiguity);
   }
