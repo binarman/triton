@@ -1067,7 +1067,7 @@ Row |
     }
     SmallVector<unsigned> getSizePerThreadForOperand(int kWidth, int opIdx) const;
     unsigned getTotalElemsPerThreadForOperand(ArrayRef<int64_t> shape, Type eltTy, int kWidth, int opIdx) const;
-    SmallVector<int64_t> getElemsPerInstrForOperands() const;
+    SmallVector<int64_t> getElemsPerInstrForOperands(int opIdx, int kWidth) const;
     SmallVector<int64_t> getRepForOperand(ArrayRef<int64_t> operandShape,
                                           Type elemType, int kWidth, int opIdx) const;
     SmallVector<unsigned> getRepOrderForOperand(int opIdx) const;
@@ -1079,7 +1079,11 @@ Row |
       assert(rank == 2 || rank == 3);
       SmallVector<unsigned> contigPerThread(rank, 1);
       if (getVersion() == 2) {
-        contigPerThread[rank - 2] = 8;
+        if (getIsTransposed()) {
+          contigPerThread[rank - 1] = 8;
+        } else {
+          contigPerThread[rank - 2] = 8;
+        }
       }
       return contigPerThread;
     };
@@ -1339,6 +1343,9 @@ vecIdx (index of the element in the quad; this is always along the k-dim)
         contigPerThread[rank - 1] = kWidth;
       else
         contigPerThread[rank - 2] = kWidth;
+      if (auto wmma = mlir::dyn_cast<AMDWmmaEncodingAttr>(getParent())) {
+        assert(wmma.getVersion() != 1 && "WMMA v1 currently not implemented");
+      }
       return contigPerThread;
     };
   }];

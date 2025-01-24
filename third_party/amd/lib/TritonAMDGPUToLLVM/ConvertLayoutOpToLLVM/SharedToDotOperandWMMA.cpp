@@ -159,7 +159,7 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
 
   auto elemTy = aTensorTy.getElementType();
   int kWidth = encoding.getKWidth();
-  auto elemsPerInstr = wmmaLayout.getElemsPerInstrForOperands();
+  auto elemsPerInstr = wmmaLayout.getElemsPerInstrForOperands(opIdx, kWidth);
   auto wmmaInstrK = elemsPerInstr[opIdx == 0 ? 1 : 0];
   auto wmmaInstrNonK = elemsPerInstr[opIdx == 0 ? 0 : 1];
   assert(wmmaInstrNonK == 16);

@@ -893,6 +893,13 @@ DotOperandEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape,
     elemsPerThread[rank - 2] = (idx == 0) ? rep[1] : rep[1] * kWidth;
     elemsPerThread[rank - 1] = (idx == 0) ? rep[2] * kWidth : rep[2];
     return elemsPerThread;
+  } else if (auto wmma = mlir::dyn_cast<AMDWmmaEncodingAttr>(parent)) {
+    auto rep = wmma.getRepForOperand(shape, eltTy, kWidth, idx);
+    if (rank == 3)
+      elemsPerThread[0] = rep[0];
+    elemsPerThread[rank - 2] = (idx == 0) ? rep[1] : rep[1] * kWidth;
+    elemsPerThread[rank - 1] = (idx == 0) ? rep[2] * kWidth : rep[2];
+    return elemsPerThread;
   } else if (auto mma = mlir::dyn_cast<NvidiaMmaEncodingAttr>(parent)) {
     assert(getCTALayout(*this) ==
                CTALayoutAttr::getDefault(getContext(), rank) &&
@@ -986,8 +993,13 @@ SmallVector<unsigned> DotOperandEncodingAttr::getWarpOrder() const {
   return {};
 }
 SmallVector<unsigned> DotOperandEncodingAttr::getThreadOrder() const {
-  return getOrderForDotOperand(getOpIdx(), getWarpsPerCTA().size(),
-                               /*kMajor*/ true);
+  if (mlir::isa<AMDMfmaEncodingAttr, AMDWmmaEncodingAttr>(getParent())) {
+    return getOrderForDotOperand(getOpIdx(), getWarpsPerCTA().size(),
+                                 /*kMajor*/ false);
+  } else {
+    return getOrderForDotOperand(getOpIdx(), getWarpsPerCTA().size(),
+                                 /*kMajor*/ true);
+  }
 }
 
 LogicalResult DotOperandEncodingAttr::verify(
@@ -2126,7 +2138,8 @@ AMDWmmaEncodingAttr::getSizePerThreadForOperand(int kWidth, int opIdx) const {
   auto rank = getWarpsPerCTA().size();
   SmallVector<unsigned> sizePerThread(rank, 1);
   auto numReplicated = getVersion() == 1 ? 2 : 1;
-  auto elemsPerInstr = numReplicated * product(getElemsPerInstrForOperands()) /
+  auto elemsPerInstr = numReplicated *
+                       product(getElemsPerInstrForOperands(opIdx, kWidth)) /
                        product(getThreadsPerWarp());
   if (opIdx == 0) {
     sizePerThread[rank - 2] = 1;
@@ -2146,15 +2159,26 @@ unsigned AMDWmmaEncodingAttr::getTotalElemsPerThreadForOperand(
   return product(rep) * kWidth;
 }
 
-SmallVector<int64_t> AMDWmmaEncodingAttr::getElemsPerInstrForOperands() const {
-  return {16, 16};
+SmallVector<int64_t>
+AMDWmmaEncodingAttr::getElemsPerInstrForOperands(int opIdx, int kWidth) const {
+  int64_t nonKSize = 16;
+  int64_t kSize = getVersion() == 1 ? kWidth : kWidth * 2;
+  switch (opIdx) {
+  case 0:
+    return {nonKSize, kSize};
+  case 1:
+    return {kSize, nonKSize};
+  default:
+    assert(false && "opidx should be 0 or 1");
+  }
+  return {};
 }
 
 SmallVector<int64_t>
 AMDWmmaEncodingAttr::getRepForOperand(ArrayRef<int64_t> operandShape,
                                       Type elemType, int kWidth,
                                       int opIdx) const {
-  auto operandTileShape = getElemsPerInstrForOperands();
+  auto operandTileShape = getElemsPerInstrForOperands(opIdx, kWidth);
   assert(operandTileShape.size() == 2);
   auto warpsPerCTA = getWarpsPerCTA();
   auto rank = operandShape.size();
@@ -2177,6 +2201,7 @@ AMDWmmaEncodingAttr::getRepForOperand(ArrayRef<int64_t> operandShape,
   }
 }
 
+// TODO: add kWidth argument
 SmallVector<unsigned> AMDWmmaEncodingAttr::getMNKDimPerInstr() {
   // TODO: move magic numbers out of the code
   return {16, 16, 16};
