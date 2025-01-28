@@ -2207,6 +2207,13 @@ SmallVector<unsigned> AMDWmmaEncodingAttr::getMNKDimPerInstr() {
   return {16, 16, 16};
 }
 
+SmallVector<unsigned>
+AMDWmmaEncodingAttr::getMNKDimPerInstrPerThread(unsigned version) {
+  const unsigned nonKDim = 16;
+  const unsigned kDim = version == 1 ? 16 : 8;
+  return {nonKDim, nonKDim, kDim};
+}
+
 //===----------------------------------------------------------------------===//
 // Mma encoding
 //===----------------------------------------------------------------------===//

@@ -1073,6 +1073,7 @@ Row |
     SmallVector<unsigned> getRepOrderForOperand(int opIdx) const;
     SmallVector<unsigned> getThreadsPerWarpForOperand(int opIdx) const;
     static SmallVector<unsigned> getMNKDimPerInstr();
+    static SmallVector<unsigned> getMNKDimPerInstrPerThread(unsigned version);
 
     SmallVector<unsigned> getContigPerThread() {
       auto rank = getWarpsPerCTA().size();
