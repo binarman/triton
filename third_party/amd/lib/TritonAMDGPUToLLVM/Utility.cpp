@@ -528,6 +528,7 @@ getCtrlBitsForCacheModifierOnTarget(triton::CacheModifier cm, bool isBufferLoad,
 
 Value cvtFp32ToFp16(Location loc, RewriterBase &rewriter, const Value &v,
                     triton::RoundingMode rounding) {
+  return rewriter.create<mlir::LLVM::FPTruncOp>(loc, f16_ty, v);
   GCNBuilder builder;
 
   auto &cvt = *builder.create("v_cvt_f16_f32");
