@@ -250,6 +250,10 @@ SmallVector<unsigned> getOrder(Attribute layout) {
     return sharedLayout.getTransposed() ? SmallVector<unsigned>({0, 1})
                                         : SmallVector<unsigned>({1, 0});
   }
+  if (auto sharedLayout =
+          mlir::dyn_cast<SwizzledBlocksSharedEncodingAttr>(layout)) {
+    return llvm::to_vector(sharedLayout.getOrder());
+  }
   if (auto linearLayout = mlir::dyn_cast<LinearEncodingAttr>(layout)) {
     return linearLayout.getOrder();
   }
@@ -727,6 +731,131 @@ SmallVector<unsigned> NVMMASharedEncodingAttr::getCTAOrder() const {
 }
 SmallVector<unsigned> NVMMASharedEncodingAttr::getCTASplitNum() const {
   return SmallVector<unsigned>(getCTALayout().getCTASplitNum());
+}
+
+int32_t SwizzledBlocksSharedEncodingAttr::getAlignment() const { return 16; }
+
+SmallVector<unsigned> SwizzledBlocksSharedEncodingAttr::getCTAsPerCGA() const {
+  return SmallVector<unsigned>(getCTALayout().getCTAsPerCGA());
+}
+SmallVector<unsigned> SwizzledBlocksSharedEncodingAttr::getCTAOrder() const {
+  return SmallVector<unsigned>(getCTALayout().getCTAOrder());
+}
+SmallVector<unsigned> SwizzledBlocksSharedEncodingAttr::getCTASplitNum() const {
+  return SmallVector<unsigned>(getCTALayout().getCTASplitNum());
+}
+
+SmallVector<unsigned>
+DotOperandEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape,
+                                          Type eltTy) const {
+  auto rank = shape.size();
+  assert(rank == 2 || rank == 3);
+
+  auto idx = getOpIdx();
+  assert(idx == 0 || idx == 1);
+
+  SmallVector<unsigned> elemsPerThread(rank);
+  auto parent = getParent();
+  auto kWidth = getKWidth();
+
+  if (auto mfma = mlir::dyn_cast<AMDMfmaEncodingAttr>(parent)) {
+    auto rep = mfma.getRepForOperand(shape, kWidth, idx);
+    if (rank == 3)
+      elemsPerThread[0] = rep[0];
+    elemsPerThread[rank - 2] = (idx == 0) ? rep[1] : rep[1] * kWidth;
+    elemsPerThread[rank - 1] = (idx == 0) ? rep[2] * kWidth : rep[2];
+    return elemsPerThread;
+  }
+  if (auto mma = mlir::dyn_cast<NvidiaMmaEncodingAttr>(parent)) {
+    assert(getCTALayout(*this) ==
+               CTALayoutAttr::getDefault(getContext(), rank) &&
+           "NYI");
+    auto sizePerThread = getSizePerThread();
+    auto threadsPerWarp = getThreadsPerWarp();
+    auto warpsPerCTA = getWarpsPerCTA();
+    SmallVector<unsigned> regs;
+    for (auto [n, nsize, nThread, nWarp] :
+         llvm::zip(shape, sizePerThread, threadsPerWarp, warpsPerCTA)) {
+      regs.push_back(std::max<int64_t>(nsize, n / (nThread * nWarp)));
+    }
+    return regs;
+  }
+  if (auto blocked = mlir::dyn_cast<BlockedEncodingAttr>(parent)) {
+    auto shapePerCTA =
+        expandMatrixShapeWithBatch(ArrayRef(getShapePerCTA(*this, shape)));
+    auto shapePerCTATile =
+        expandMatrixShapeWithBatch(ArrayRef(getShapePerCTATile(blocked)));
+    auto sizePerThread =
+        expandMatrixShapeWithBatch(ArrayRef(blocked.getSizePerThread()));
+
+    int batchDim = 0;
+    int kDim = getOpIdx() == 0 ? 2 : 1;
+    int nonKDim = getOpIdx() == 0 ? 1 : 2;
+
+    int batchSize =
+        std::max<int>(shapePerCTA[batchDim] / shapePerCTATile[batchDim], 1) *
+        sizePerThread[batchDim];
+    int kSize = shapePerCTA[kDim];
+    int nonKSize =
+        std::max<int>(shapePerCTA[nonKDim] / shapePerCTATile[nonKDim], 1) *
+        sizePerThread[nonKDim];
+
+    SmallVector<unsigned> elemsPerThread(rank);
+    if (rank == 3) {
+      elemsPerThread[batchDim] = batchSize;
+      elemsPerThread[kDim] = kSize;
+      elemsPerThread[nonKDim] = nonKSize;
+    } else {
+      elemsPerThread[kDim - 1] = kSize;
+      elemsPerThread[nonKDim - 1] = nonKSize;
+    }
+    return elemsPerThread;
+  }
+
+  llvm_unreachable("getElemsPerThread is not supported for dot operand");
+  return SmallVector<unsigned>();
+}
+
+unsigned DotOperandEncodingAttr::getTotalElemsPerThread(ArrayRef<int64_t> shape,
+                                                        Type eltTy) const {
+  if (auto mmaParent = mlir::dyn_cast<MmaEncodingTrait>(getParent())) {
+    if (auto nvidiaMmaParent =
+            mlir::dyn_cast<NvidiaMmaEncodingAttr>(mmaParent)) {
+      return product<unsigned>(getElemsPerThread(shape, eltTy));
+    }
+    if (auto amdMfmaParent = mlir::dyn_cast<AMDMfmaEncodingAttr>(getParent())) {
+      return amdMfmaParent.getTotalElemsPerThreadForOperand(
+          shape, eltTy, getKWidth(), getOpIdx());
+    }
+    if (auto amdWmmaParent = mlir::dyn_cast<AMDWmmaEncodingAttr>(getParent())) {
+      return amdWmmaParent.getTotalElemsPerThreadForOperand(
+          shape, eltTy, getKWidth(), getOpIdx());
+    }
+  }
+  if (auto blockedLayout = mlir::dyn_cast<BlockedEncodingAttr>(getParent())) {
+    auto shapePerCTA =
+        expandMatrixShapeWithBatch(ArrayRef(getShapePerCTA(*this, shape)));
+    auto shapePerCTATile =
+        expandMatrixShapeWithBatch(ArrayRef(getShapePerCTATile(blockedLayout)));
+    auto sizePerThread =
+        expandMatrixShapeWithBatch(ArrayRef(blockedLayout.getSizePerThread()));
+
+    int batchDim = 0;
+    int kDim = getOpIdx() == 0 ? 2 : 1;
+    int nonKDim = getOpIdx() == 0 ? 1 : 2;
+
+    int batchSize =
+        std::max<int>(shapePerCTA[batchDim] / shapePerCTATile[batchDim], 1) *
+        sizePerThread[batchDim];
+    int kSize = shapePerCTA[kDim];
+    int nonKSize =
+        std::max<int>(shapePerCTA[nonKDim] / shapePerCTATile[nonKDim], 1) *
+        sizePerThread[nonKDim];
+
+    return batchSize * kSize * nonKSize;
+  }
+  llvm_unreachable("unknown dot operand parent layout");
+  return 0;
 }
 
 SmallVector<unsigned> DotOperandEncodingAttr::getCTAsPerCGA() const {
@@ -1704,6 +1833,80 @@ void NVMMASharedEncodingAttr::print(AsmPrinter &printer) const {
   }
   maybePrintCTALayout(getContext(), printer, getCTALayout(),
                       /*rank=*/2);
+  printer << "}>";
+}
+
+//===----------------------------------------------------------------------===//
+// AMDSwizzledShared encoding
+//===----------------------------------------------------------------------===//
+
+Attribute SwizzledBlocksSharedEncodingAttr::parse(AsmParser &parser,
+                                                  Type type) {
+  if (parser.parseLess().failed())
+    return {};
+  // Parse the data as a dictionary
+  DictionaryAttr dict;
+  if (parser.parseAttribute(dict).failed())
+    return {};
+  if (parser.parseGreater().failed())
+    return {};
+
+  unsigned vec = 0;
+  unsigned perPhase = 0;
+  unsigned maxPhase = 0;
+  SmallVector<unsigned> order;
+  std::optional<SmallVector<unsigned>> CTAsPerCGA;
+  std::optional<SmallVector<unsigned>> CTASplitNum;
+  std::optional<SmallVector<unsigned>> CTAOrder;
+  for (const NamedAttribute &attr : dict) {
+    if (attr.getName() == "vec") {
+      if (parseUInt(parser, attr, vec, "vec").failed())
+        return {};
+    } else if (attr.getName() == "perPhase") {
+      if (parseUInt(parser, attr, perPhase, "perPhase").failed())
+        return {};
+    } else if (attr.getName() == "maxPhase") {
+      if (parseUInt(parser, attr, maxPhase, "maxPhase").failed())
+        return {};
+    } else if (attr.getName() == "order") {
+      if (parseIntArrayAttr(parser, attr, order, "order").failed())
+        return {};
+    } else if (attr.getName() == "CTAsPerCGA") {
+      if (parseIntArrayAttr(parser, attr, CTAsPerCGA.emplace(), "CTAsPerCGA")
+              .failed())
+        return {};
+    } else if (attr.getName() == "CTASplitNum") {
+      if (parseIntArrayAttr(parser, attr, CTASplitNum.emplace(), "CTASplitNum")
+              .failed())
+        return {};
+    } else if (attr.getName() == "CTAOrder") {
+      if (parseIntArrayAttr(parser, attr, CTAOrder.emplace(), "CTAOrder")
+              .failed())
+        return {};
+    } else {
+      parser.emitError(parser.getNameLoc(), "unexpected key: ")
+          << attr.getName().strref();
+      return {};
+    }
+  }
+
+  std::optional<CTALayoutAttr> CTALayout = getCTALayoutOrError(
+      parser, CTAsPerCGA, CTASplitNum, CTAOrder, /*rank=*/order.size());
+  if (!CTALayout.has_value())
+    return {};
+
+  return parser.getChecked<SwizzledBlocksSharedEncodingAttr>(
+      parser.getContext(), vec, perPhase, maxPhase, order, *CTALayout);
+}
+
+void SwizzledBlocksSharedEncodingAttr::print(AsmPrinter &printer) const {
+  printer << "<{"
+          << "vec = " << getVec() //
+          << ", perPhase = " << getPerPhase()
+          << ", maxPhase = " << getMaxPhase() //
+          << ", order = [" << getOrder() << "]";
+  maybePrintCTALayout(getContext(), printer, getCTALayout(),
+                      /*rank=*/getOrder().size());
   printer << "}>";
 }
 
