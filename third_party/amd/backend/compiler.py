@@ -206,8 +206,6 @@ class HIPBackend(BaseBackend):
         passes.ttgpuir.add_remove_layout_conversions(pm)
         amd.passes.ttgpuir.add_optimize_epilogue(pm)
         passes.ttgpuir.add_optimize_dot_operands(pm, True)
-        amd.passes.ttgpuir.add_in_thread_transpose(pm)
-        passes.ttgpuir.add_remove_layout_conversions(pm)
 
         global_prefetch = int(os.getenv("TRITON_HIP_GLOBAL_PREFETCH", "0"))
         local_prefetch = int(os.getenv("TRITON_HIP_LOCAL_PREFETCH", "0"))
@@ -226,6 +224,7 @@ class HIPBackend(BaseBackend):
             passes.common.add_canonicalizer(pm)
         if options.instruction_sched_variant.lower() != "none":
             amd.passes.ttgpuir.insert_instruction_sched_hints(pm, options.instruction_sched_variant)
+        amd.passes.ttgpuir.add_in_thread_transpose(pm)
         passes.ttgpuir.add_optimize_dot_operands(pm, True)
         passes.ttgpuir.add_remove_layout_conversions(pm)
         passes.ttgpuir.add_reduce_data_duplication(pm)
