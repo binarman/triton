@@ -393,6 +393,8 @@ void init_triton_llvm(py::module &&m) {
           mpm.addPass(AddressSanitizerPass(Opts));
         }
         mpm.addPass(pb.buildPerModuleDefaultPipeline(opt));
+        mpm.addPass(
+            pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3));
         mpm.run(*mod, mam);
       },
       // Mandatory parameters
