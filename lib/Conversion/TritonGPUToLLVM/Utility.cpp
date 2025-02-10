@@ -91,10 +91,7 @@ applyLinearLayout(Location loc, RewriterBase &rewriter,
   Value zero = i32_val(0);
   SmallVector<std::pair<StringAttr, Value>> outIndices;
   for (auto [i, outDimName] : llvm::enumerate(layout.getOutDimNames())) {
-    if (constantComponent[i] == 0)
-      outIndices.push_back({outDimName, zero});
-    else
-      outIndices.push_back({outDimName, i32_val(constantComponent[i])});
+    outIndices.push_back({outDimName, zero});
   }
 
   for (auto [inDimName, idx] : indices) {
@@ -112,6 +109,12 @@ applyLinearLayout(Location loc, RewriterBase &rewriter,
           continue;
         outIdx = xor_(outIdx, select(bit_is_zero, zero, i32_val(basis)));
       }
+    }
+  }
+  for (auto [i, outDimName] : llvm::enumerate(layout.getOutDimNames())) {
+    if (constantComponent[i] != 0) {
+      outIndices[i].second =
+          xor_(outIndices[i].second, i32_val(constantComponent[i]));
     }
   }
 
