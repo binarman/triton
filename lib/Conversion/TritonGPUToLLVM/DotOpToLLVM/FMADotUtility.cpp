@@ -86,6 +86,7 @@ LogicalResult parametricConvertFMADot(DotOp op, DotOp::Adaptor adaptor,
   auto D = op.getResult();
 
   auto aTensorTy = cast<RankedTensorType>(A.getType());
+  auto bTensorTy = cast<RankedTensorType>(A.getType());
   auto dTensorTy = cast<RankedTensorType>(D.getType());
 
   SmallVector<int64_t> aShapePerCTA =
@@ -96,7 +97,11 @@ LogicalResult parametricConvertFMADot(DotOp op, DotOp::Adaptor adaptor,
   BlockedEncodingAttr dLayout =
       cast<BlockedEncodingAttr>(dTensorTy.getEncoding());
   // TODO process A and B operand separately
-  auto inRepOrder = expandMatrixOrderWithBatch(dLayout.getOrder());
+  auto aDotEncoding = cast<DotOperandEncodingAttr>(aTensorTy.getEncoding());
+  auto bDotEncoding = cast<DotOperandEncodingAttr>(bTensorTy.getEncoding());
+  auto inRepAOrder = expandMatrixOrderWithBatch(aDotEncoding.getThreadOrder());
+  auto inRepBOrder = expandMatrixOrderWithBatch(bDotEncoding.getThreadOrder());
+  auto inRepAccOrder = expandMatrixOrderWithBatch(dLayout.getOrder());
   auto repOrder = expandMatrixOrderWithBatch(dLayout.getRepOrder());
   auto cc = unpackLLElements(loc, adaptor.getC(), rewriter);
 
@@ -121,11 +126,11 @@ LogicalResult parametricConvertFMADot(DotOp op, DotOp::Adaptor adaptor,
   auto has = getValueTableFromStructFMA(
       llA, {sizePerThread[0], sizePerThread[1], K},
       {repetitions[0], repetitions[1], 1},
-      /*kDim*/ 2, /*nonKDim*/ 1, rewriter, loc, inRepOrder, repOrder);
+      /*kDim*/ 2, /*nonKDim*/ 1, rewriter, loc, inRepAOrder, repOrder);
   auto hbs = getValueTableFromStructFMA(
       llB, {sizePerThread[0], K, sizePerThread[2]},
       {repetitions[0], 1, repetitions[2]},
-      /*kDim*/ 1, /*nonKDim*/ 2, rewriter, loc, inRepOrder, repOrder);
+      /*kDim*/ 1, /*nonKDim*/ 2, rewriter, loc, inRepBOrder, repOrder);
 
   SmallVector<Value> acc = cc;
 
@@ -136,8 +141,8 @@ LogicalResult parametricConvertFMADot(DotOp op, DotOp::Adaptor adaptor,
           for (unsigned m = 0; m < sizePerThread[1]; ++m)
             for (unsigned n = 0; n < sizePerThread[2]; ++n) {
               SmallVector<unsigned> multiDimAccumIdx = {b, m, n};
-              unsigned linearInRepIdx =
-                  LLVM::linearize(multiDimAccumIdx, sizePerThread, inRepOrder);
+              unsigned linearInRepIdx = LLVM::linearize(
+                  multiDimAccumIdx, sizePerThread, inRepAccOrder);
               SmallVector<unsigned> multiDimRepIdx = {bRep, mRep, nRep};
               unsigned linearRepIdx =
                   LLVM::linearize(multiDimRepIdx, repetitions, repOrder);

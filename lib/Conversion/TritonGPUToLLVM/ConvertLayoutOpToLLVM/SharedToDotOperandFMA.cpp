@@ -234,7 +234,8 @@ Value loadFMAOp(Value srcVal, Value llVal, BlockedEncodingAttr dLayout,
   auto sharedLayout =
       cast<SwizzledSharedEncodingAttr>(opTensorTy.getEncoding());
 
-  auto opOrder = expandMatrixOrderWithBatch(dLayout.getOrder());
+  auto opOrder =
+      triton::gpu::getOrderForDotOperand(dotOpNo, 3, /*kContig=*/true);
 
   auto origSmem = getSharedMemoryObjectFromStruct(
       loc, llVal, typeConverter->convertType(opTensorTy.getElementType()),

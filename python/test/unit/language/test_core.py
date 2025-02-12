@@ -3357,17 +3357,16 @@ def get_test_dot_base_cases():
 def get_test_dot_mixed_sizes_cases():
     available_kpack = [1, 2 if is_hip() else 1]
     available_precision = ["tf32" if is_cuda() else "ieee"]
-    return [
-        (*shape_nw, col_a, col_b, 'none', input_precision, in_dtype, out_dtype, kpack, None)
-        for shape_nw in [[128, 256, 32, 8], [128, 16, 32, 4], [32, 128, 64, 4], [128, 128, 64, 4], [64, 128, 128, 4],
-                         [32, 128, 64, 2], [64, 64, 32, 4], [32, 32, 128, 16], [128, 128, 64, 2], [64, 128, 128, 2]]
-        for input_precision in available_precision
-        for col_a in [True, False]
-        for col_b in [True, False]
-        for in_dtype, out_dtype in [('int8', 'int8'), ('float16', 'float16'), ('float16',
-                                                                               'float32'), ('float32', 'float32')]
-        for kpack in available_kpack
-    ]
+    return [(*shape_nw, col_a, col_b, 'none', input_precision, in_dtype, out_dtype, kpack, None)
+            for shape_nw in [[16, 16, 256, 1], [16, 16, 256, 2], [16, 16, 256, 4], [128, 256, 32, 8], [128, 16, 32, 4],
+                             [32, 128, 64, 4], [128, 128, 64, 4], [64, 128, 128, 4], [32, 128, 64, 2], [64, 64, 32, 4],
+                             [32, 32, 128, 16], [128, 128, 64, 2], [64, 128, 128, 2]]
+            for input_precision in available_precision
+            for col_a in [True, False]
+            for col_b in [True, False]
+            for in_dtype, out_dtype in [('int8', 'int8'), ('float16', 'float16'), ('float16',
+                                                                                   'float32'), ('float32', 'float32')]
+            for kpack in available_kpack]
 
 
 # M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dtype, out_dtype, kpack, mma_nonk_size

@@ -812,7 +812,7 @@ LinearLayout fmaDotToLinearLayout(DotOperandEncodingAttr operandLayout,
   // TODO: introduce registerOrder or use getOrder(operandLayout)
   // Currently this order is used in legacy converter, because we do not
   // have access to full dot operand layout, only parent part.
-  auto regOrder = blocked.getOrder();
+  auto regOrder = operandLayout.getThreadOrder();
   // TODO: use operandLayout.getThreadOrder()
   auto threadOrder = blocked.getThreadOrder();
   auto warpOrder = blocked.getWarpOrder();
