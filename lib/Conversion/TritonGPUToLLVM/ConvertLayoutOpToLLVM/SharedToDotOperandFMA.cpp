@@ -221,6 +221,7 @@ Value loadFMAOp(Value srcVal, Value llVal, BlockedEncodingAttr dLayout,
                 Value thread, Location loc,
                 const LLVMTypeConverter *typeConverter,
                 ConversionPatternRewriter &rewriter, const int dotOpNo) {
+  return Value();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   if (!verifyCTALayout(dLayout.getCTALayout()))
     return Value();
