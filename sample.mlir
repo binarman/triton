@@ -169,6 +169,3 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.targ
 #loc49 = loc(callsite(#loc5 at #loc6))
 #loc50 = loc(callsite(#loc3 at #loc29))
 #loc51 = loc(callsite(#loc5 at #loc29))
-
-
-python: /root/.triton/llvm/llvm-c1188642-ubuntu-x64/include/llvm/Support/Casting.h:662: decltype(auto) llvm::dyn_cast(From*) [with To = mlir::triton::gpu::LocalAllocOp; From = mlir::Operation]: Assertion `detail::isPresent(Val) && "dyn_cast on a non-existent value"' failed.

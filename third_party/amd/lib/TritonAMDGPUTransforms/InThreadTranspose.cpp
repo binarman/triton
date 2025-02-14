@@ -134,46 +134,51 @@ void changeSharedEncoding(ttg::LocalAllocOp alloc) {
   alloc.getResult().setType(newType);
 }
 
-/// Structure describes operations involved in local_alloc->local_load pattern
-struct loadStoreLoadChainComponents {
-  SmallVector<tt::LoadOp> globalLoads;
-  SmallVector<ttg::LocalAllocOp> localAllocs;
-  SmallVector<ttg::LocalLoadOp> localLoads;
-};
-
-template <typename Op>
-void findAllDefiningOps(Value val, SmallVectorImpl<Op> &defs) {
-  if (auto castedOp = dyn_cast<Op>(val.getDefiningOp())) {
-    defs.push_back(castedOp); // Directly defined operation
-    return;
-  }
-
+/// For a given value return all operations that define it.
+///
+/// If val is a result of operation, return definingOp.
+/// If val is a result of some control flow operation or block argument,
+/// traverse control flow instructions.
+FailureOr<SmallVector<mlir::Operation *>> getNonCFDefOps(Value val) {
   if (auto blockArg = dyn_cast<BlockArgument>(val)) {
     Block *block = blockArg.getOwner();
 
     // If block belongs to a function, stop tracking (function arguments)
     if (block->isEntryBlock()) {
-      return; // Function arguments have no internal defining ops
+      LDBG("can not traverse def-use chains, found function argument");
+      return failure();
     }
 
     // Get parent operation (e.g., scf.for, scf.if, scf.while)
     Operation *parentOp = block->getParentOp();
-    if (!parentOp)
-      return;
+    if (!parentOp) {
+      LDBG("block without parent op, can not analyze further");
+      return failure();
+    }
 
     int argIdx = blockArg.getArgNumber();
 
     // Handle `scf.for`
     if (auto forOp = dyn_cast<scf::ForOp>(parentOp)) {
+      // Continue traversing this op, even if it is visited
+      // It could be visited with different arg idx
       int iterArgIdx = argIdx - 1; // Skip induction variable
       if (iterArgIdx >= 0) {
         Value yieldVal =
             forOp.getBody()->getTerminator()->getOperand(iterArgIdx);
-        findAllDefiningOps(yieldVal, defs);
+        // look inside loop and outside of a loop
+        auto inLoop = getNonCFDefOps(yieldVal);
+        auto outLoop = getNonCFDefOps(forOp.getOperand(iterArgIdx));
+        if (failed(inLoop) || failed(outLoop))
+          return failure();
+
+        SmallVector<mlir::Operation *> totalOps(std::move(inLoop.value()));
+        totalOps.append(outLoop.value());
+        return totalOps;
       } else {
-        findAllDefiningOps(forOp.getOperand(0), defs); // Induction variable
+        // Induction variable
+        return getNonCFDefOps(forOp.getOperand(0));
       }
-      return;
     }
 
     // Handle `scf.if`
@@ -182,19 +187,26 @@ void findAllDefiningOps(Value val, SmallVectorImpl<Op> &defs) {
       auto elseYield = ifOp.elseYield();
 
       // Track all possible yielded values from then/else blocks
-      if (thenYield)
-        findAllDefiningOps(thenYield->getOperand(argIdx), defs);
-      if (elseYield)
-        findAllDefiningOps(elseYield->getOperand(argIdx), defs);
-      return;
+      SmallVector<mlir::Operation *> totalOps;
+      if (thenYield) {
+        auto ops = getNonCFDefOps(thenYield->getOperand(argIdx));
+        if (failed(ops))
+          return failure();
+        totalOps.append(ops.value());
+      }
+      if (elseYield) {
+        auto ops = getNonCFDefOps(elseYield->getOperand(argIdx));
+        if (failed(ops))
+          return failure();
+        totalOps.append(ops.value());
+      }
+      return totalOps;
     }
 
     // Handle `scf.while`
     if (auto whileOp = dyn_cast<scf::WhileOp>(parentOp)) {
-      findAllDefiningOps(
-          whileOp.getBefore().front().getTerminator()->getOperand(argIdx),
-          defs);
-      return;
+      auto terminator = whileOp.getBefore().front().getTerminator();
+      return getNonCFDefOps(terminator->getOperand(argIdx));
     }
 
     if (isa<RegionBranchOpInterface>(parentOp)) {
@@ -206,40 +218,87 @@ void findAllDefiningOps(Value val, SmallVectorImpl<Op> &defs) {
         }
       });
 
+      SmallVector<mlir::Operation *> totalOps;
       for (auto yieldOp : yieldOps) {
-        findAllDefiningOps(yieldOp.getOperand(argIdx), defs);
+        auto ops = getNonCFDefOps(yieldOp->getOperand(argIdx));
+        if (failed(ops))
+          return failure();
+        totalOps.append(ops.value());
       }
-      return;
+      return totalOps;
     }
-
-    // Otherwise, track the operand in the parent operation
-    findAllDefiningOps(parentOp->getOperand(argIdx), defs);
+    assert(false && "unexpected control flow operation");
+  } else {
+    return SmallVector<Operation *>{val.getDefiningOp()};
   }
 }
 
-/*template <typename Op>
-void fillVecWithDefiningPreds(Value v, SmallVector<Op> &defs) {
-  auto prevOp = findAllDefiningOps(v, defs);
-  if (auto castedOp = dyn_cast<Op>(prevOp)) {
-    defs.push_back(castedOp);
-  } else if (isa<RegionBranchOpInterface>(prevOp)) {
-    // Deal with the case that convert_layout intakes from scf.if, etc.
-    LDBG("Dealing with scf blocks");
-    auto idx = cast<OpResult>(v).getResultNumber();
-    llvm::SmallVector<scf::YieldOp> yieldOps;
-    prevOp->walk([&](Operation *op) {
-      if (auto yieldOp = dyn_cast<scf::YieldOp>(op)) {
-        yieldOps.push_back(yieldOp);
-      }
-    });
-
-    for (auto yieldOp : yieldOps) {
-      fillVecWithDefiningPreds<Op>(yieldOp.getOperand(idx), defs);
-    }
+/// Look for defining operation, hopping over control flow.
+///
+/// Gather all operations of type T within one def-use hop from val,
+/// control flow constructions are not considered as an operations.
+/// \returns true on success, false if analysis failed
+template <typename Op>
+FailureOr<SmallVector<Op>> findAllDefiningOps(Value val) {
+  auto candidates = getNonCFDefOps(val);
+  if (failed(candidates))
+    return failure();
+  SmallVector<Op> result;
+  for (auto candidate : candidates.value()) {
+    if (auto typedOp = dyn_cast<Op>(candidate))
+      result.push_back(typedOp);
   }
-}*/
+  return result;
+}
 
-llvm::FailureOr<loadStoreLoadChainComponents>
+/// Look for all operations with one of OpTy types in def-use chains in both
+/// forward and backward directions.
+///
+/// Traversal goes through control flow operations and and stops at non OpTy
+/// operation. For example: findAllDefUseOps<local_load, mem_subview,
+/// local_store>(dot_operand)
+///
+///                                                    ----------------->
+///                                                    local_store | traversed
+/// global_load -> local_store -> mem_subview -> local_load -> dot
+///                 traversed      traversed      traversed
+///
+/// \returns true on success, false if analysis failed
+template <typename... OpTy>
+FailureOr<SmallVector<Operation *>>
+findAllDefUseOps(Operation *op, SetVector<mlir::Operation *> &visited) {
+  // breadth-first search for reachable opeations of given types
+  SmallVector<Operation *> foundNetwork;
+  SmallVector<Operation *> traversalStep{op};
+  while (!traversalStep.empty()) {
+    SmallVector<Operation *> nextTraversalStep;
+    for (auto candidate : traversalStep) {
+      if (visited.contains(candidate) || !(isa<OpTy>(candidate) || ...))
+        continue;
+      visited.insert(op);
+      foundNetwork.push_back(candidate);
+
+      auto backwardSearch = getNonCFDefOps(candidate->getOperand(0));
+      if (failed(backwardSearch))
+        return failure();
+      // todo add forward search
+      nextTraversalStep.append(backwardSearch.value());
+    }
+    traversalStep = std::move(nextTraversalStep);
+  }
+  return foundNetwork;
+}
+
+/// Structure describes operations involved in local_alloc->local_load pattern
+struct loadStoreLoadPatternComponents {
+  SmallVector<tt::LoadOp> globalLoads;
+  SmallVector<ttg::LocalAllocOp> localAllocs;
+  SmallVector<ttg::LocalStoreOp> localStores;
+  SmallVector<ttg::MemDescSubviewOp> subviews;
+  SmallVector<ttg::LocalLoadOp> localLoads;
+};
+
+llvm::FailureOr<loadStoreLoadPatternComponents>
 matchThreadRakePattern(Value operand) {
   // TODO implement general heuristic,
   // analyzing local load/store vectorization and estimating bank conflicts
@@ -256,25 +315,61 @@ matchThreadRakePattern(Value operand) {
     LDBG("Operand's parent encoding is not MFMA");
     return failure();
   }
-  loadStoreLoadChainComponents pattern;
-  findAllDefiningOps(operand, pattern.localLoads);
-  if (pattern.localLoads.empty()) {
+
+  // Find nearest local_load
+  loadStoreLoadPatternComponents pattern;
+
+  auto localLoadSearch = findAllDefiningOps<ttg::LocalLoadOp>(operand);
+  if (failed(localLoadSearch)) {
+    LDBG("Failed to traverse local loads");
+    return failure();
+  }
+
+  if (localLoadSearch.value().size() == 0) {
     LDBG("Did not find local load operation");
     return failure();
   }
 
-  printf("problem\n");
-  // need to provide proper logic for defining operation search in a loop
-  for (auto lLoad : pattern.localLoads) {
-    findAllDefiningOps(lLoad.getSrc(), pattern.localAllocs);
+  SetVector<Operation *> visited;
+  for (auto lLoad : localLoadSearch.value()) {
+    // find local_alloc, local_store, local_load and ttg.memdesc_subview
+    // operations
+    auto sharedMemSearch =
+        findAllDefUseOps<ttg::LocalAllocOp, ttg::LocalStoreOp, ttg::LocalLoadOp,
+                         ttg::MemDescSubviewOp>(lLoad, visited);
+    if (failed(sharedMemSearch)) {
+      LDBG("Failed to traverse shared memmory operation network");
+      return failure();
+    }
+    // Fill pattern description
+    for (Operation *op : sharedMemSearch.value()) {
+      if (auto alloc = dyn_cast<ttg::LocalAllocOp>(op))
+        pattern.localAllocs.push_back(alloc);
+      if (auto localLoad = dyn_cast<ttg::LocalLoadOp>(op))
+        pattern.localLoads.push_back(localLoad);
+      if (auto store = dyn_cast<ttg::LocalStoreOp>(op))
+        pattern.localStores.push_back(store);
+      if (auto view = dyn_cast<ttg::MemDescSubviewOp>(op))
+        pattern.subviews.push_back(view);
+    }
   }
+
   if (pattern.localAllocs.empty()) {
-    LDBG("Did not find local alloc operation");
+    LDBG("Did not find local alloc operations");
     return failure();
   }
+
+  SmallVector<Value> loadCandidates;
   for (auto lAlloc : pattern.localAllocs) {
-    auto loaded = lAlloc.getSrc();
-    auto loadedEnc = cast<RankedTensorType>(loaded.getType()).getEncoding();
+    if (lAlloc.getSrc())
+      loadCandidates.push_back(lAlloc.getSrc());
+  }
+  for (auto lStore : pattern.localStores)
+    loadCandidates.push_back(lStore.getSrc());
+
+  for (auto loadCandidate : loadCandidates) {
+    auto loadedEnc =
+        cast<RankedTensorType>(loadCandidate.getType()).getEncoding();
     auto blockedEnc = dyn_cast<ttg::BlockedEncodingAttr>(loadedEnc);
     if (!blockedEnc)
       return failure();
@@ -282,7 +377,12 @@ matchThreadRakePattern(Value operand) {
     if (order[0] != kDimNum) {
       return failure();
     }
-    findAllDefiningOps(loaded, pattern.globalLoads);
+    auto globalLoadSearch = findAllDefiningOps<triton::LoadOp>(loadCandidate);
+    if (failed(globalLoadSearch)) {
+      LDBG("Failed to traverse path to global loads");
+      return failure();
+    }
+    pattern.globalLoads = std::move(globalLoadSearch.value());
   }
   if (pattern.globalLoads.empty()) {
     LDBG("Did not find global load operation");
