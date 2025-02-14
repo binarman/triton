@@ -143,16 +143,16 @@ FailureOr<SmallVector<mlir::Operation *>> getNonCFDefOps(Value val) {
   if (auto blockArg = dyn_cast<BlockArgument>(val)) {
     Block *block = blockArg.getOwner();
 
-    // If block belongs to a function, stop tracking (function arguments)
-    if (block->isEntryBlock()) {
-      LDBG("can not traverse def-use chains, found function argument");
-      return failure();
-    }
-
     // Get parent operation (e.g., scf.for, scf.if, scf.while)
     Operation *parentOp = block->getParentOp();
     if (!parentOp) {
       LDBG("block without parent op, can not analyze further");
+      return failure();
+    }
+
+    // If block belongs to a function, stop tracking (function arguments)
+    if (isa<triton::FuncOp>(parentOp)) {
+      LDBG("can not traverse def-use chains, found function argument");
       return failure();
     }
 
@@ -233,6 +233,32 @@ FailureOr<SmallVector<mlir::Operation *>> getNonCFDefOps(Value val) {
   }
 }
 
+/// For a given value return all operations that uses it.
+///
+/// Traverses control flow instructions forward.
+FailureOr<SmallVector<mlir::Operation *>> getNonCFUserOps(Value val) {
+  SmallVector<mlir::Operation *> users;
+  for (auto &use : val.getUses()) {
+    auto user = use.getOwner();
+    if (isa<triton::ReturnOp>(user)) {
+      LDBG("Reached return from function");
+      return failure();
+    }
+    if (isa<scf::YieldOp>(user)) {
+      auto opIdx = use.getOperandNumber();
+      auto cfSearch = getNonCFUserOps(user->getParentOp()->getResult(opIdx));
+      if (failed(cfSearch)) {
+        LDBG("Failed nested forward analysis");
+        return failure();
+      }
+      users.append(cfSearch.value());
+    } else {
+      users.push_back(user);
+    }
+  }
+  return users;
+}
+
 /// Look for defining operation, hopping over control flow.
 ///
 /// Gather all operations of type T within one def-use hop from val,
@@ -275,14 +301,24 @@ findAllDefUseOps(Operation *op, SetVector<mlir::Operation *> &visited) {
     for (auto candidate : traversalStep) {
       if (visited.contains(candidate) || !(isa<OpTy>(candidate) || ...))
         continue;
-      visited.insert(op);
+      visited.insert(candidate);
       foundNetwork.push_back(candidate);
 
-      auto backwardSearch = getNonCFDefOps(candidate->getOperand(0));
-      if (failed(backwardSearch))
-        return failure();
-      // todo add forward search
-      nextTraversalStep.append(backwardSearch.value());
+      // Look backward
+      if (candidate->getNumOperands() > 0) {
+        auto backwardSearch = getNonCFDefOps(candidate->getOperand(0));
+        if (failed(backwardSearch))
+          return failure();
+        nextTraversalStep.append(backwardSearch.value());
+      }
+
+      // Look forward
+      if (candidate->getNumResults() > 0) {
+        auto forwardSearch = getNonCFUserOps(candidate->getResult(0));
+        if (failed(forwardSearch))
+          return failure();
+        nextTraversalStep.append(forwardSearch.value());
+      }
     }
     traversalStep = std::move(nextTraversalStep);
   }
@@ -454,7 +490,6 @@ public:
           LDBG("operand is K-inner and nothing to be done");
           return;
         }
-        assert(false);
         auto pattern = matchResult.value();
         LDBG("operand is K-outer");
         for (auto gLoad : pattern.globalLoads) {
