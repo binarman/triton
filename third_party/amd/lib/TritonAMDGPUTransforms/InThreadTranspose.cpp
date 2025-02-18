@@ -98,11 +98,17 @@ createInThreadTransposedEncoding(ArrayRef<int64_t> shape,
   return ttg::LinearEncodingAttr::get(ctx, transposedLL);
 }
 
-void transposeInRegsitersBeforeLocalAlloc(ttg::LocalAllocOp alloc) {
+template <typename LocalMemOp>
+void transposeInRegsitersBeforeStoreInLocalMemory(LocalMemOp alloc) {
   auto operand = alloc.getSrc();
   OpBuilder builder(alloc);
 
-  auto operandType = alloc.getSrc().getType();
+  auto data = alloc.getSrc();
+  // local alloc has optional src
+  // if it is not provided, nothing to do
+  if (!data)
+    return;
+  auto operandType = data.getType();
   auto operandEncoding =
       cast<ttg::BlockedEncodingAttr>(operandType.getEncoding());
   auto transposedEncoding =
@@ -113,7 +119,7 @@ void transposeInRegsitersBeforeLocalAlloc(ttg::LocalAllocOp alloc) {
   alloc.setOperand(0, inThreadTransposed);
 }
 
-void changeSharedEncoding(ttg::LocalAllocOp alloc) {
+template <typename LocalMemOp> void changeSharedEncoding(LocalMemOp alloc) {
   auto originalType = cast<ttg::MemDescType>(alloc.getResult().getType());
   auto sharedEnc =
       cast<ttg::SwizzledSharedEncodingAttr>(originalType.getEncoding());
@@ -129,7 +135,7 @@ void changeSharedEncoding(ttg::LocalAllocOp alloc) {
       ctx, sharedVec, perPhase, maxPhase, order, ctaLayout);
   auto newType = ttg::MemDescType::get(
       originalType.getShape(), originalType.getElementType(), newSharedEnc,
-      originalType.getMemorySpace());
+      originalType.getMemorySpace(), originalType.getMutableMemory());
 
   alloc.getResult().setType(newType);
 }
@@ -499,8 +505,14 @@ public:
         }
 
         for (auto lAlloc : pattern.localAllocs) {
-          transposeInRegsitersBeforeLocalAlloc(lAlloc);
+          transposeInRegsitersBeforeStoreInLocalMemory(lAlloc);
           changeSharedEncoding(lAlloc);
+        }
+        for (auto lStore : pattern.localStores) {
+          transposeInRegsitersBeforeStoreInLocalMemory(lStore);
+        }
+        for (auto view : pattern.subviews) {
+          changeSharedEncoding(view);
         }
       };
       // Check opA
