@@ -505,7 +505,7 @@ getThreadRakedBlockedEnc(Value dotOperand, tt::LoadOp load, ModuleOp &mod) {
   // compute the sizePerThread for the new encoding
   auto sizePerThread = blockedEnc.getSizePerThread();
   auto elemsPerIter = product(sizePerThread);
-  auto elemsTotal = blockedEnc.getTotalElemsPerThread(shape, tensorTy);
+  auto elemsTotal = ttg::getTotalElemsPerThread(loadResult.getType());
   // we need to know how many iteration each thread will load
   LDBG("elemsPerIter = " << elemsPerIter << "; elemsTotal = " << elemsTotal);
   auto numMaxIters = elemsTotal / elemsPerIter;
@@ -520,7 +520,7 @@ getThreadRakedBlockedEnc(Value dotOperand, tt::LoadOp load, ModuleOp &mod) {
 
   // return the new blocked encoding
   auto order = blockedEnc.getOrder();
-  int numWarps = ttg::TritonGPUDialect::getNumWarps(mod);
+  int numWarps = ttg::getNumWarpsPerCTA(loadEnc);
   int threadsPerWarp = ttg::TritonGPUDialect::getThreadsPerWarp(mod);
   int numCTAs = ttg::TritonGPUDialect::getNumCTAs(mod);
   return ttg::BlockedEncodingAttr::get(mod.getContext(), shape,
