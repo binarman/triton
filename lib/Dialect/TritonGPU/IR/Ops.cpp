@@ -176,6 +176,10 @@ struct CanonicalizeConvertFromLocalStore
     auto convert = op.getSrc().getDefiningOp<ConvertLayoutOp>();
     if (!convert)
       return failure();
+    // TODO: make better heuristic
+    // explicit flag in encoding for this?
+    if (isa<triton::gpu::LinearEncodingAttr>(convert.getType().getEncoding()))
+      return failure();
     rewriter.replaceOpWithNewOp<triton::gpu::LocalStoreOp>(op, convert.getSrc(),
                                                            op.getDst());
     return mlir::success();
