@@ -99,6 +99,8 @@ createInThreadTransposedEncoding(ArrayRef<int64_t> shape,
 }
 
 void transposeInRegsitersBeforeStoreInLocalMemory(Operation *memStoreOp) {
+  if (memStoreOp->getNumOperands() == 0)
+    return;
   auto data = memStoreOp->getOperand(0);
   OpBuilder builder(memStoreOp);
 
@@ -120,7 +122,10 @@ void transposeInRegsitersBeforeStoreInLocalMemory(Operation *memStoreOp) {
 void changeSharedEncoding(Value memVal) {
   auto originalType = cast<ttg::MemDescType>(memVal.getType());
   auto sharedEnc =
-      cast<ttg::SwizzledSharedEncodingAttr>(originalType.getEncoding());
+      dyn_cast<ttg::SwizzledSharedEncodingAttr>(originalType.getEncoding());
+  // Using non standard shared encoding, skip this item
+  if (!sharedEnc)
+    return;
   auto ctx = sharedEnc.getContext();
   auto sharedVec = sharedEnc.getVec();
   auto perPhase = sharedEnc.getPerPhase();
@@ -154,19 +159,20 @@ struct loadStoreLoadPatternComponents {
 /// traverse control flow instructions.
 FailureOr<SmallVector<Value>> traverseCFForValueDefs(Value val) {
   SmallVector<Value> totalDefs{val};
+  LDBG("    traverseCFForValueDefs processing " << val);
   if (auto blockArg = dyn_cast<BlockArgument>(val)) {
     Block *block = blockArg.getOwner();
 
     // Get parent operation (e.g., scf.for, scf.if, scf.while)
     Operation *parentOp = block->getParentOp();
     if (!parentOp) {
-      LDBG("block without parent op, can not analyze further");
+      LDBG("    block without parent op, can not analyze further");
       return failure();
     }
 
     // If block belongs to a function, stop tracking (function arguments)
     if (isa<triton::FuncOp>(parentOp)) {
-      LDBG("can not traverse def-use chains, found function argument");
+      LDBG("    can not traverse def-use chains, found function argument");
       return failure();
     }
 
@@ -180,10 +186,11 @@ FailureOr<SmallVector<Value>> traverseCFForValueDefs(Value val) {
       if (iterArgIdx >= 0) {
         Value yieldVal =
             forOp.getBody()->getTerminator()->getOperand(iterArgIdx);
-        // look inside of the loop
+        // look inside of a loop
         auto inLoop = traverseCFForValueDefs(yieldVal);
         // look outside of a loop
-        auto outLoop = traverseCFForValueDefs(forOp.getOperand(iterArgIdx));
+        int forOpArgIdx = iterArgIdx + forOp.getNumControlOperands();
+        auto outLoop = traverseCFForValueDefs(forOp.getOperand(forOpArgIdx));
         if (failed(inLoop) || failed(outLoop))
           return failure();
 
@@ -252,14 +259,15 @@ struct ForwardSearchAnalysis {
 ///
 /// Traverses control flow instructions forward.
 FailureOr<ForwardSearchAnalysis> traverseCFForValueUses(Value val) {
+  LDBG("    traverseCFForValueUses processing " << val);
   ForwardSearchAnalysis result;
   for (auto &use : val.getUses()) {
     auto user = use.getOwner();
+    LDBG("      processing user " << *user);
     if (isa<triton::ReturnOp>(user)) {
-      LDBG("Reached return from function");
+      LDBG("    Reached return from function");
       return failure();
-    }
-    if (isa<scf::YieldOp>(user)) {
+    } else if (isa<scf::YieldOp>(user)) {
       auto opIdx = use.getOperandNumber();
       auto parent = user->getParentOp();
       // traverse outside data flow
@@ -282,10 +290,14 @@ FailureOr<ForwardSearchAnalysis> traverseCFForValueUses(Value val) {
         result.transitiveCF.push_back(blockArg);
         result.transitiveCF.append(cfSearch.value().transitiveCF);
       }
-    }
-    if (auto forOp = dyn_cast<scf::ForOp>(user)) {
-      int opIdx = use.getOperandNumber() + forOp.getNumInductionVars();
-      auto blockArg = forOp.getBody()->getArgument(opIdx);
+    } else if (auto forOp = dyn_cast<scf::ForOp>(user)) {
+      LDBG("      for op num operands: " << forOp.getNumOperands());
+      LDBG("      for op body num operands: "
+           << forOp.getBody()->getNumArguments());
+      assert(use.getOperandNumber() >= forOp.getNumControlOperands());
+      int blockArgIdx = use.getOperandNumber() - forOp.getNumControlOperands() +
+                        forOp.getNumInductionVars();
+      auto blockArg = forOp.getBody()->getArgument(blockArgIdx);
       auto cfSearch = traverseCFForValueUses(blockArg);
       if (failed(cfSearch))
         return failure();
@@ -356,12 +368,10 @@ findReachableSMemOps(ttg::LocalLoadOp root,
       } else if (isa<ttg::LocalStoreOp>(candidate)) {
         foundNetwork.localMemStores.push_back(candidate);
         backwardIdx = 1;
-      } else if (isa<ttg::LocalDeallocOp>(candidate)) {
-        backwardIdx = 0;
       } else if (isa<ttg::MemDescSubviewOp>(candidate)) {
         forwardIdx = 0;
         backwardIdx = 0;
-      } else if (isa<ttg::LocalLoadOp>(candidate)) {
+      } else if (isa<ttg::LocalLoadOp, ttg::LocalDeallocOp>(candidate)) {
         backwardIdx = 0;
       } else {
         // this operation is not part of shared memory def-use network,
@@ -450,12 +460,12 @@ matchThreadRakePattern(Value operand) {
     return failure();
   }
 
-  SmallVector<Value> loadCandidates;
   for (auto localMemStore : pattern.localMemStores) {
-    if (localMemStore->getOperand(0))
-      loadCandidates.push_back(localMemStore->getOperand(0));
-  }
-  for (auto loadCandidate : loadCandidates) {
+    LDBG("processing local mem store operation: " << *localMemStore);
+    // check if it is a local alloc with no predecessor
+    if (localMemStore->getNumOperands() == 0)
+      continue;
+    Value loadCandidate = localMemStore->getOperand(0);
     auto loadedEnc =
         cast<RankedTensorType>(loadCandidate.getType()).getEncoding();
     auto blockedEnc = dyn_cast<ttg::BlockedEncodingAttr>(loadedEnc);
