@@ -119,25 +119,40 @@ void transposeInRegsitersBeforeStoreInLocalMemory(Operation *memStoreOp) {
   memStoreOp->setOperand(0, inThreadTransposed);
 }
 
-void changeSharedEncoding(Value memVal) {
+Attribute createNewSharedEncoding(RankedTensorType operandType) {
+  auto ctx = operandType.getContext();
+  auto dotOperandEnc =
+      cast<ttg::DotOperandEncodingAttr>(operandType.getEncoding());
+  auto ctaLayout = ttg::getCTALayout(dotOperandEnc);
+  auto bitWidth = operandType.getElementTypeBitWidth();
+  SmallVector<unsigned> order{1, 0};
+  if (dotOperandEnc.getOpIdx() == 1)
+    std::swap(order[0], order[1]);
+
+  auto tempAttr = ttg::SwizzledSharedEncodingAttr::get(
+      ctx, dotOperandEnc, operandType.getShape(), order, ctaLayout, bitWidth,
+      /*needTrans=*/false);
+
+  auto sharedVec = tempAttr.getVec();
+  auto perPhase = tempAttr.getPerPhase();
+  auto maxPhase = tempAttr.getMaxPhase();
+
+  auto newSharedEnc = ttg::SwizzledBlocksSharedEncodingAttr::get(
+      ctx, sharedVec, perPhase, maxPhase, order, ctaLayout);
+
+  return newSharedEnc;
+}
+
+void changeSharedEncoding(Value memVal, Attribute newEncoding) {
   auto originalType = cast<ttg::MemDescType>(memVal.getType());
   auto sharedEnc =
       dyn_cast<ttg::SwizzledSharedEncodingAttr>(originalType.getEncoding());
-  // Using non standard shared encoding, skip this item
+  // Already transformed this value
   if (!sharedEnc)
     return;
-  auto ctx = sharedEnc.getContext();
-  auto sharedVec = sharedEnc.getVec();
-  auto perPhase = sharedEnc.getPerPhase();
-  auto maxPhase = sharedEnc.getMaxPhase();
-  auto order = sharedEnc.getOrder();
-  auto ctaLayout = sharedEnc.getCTALayout();
 
-  // TODO replace SwizzledSharedEncodingAttr with special swizzling pattern
-  auto newSharedEnc = ttg::SwizzledBlocksSharedEncodingAttr::get(
-      ctx, sharedVec, perPhase, maxPhase, order, ctaLayout);
   auto newType = ttg::MemDescType::get(
-      originalType.getShape(), originalType.getElementType(), newSharedEnc,
+      originalType.getShape(), originalType.getElementType(), newEncoding,
       originalType.getMemorySpace(), originalType.getMutableMemory());
 
   memVal.setType(newType);
@@ -562,8 +577,10 @@ public:
 
         for (auto memOp : pattern.localMemStores)
           transposeInRegsitersBeforeStoreInLocalMemory(memOp);
+        auto newSharedEncoding =
+            createNewSharedEncoding(cast<RankedTensorType>(operand.getType()));
         for (auto memVal : pattern.sharedMemVals)
-          changeSharedEncoding(memVal);
+          changeSharedEncoding(memVal, newSharedEncoding);
       };
       // Check opA
       tryToConvertToThreadRaked(dotOp.getA());
