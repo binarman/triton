@@ -472,7 +472,7 @@ matchThreadRakePattern(Value operand) {
     if (!blockedEnc)
       return failure();
     auto order = blockedEnc.getOrder();
-    if (order[0] != kDimNum) {
+    if (order[0] == kDimNum) {
       return failure();
     }
     auto globalLoadSearch = findAllDefiningOps<triton::LoadOp>(loadCandidate);
