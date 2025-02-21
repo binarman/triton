@@ -20,10 +20,10 @@ namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
 
 static Type getNewType(Type type, Attribute encoding) {
-    RankedTensorType tensorType = dyn_cast<RankedTensorType>(type);
-    return RankedTensorType::get(tensorType.getShape(),
-                                 tensorType.getElementType(), encoding);
-  }
+  RankedTensorType tensorType = dyn_cast<RankedTensorType>(type);
+  return RankedTensorType::get(tensorType.getShape(),
+                               tensorType.getElementType(), encoding);
+}
 
 void convertLayout(Attribute encoding, Operation *op) {
   OpBuilder builder(op);
@@ -54,6 +54,8 @@ void convertLayout(Attribute encoding, Operation *op) {
   // Construct new op with the new encoding
   Operation *newOp = builder.create(op->getLoc(), op->getName().getIdentifier(),
                                     newArgs, newTypes, op->getAttrs());
+  llvm::errs() << "IN THREAD TRANSPOSE: replacing global load with new one: "
+               << newOp << "\n";
 
   // Cast the results back to the original layout
   for (size_t i = 0; i < op->getNumResults(); i++) {
@@ -66,7 +68,6 @@ void convertLayout(Attribute encoding, Operation *op) {
   }
   op->erase();
 }
-
 
 SmallVector<Operation *> getLoadInsts(Operation *op) {
   SmallVector<Operation *> ret;
@@ -99,7 +100,6 @@ SmallVector<Operation *> getLoadInsts(Operation *op) {
   return ret;
 }
 
-
 bool convertToThreadRaked(Value operand) {
   auto opTensorTy = cast<RankedTensorType>(operand.getType());
   auto opEnc = opTensorTy.getEncoding();
@@ -125,8 +125,8 @@ bool convertToThreadRaked(Value operand) {
   return false;
 }
 
-ttg::BlockedEncodingAttr getThreadRakedBlockedEnc(
-    Value operand, ModuleOp &mod) {
+ttg::BlockedEncodingAttr getThreadRakedBlockedEnc(Value operand,
+                                                  ModuleOp &mod) {
   // get the K dim according to dotOp operand's index
   auto tensorTy = cast<RankedTensorType>(operand.getType());
   auto shape = tensorTy.getShape();
@@ -149,8 +149,8 @@ ttg::BlockedEncodingAttr getThreadRakedBlockedEnc(
   // LDBG("bitwidth = " << bitwidth);
   // Current the widest is set to ds_write_b64
   auto newKOuterDim = std::min(numMaxIters, 64 / bitwidth);
-  LDBG("Choose the minimum of numIters: " << numMaxIters <<
-      " and numDtype: " << 64 / bitwidth);
+  LDBG("Choose the minimum of numIters: " << numMaxIters << " and numDtype: "
+                                          << 64 / bitwidth);
   SmallVector<unsigned> newSizePerThread(sizePerThread);
   newSizePerThread[kDimNum] = newKOuterDim;
 
@@ -159,9 +159,9 @@ ttg::BlockedEncodingAttr getThreadRakedBlockedEnc(
   int numWarps = ttg::TritonGPUDialect::getNumWarps(mod);
   int threadsPerWarp = ttg::TritonGPUDialect::getThreadsPerWarp(mod);
   int numCTAs = ttg::TritonGPUDialect::getNumCTAs(mod);
-  return ttg::BlockedEncodingAttr::get(
-      mod.getContext(), shape, newSizePerThread, order, numWarps,
-      threadsPerWarp, numCTAs);
+  return ttg::BlockedEncodingAttr::get(mod.getContext(), shape,
+                                       newSizePerThread, order, numWarps,
+                                       threadsPerWarp, numCTAs);
 }
 
 class TritonAMDGPUInThreadTransposePass
@@ -189,7 +189,7 @@ public:
         LDBG("opA is K-outer");
         auto loadOps = getLoadInsts(opA.getDefiningOp());
         if (!loadOps.size())
-            return;
+          return;
         auto newBlockedEnc = getThreadRakedBlockedEnc(opA, mod);
         LDBG("opA newBlockedEnc = " << newBlockedEnc);
         for (auto loadOp : loadOps)
@@ -204,7 +204,7 @@ public:
         LDBG("opB is K-outer");
         auto loadOps = getLoadInsts(opB.getDefiningOp());
         if (!loadOps.size())
-            return;
+          return;
         auto newBlockedEnc = getThreadRakedBlockedEnc(opB, mod);
         LDBG("opB newBlockedEnc = " << newBlockedEnc);
         for (auto loadOp : loadOps)

@@ -29,6 +29,11 @@ void lowerDistributedToShared(Location loc, Value src, Value dst,
          (srcTy.getShape().size() == 3 && outOrd[2] == 0) &&
              "Unexpected rank of ConvertLayout(blocked->shared)");
   bool crossGrain = inOrd[0] != outOrd[0];
+  if (crossGrain) {
+    llvm::errs()
+        << "IN THREAD TRANSPOSE: transposing values in registers for op: "
+        << src << "\n";
+  }
   auto elemTy = typeConverter->convertType(srcTy.getElementType());
 
   auto smemBase = smemObj.getBase();
