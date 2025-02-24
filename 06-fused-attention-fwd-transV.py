@@ -206,7 +206,6 @@ class _attention(torch.autograd.Function):
             num_warps=num_warps,
             num_stages=num_stages,
             pre_load_v=pre_load_v,
-            slice_k_tile=slice_k_tile,
             kpack=kpack,
         )
 

@@ -74,8 +74,8 @@ def _attn_fwd(
                                     offsets=(start_m * BLOCK_M, 0), block_shape=(BLOCK_M, BLOCK_DMODEL), order=(1, 0))
     K_block_ptr = tl.make_block_ptr(base=K + qkv_offset, shape=(BLOCK_DMODEL, N_CTX), strides=(stride_kk, stride_kn),
                                     offsets=(0, 0), block_shape=(BLOCK_DMODEL, BLOCK_N), order=(0, 1))
-    V_block_ptr = tl.make_block_ptr(base=V + qkv_offset, shape=(N_CTX, BLOCK_DMODEL), strides=(stride_vk, stride_vn),
-                                    offsets=(0, 0), block_shape=(BLOCK_N, BLOCK_DMODEL), order=(0, 1))
+    V_block_ptr = tl.make_block_ptr(base=V + qkv_offset, shape=(N_CTX, BLOCK_DMODEL), strides=(stride_vn, stride_vk),
+                                    offsets=(0, 0), block_shape=(BLOCK_N, BLOCK_DMODEL), order=(1, 0))
     # initialize offsets
     # offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     # offs_n = tl.arange(0, BLOCK_N)
@@ -134,7 +134,7 @@ class _attention(torch.autograd.Function):
     @staticmethod
     def forward(ctx, q, k, v, sm_scale):
         # shape constraints
-        Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-2]
+        Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
         assert Lq == Lk and Lk == Lv
         assert Lk in {16, 32, 64, 128}
         o = torch.empty_like(q, dtype=v.dtype)
@@ -206,7 +206,6 @@ class _attention(torch.autograd.Function):
             num_warps=num_warps,
             num_stages=num_stages,
             pre_load_v=pre_load_v,
-            slice_k_tile=slice_k_tile,
             kpack=kpack,
         )
 
@@ -227,13 +226,13 @@ def test_op_fwd(Z, H, N_CTX, D_HEAD, dtype):
     init_dtype = torch.float16 if dtype == 'fp8' else name_to_torch_types[dtype]
     q = (torch.empty((Z, H, N_CTX, D_HEAD), dtype=init_dtype, device="cuda").normal_(mean=0., std=0.5).requires_grad_())
     k = (torch.empty((Z, H, N_CTX, D_HEAD), dtype=init_dtype, device="cuda").normal_(mean=0., std=0.5).requires_grad_())
-    v = (torch.empty((Z, H, D_HEAD, N_CTX), dtype=init_dtype, device="cuda").normal_(mean=0., std=0.5).requires_grad_())
+    v = (torch.empty((Z, H, N_CTX, D_HEAD), dtype=init_dtype, device="cuda").normal_(mean=0., std=0.5).requires_grad_())
     sm_scale = 0.5
     # reference implementation
     # M = torch.tril(torch.ones((N_CTX, N_CTX), device="cuda"))
     p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
     p = torch.softmax(p.float(), dim=-1).to(q.dtype)
-    ref_out = torch.matmul(p, v.transpose(2, 3))
+    ref_out = torch.matmul(p, v)
     # triton implementation
     # q,k casting for partial fp8
     q = q.to(name_to_torch_types[dtype])
@@ -288,7 +287,7 @@ def bench_flash_attention(BATCH, H, N_CTX, D_HEAD, causal, provider, dtype, devi
     init_dtype = torch.float16 if dtype != 'bf16' else torch.bfloat16
     q = torch.randn((BATCH, H, N_CTX, D_HEAD), dtype=init_dtype, device="cuda", requires_grad=True)
     k = torch.randn((BATCH, H, N_CTX, D_HEAD), dtype=init_dtype, device="cuda", requires_grad=True)
-    v = torch.randn((BATCH, H, D_HEAD, N_CTX), dtype=init_dtype, device="cuda", requires_grad=True)
+    v = torch.randn((BATCH, H, N_CTX, D_HEAD), dtype=init_dtype, device="cuda", requires_grad=True)
     sm_scale = 1.3
     # q,k casting for partial fp8
     q = q.to(name_to_torch_types[dtype])
