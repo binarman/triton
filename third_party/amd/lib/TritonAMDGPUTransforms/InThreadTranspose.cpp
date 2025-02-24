@@ -98,7 +98,8 @@ createInThreadTransposedEncoding(ArrayRef<int64_t> shape,
   return ttg::LinearEncodingAttr::get(ctx, transposedLL);
 }
 
-void transposeInRegsitersBeforeStoreInLocalMemory(Operation *memStoreOp) {
+void transposeInRegsitersBeforeStoreInLocalMemory(
+    Operation *memStoreOp, Attribute transposedEncoding) {
   if (memStoreOp->getNumOperands() == 0)
     return;
   auto data = memStoreOp->getOperand(0);
@@ -108,11 +109,7 @@ void transposeInRegsitersBeforeStoreInLocalMemory(Operation *memStoreOp) {
   // if it is not provided, nothing to do
   if (!data)
     return;
-  auto operandType = cast<RankedTensorType>(data.getType());
-  auto operandEncoding =
-      cast<ttg::BlockedEncodingAttr>(operandType.getEncoding());
-  auto transposedEncoding =
-      createInThreadTransposedEncoding(operandType.getShape(), operandEncoding);
+
   auto newType = getNewType(data.getType(), transposedEncoding);
   auto inThreadTransposed =
       builder.create<ttg::ConvertLayoutOp>(memStoreOp->getLoc(), newType, data);
@@ -501,12 +498,23 @@ matchThreadRakePattern(Value operand) {
     LDBG("Did not find global load operation");
     return failure();
   }
+  // check that all global loads have same type(i.e. shape and layout),
+  // otherwise can not guarantee transformation overhead is cheap
+  auto expectedLoadType = pattern.globalLoads.front()->getResult(0).getType();
+
+  for (auto load : pattern.globalLoads) {
+    if (load->getResult(0).getType() != expectedLoadType) {
+      LDBG("Mismatch between global loads result types");
+      return failure();
+    }
+  }
 
   return pattern;
 }
 
-ttg::BlockedEncodingAttr
-getThreadRakedBlockedEnc(Value dotOperand, tt::LoadOp load, ModuleOp &mod) {
+ttg::BlockedEncodingAttr getThreadRakedBlockedEnc(Value dotOperand,
+                                                  RankedTensorType loadType,
+                                                  ModuleOp &mod) {
   // get the K dim according to dotOp operand's index
   auto tensorTy = cast<RankedTensorType>(dotOperand.getType());
   auto shape = tensorTy.getShape();
@@ -514,13 +522,12 @@ getThreadRakedBlockedEnc(Value dotOperand, tt::LoadOp load, ModuleOp &mod) {
   auto opDotOpEnc = dyn_cast<ttg::DotOperandEncodingAttr>(opEnc);
   int kDimNum = opDotOpEnc.getOpIdx() == 0 ? 1 : 0;
   // get the current blocked encoding
-  auto loadResult = load.getResult();
-  auto loadEnc = cast<RankedTensorType>(loadResult.getType()).getEncoding();
+  auto loadEnc = cast<RankedTensorType>(loadType).getEncoding();
   auto blockedEnc = dyn_cast<ttg::BlockedEncodingAttr>(loadEnc);
   // compute the sizePerThread for the new encoding
   auto sizePerThread = blockedEnc.getSizePerThread();
   auto elemsPerIter = product(sizePerThread);
-  auto elemsTotal = ttg::getTotalElemsPerThread(loadResult.getType());
+  auto elemsTotal = ttg::getTotalElemsPerThread(loadType);
   // we need to know how many iteration each thread will load
   LDBG("elemsPerIter = " << elemsPerIter << "; elemsTotal = " << elemsTotal);
   auto numMaxIters = elemsTotal / elemsPerIter;
@@ -564,19 +571,28 @@ public:
         // Dot operand
         auto matchResult = matchThreadRakePattern(operand);
         if (!llvm::succeeded(matchResult)) {
-          LDBG("operand is K-inner and nothing to be done");
+          LDBG("Failed to match threadRake pattern and nothing to be done");
           return;
         }
         auto pattern = matchResult.value();
-        LDBG("operand is K-outer");
+
+        LDBG("Adjusting global loads");
+        RankedTensorType loadResultType = cast<RankedTensorType>(
+            pattern.globalLoads[0].getResult().getType());
+        auto newBlockedEnc =
+            getThreadRakedBlockedEnc(operand, loadResultType, mod);
         for (auto gLoad : pattern.globalLoads) {
-          auto newBlockedEnc = getThreadRakedBlockedEnc(operand, gLoad, mod);
           LDBG("operand newBlockedEnc = " << newBlockedEnc);
           convertLayout(newBlockedEnc, (Operation *)gLoad);
         }
 
+        LDBG("Inserting transpose in registers before store in LDS");
+        Attribute transposedLayout = createInThreadTransposedEncoding(
+            loadResultType.getShape(), newBlockedEnc);
         for (auto memOp : pattern.localMemStores)
-          transposeInRegsitersBeforeStoreInLocalMemory(memOp);
+          transposeInRegsitersBeforeStoreInLocalMemory(memOp, transposedLayout);
+
+        LDBG("Adjust shared encoding");
         auto newSharedEncoding =
             createNewSharedEncoding(cast<RankedTensorType>(operand.getType()));
         for (auto memVal : pattern.sharedMemVals)
