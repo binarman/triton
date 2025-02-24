@@ -55,39 +55,43 @@ def get_cuda_autotune_config():
 
 def get_hip_autotune_config():
     return [
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
-        #     num_warps=4, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2},
-        #     num_warps=8, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
-        #     num_warps=8, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
+            num_warps=4, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2},
+            num_warps=8, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
+            num_warps=8, num_stages=2),
         triton.Config(
             {'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8, 'waves_per_eu': 3},
             num_warps=4, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 1, 'waves_per_eu': 8},
-        #     num_warps=4, num_stages=1),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
-        #     num_warps=4, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2},
-        #     num_warps=8, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
-        #     num_warps=8, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8, 'waves_per_eu': 3},
-        #     num_warps=4, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'matrix_instr_nonkdim': 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 8, 'kpack': 1},
-        #     num_warps=8, num_stages=2),
-        # triton.Config(
-        #     {'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 64, 'matrix_instr_nonkdim': 16, 'GROUP_SIZE_M': 1, 'waves_per_eu': 8, 'kpack': 1},
-        #     num_warps=1, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 1, 'waves_per_eu': 8},
+            num_warps=4, num_stages=1),
+        triton.Config(
+            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
+            num_warps=4, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 16, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2},
+            num_warps=8, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
+            num_warps=8, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8, 'waves_per_eu': 3},
+            num_warps=4, num_stages=2),
+        triton.Config(
+            {
+                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'matrix_instr_nonkdim': 32,
+                'GROUP_SIZE_M': 1, 'waves_per_eu': 8, 'kpack': 1
+            }, num_warps=8, num_stages=2),
+        triton.Config(
+            {
+                'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 64, 'matrix_instr_nonkdim': 16, 'GROUP_SIZE_M':
+                1, 'waves_per_eu': 8, 'kpack': 1
+            }, num_warps=1, num_stages=2),
     ]
 
 
@@ -234,7 +238,7 @@ def matmul(a, b, activation=""):
     return c
 
 
-def correctness():
+def test_correctness():
     torch.manual_seed(0)
     # a = torch.randn((4864, 8256), device='cuda', dtype=torch.float16)
     # b = torch.randn((8256, 4096), device='cuda', dtype=torch.float16)
@@ -302,7 +306,7 @@ for fp8_inputs in [False, True]:
     configs.append(
         triton.testing.Benchmark(
             x_names=["M", "N", "K"],  # Argument names to use as an x-axis for the plot
-            x_vals=[128 * i for i in range(20, 21)],  # Different possible values for `x_name`
+            x_vals=[128 * i for i in range(2, 33)],  # Different possible values for `x_name`
             line_arg="provider",  # Argument name whose value corresponds to a different line in the plot
             # Possible values for `line_arg`
             # Don't compare to cublas for fp8 cases as torch.matmul doesn't support fp8 at the moment.
@@ -333,4 +337,5 @@ def benchmark(M, N, K, provider, fp8_inputs):
     return perf(ms), perf(max_ms), perf(min_ms)
 
 
-benchmark.run(show_plots=True, print_data=True)
+if __name__ == "__main__":
+    benchmark.run(show_plots=True, print_data=True)
