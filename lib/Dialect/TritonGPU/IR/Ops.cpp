@@ -159,6 +159,9 @@ struct CanonicalizeConvertFromAlloc
     auto convert = op.getSrc().getDefiningOp<ConvertLayoutOp>();
     if (!convert)
       return failure();
+    if (isa<triton::gpu::LinearEncodingAttr>(
+            convert.getResult().getType().getEncoding()))
+      return failure();
     rewriter.replaceOpWithNewOp<triton::gpu::LocalAllocOp>(
         op, op->getResult(0).getType(), convert.getSrc());
     return mlir::success();
