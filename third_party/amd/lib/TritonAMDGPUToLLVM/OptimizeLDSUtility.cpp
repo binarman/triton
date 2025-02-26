@@ -81,7 +81,7 @@ createTmpLayout(triton::gpu::DistributedEncodingTrait layout,
   }
   // ignore linear layout in this pattern
   if (auto src = dyn_cast<triton::gpu::LinearEncodingAttr>(layout))
-    return Attribute();
+    return {};
   assert("Encountered unsupported layout");
   return {};
 }
