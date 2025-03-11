@@ -394,4 +394,35 @@ def TTG_UpcastMXFPOp : TT_AMDGPU_Op<"upcast_mxfp", [Pure]> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// TransposeInRegistersOp
+//===----------------------------------------------------------------------===//
+
+def TTG_TransposeInRegistersOpOp : TT_AMDGPU_Op<"transpose_in_reg", [Pure]> {
+  let summary = "Transposes last two dimensions of layout in registers";
+
+  let hasVerifier = 1;
+
+  let description = [{
+    Variant of convert_layout, with specialized semantics.
+    Transposes last two dimensions of layout register component,
+    effectively changing register "order".
+  }];
+  let arguments = (
+    ins
+    TT_Tensor:$src,
+    TT_ScaleDotElemTypeAttr:$fp_type,
+  );
+  let results = (outs TT_Tensor:$result);
+
+  let assemblyFormat = [{
+    $src `,` $scale  `fp_type` `=` $fp_type attr-dict `:` type($src) `,` type($scale) `->` type($result)
+  }];
+
+  let extraClassDeclaration = [{
+    static RankedTensorType deduceOutputType(
+        TypedValue<RankedTensorType> inputTensor, ScaleDotElemType inputElemType, Type outputElemType);
+  }];
+}
+
 #endif
