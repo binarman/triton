@@ -615,10 +615,10 @@ ttg::BlockedEncodingAttr getTransposableBlockedEnc(int dotOperandIdx,
 
   auto maxkDimSizePerThread = getMaxSizePerThread(loadType, kDimNum);
   auto elemBitwidth = loadType.getElementType().getIntOrFloatBitWidth();
-  // Current the widest is set to ds_write_b64
+  // Current the widest is set to ds_write_b128
   // In some cases b64 works best, in others 128
   // TODO introduce a heuristic
-  const unsigned dsBitWidth = 64;
+  const unsigned dsBitWidth = 128;
   auto newKDimSize = std::min(maxkDimSizePerThread, dsBitWidth / elemBitwidth);
   LDBG("Choose the minimum of numIters: " << newKDimSize << " and numElements: "
                                           << dsBitWidth / elemBitwidth);
