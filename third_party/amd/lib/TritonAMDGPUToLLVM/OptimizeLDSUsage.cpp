@@ -29,6 +29,10 @@
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
+#define DEBUG_TYPE "optimize-amd-lds-usage"
+#define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
+#define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
+
 using namespace mlir;
 
 namespace mlir::triton {
@@ -86,6 +90,7 @@ class OptimizeAMDLDSUsage
   // times do not intersect, therefore this transformation lowers LDS
   // consumption.
   void tryFitCvtIntoLDS(triton::gpu::ConvertLayoutOp cvtOp, int targetLDSSize) {
+    LDBG("Trying fit " << cvtOp << " into " << targetLDSSize << " bytes");
     OpBuilder builder(cvtOp);
 
     auto srcType = cvtOp.getSrc().getType();
@@ -147,6 +152,8 @@ class OptimizeAMDLDSUsage
     for (int i = 0; i < tmpLayouts.size(); i++) {
       auto resources = mlir::triton::AMD::estimateResourcesForReplacement(
           builder, cvtOp, tmpLayouts[i]);
+      LDBG("layout " << tmpLayouts[i] << " requires " << resources.LDS
+                     << " bytes");
       // TODO analyze performance along with LDS consumption
       if (resources.LDS < minLDSUsage) {
         minLDSUsage = resources.LDS;
