@@ -7104,7 +7104,7 @@ def test_gather_warp_shuffle(src_shape, indices_shape, axis, src_layout, indices
 
         pat = r"(%[0-9]+) = tt.gather (%[0-9]+)\[(%[0-9]+)\] {axis = "
         pat += str(axis)
-        pat += r" : i32} : \(tensor\<"
+        pat += r" : i32, efficient_layout} : \(tensor\<"
         pat += src_spec
         pat += r", (#[a-z]+[0-9]+)\>, tensor\<"
         pat += indices_spec
@@ -7117,7 +7117,7 @@ def test_gather_warp_shuffle(src_shape, indices_shape, axis, src_layout, indices
     %idx = ttg.convert_layout \3 : tensor<""" + indices_spec + r""", \5> -> tensor<""" + indices_spec + r""", #idx_layout>
     %out = tt.gather %src[%idx] {axis = """ + str(
             axis
-        ) + r""" : i32} : (tensor<""" + src_spec + r""", #src_layout>, tensor<""" + indices_spec + r""", #idx_layout>) -> tensor<""" + output_spec + r""", #idx_layout>
+        ) + r""" : i32, efficient_layout} : (tensor<""" + src_spec + r""", #src_layout>, tensor<""" + indices_spec + r""", #idx_layout>) -> tensor<""" + output_spec + r""", #idx_layout>
     \1 = ttg.convert_layout %out : tensor<""" + output_spec + r""", #idx_layout> -> tensor<""" + output_spec + r""", \6>"""
         print("injected ir:", ir)
         print("pattern:", pat)
@@ -7131,6 +7131,7 @@ def test_gather_warp_shuffle(src_shape, indices_shape, axis, src_layout, indices
     output, compiled = prepare_kernel(src, axis, indices)
     ir = compiled.asm["ttgir"]
     ir = inject_layout(ir, src, axis, indices, src_layout, indices_layout)
+    assert ir != compiled.asm["ttgir"]
 
     temp_file = tmp_path / "test_warp_gather.ttgir"
     temp_file.write_text(ir)
