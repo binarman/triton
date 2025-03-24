@@ -2666,58 +2666,60 @@ struct TritonGPUVerifyTensorLayoutInterface
       function_ref<InFlightDiagnostic()> makeErr) const override {
     if (isa<triton::gpu::SharedEncodingTrait>(layout))
       return makeErr() << "Shared layout is not allowed on tensor type.";
-    // TODO(jlebar): Currently this only checks blocked layouts, but other
-    // layouts also have invariants!
 
     // TODO(jlebar): Handle the case when the encoding is nested within tt.ptr.
-    if (auto blocked = dyn_cast<BlockedEncodingAttr>(layout)) {
-      ModuleOp module = op->getParentOfType<ModuleOp>();
-
-      // A different verifier should have checked that the layout itself is
-      // valid, including that threads-per-warp has the same rank as
-      // warps-per-block etc.
-      if (blocked.getRank() != rankedTy.getRank()) {
-        return makeErr() << layout << ".\nLayout has rank " << blocked.getRank()
-                         << ", but the tensor it's attached to has rank "
-                         << rankedTy.getRank() << ".";
-      }
-
-      int moduleThreadsPerWarp = TritonGPUDialect::getThreadsPerWarp(module);
-      int64_t layoutThreadsPerWarp = product(blocked.getThreadsPerWarp());
-      if (layoutThreadsPerWarp != moduleThreadsPerWarp) {
-        return makeErr() << layout << ".\nLayout has a total of "
-                         << layoutThreadsPerWarp
-                         << " threads per warp, but the module specifies "
-                         << moduleThreadsPerWarp << " threads per warp.";
-      }
-
-      std::optional<int> moduleWarpsPerCTA = maybeLookupNumWarps(op);
-      if (!moduleWarpsPerCTA) {
-        return makeErr()
-               << "Could not determine the number of warps per CTA. Operation "
-                  "is not in a context with `ttg.num-warps`.";
-      }
-      int64_t layoutWarpsPerCTA = product(blocked.getWarpsPerCTA());
-      if (layoutWarpsPerCTA != *moduleWarpsPerCTA) {
-        return makeErr() << layout << ".\nLayout has a total of "
-                         << layoutWarpsPerCTA
-                         << " warps per CTA, but the context requires "
-                         << *moduleWarpsPerCTA << " warps per CTA.";
-      }
-
-      if (blocked.getCTALayout().getCTAsPerCGA().size() > 0) {
-        int moduleCTAsPerCGA = TritonGPUDialect::getNumCTAs(module);
-        int64_t layoutCTAsPerCGA =
-            product(blocked.getCTALayout().getCTAsPerCGA());
-        if (layoutCTAsPerCGA != moduleCTAsPerCGA) {
-          return makeErr() << layout << ".\nLayout has a total of "
-                           << layoutCTAsPerCGA
-                           << " CTAs per CGA, but the module specifies "
-                           << moduleCTAsPerCGA << " CTAs per CGA.";
-        }
-      }
+    ModuleOp module = op->getParentOfType<ModuleOp>();
+    int moduleThreadsPerWarp = TritonGPUDialect::getThreadsPerWarp(module);
+    std::optional<int> moduleWarpsPerCTAOpt = maybeLookupNumWarps(op);
+    if (!moduleWarpsPerCTAOpt) {
+      return makeErr()
+             << "Could not determine the number of warps per CTA. Operation "
+                "is not in a context with `ttg.num-warps`.";
     }
+    int moduleWarpsPerCTA = product(*moduleWarpsPerCTAOpt);
+    int moduleCTAsPerCGA = TritonGPUDialect::getNumCTAs(module);
 
+    auto distributed =
+        dyn_cast<DistributedEncodingTrait>(layout).toLinearLayout(
+            rankedTy.getShape());
+
+    auto ctx = rankedTy.getContext();
+    auto laneDim = StringAttr::get(ctx, "lane");
+    auto warpDim = StringAttr::get(ctx, "warp");
+    auto blockDim = StringAttr::get(ctx, "block");
+    auto bases = distributed.getBases();
+
+    auto layoutRank = distributed.getNumOutDims();
+    auto layoutThreadsPerWarp = distributed.getInDimSize(laneDim);
+    auto layoutWarpsPerCTA = distributed.getInDimSize(warpDim);
+    auto layoutCTAsPerCGA = distributed.getInDimSize(blockDim);
+
+    // A different verifier should have checked that the layout itself is
+    // valid, including that threads-per-warp has the same rank as
+    // warps-per-block etc.
+    if (layoutRank != rankedTy.getRank()) {
+      return makeErr() << layout << ".\nLayout has rank " << layoutRank
+                       << ", but the tensor it's attached to has rank "
+                       << rankedTy.getRank() << ".";
+    }
+    if (layoutThreadsPerWarp != moduleThreadsPerWarp) {
+      return makeErr() << layout << ".\nLayout has a total of "
+                       << layoutThreadsPerWarp
+                       << " threads per warp, but the module specifies "
+                       << moduleThreadsPerWarp << " threads per warp.";
+    }
+    if (layoutWarpsPerCTA != moduleWarpsPerCTA) {
+      return makeErr() << layout << ".\nLayout has a total of "
+                       << layoutWarpsPerCTA
+                       << " warps per CTA, but the context requires "
+                       << moduleWarpsPerCTA << " warps per CTA.";
+    }
+    if (layoutCTAsPerCGA != moduleCTAsPerCGA) {
+      return makeErr() << layout << ".\nLayout has a total of "
+                       << layoutCTAsPerCGA
+                       << " CTAs per CGA, but the module specifies "
+                       << moduleCTAsPerCGA << " CTAs per CGA.";
+    }
     return success();
   }
 };
