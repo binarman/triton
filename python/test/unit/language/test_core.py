@@ -7131,6 +7131,7 @@ def test_gather_warp_shuffle(src_shape, indices_shape, axis, src_layout, indices
 
     temp_file = tmp_path / "test_warp_gather.ttgir"
     temp_file.write_text(ir)
+    print("ir to test:", ir)
 
     kernel = triton.compile(str(temp_file))
     assert ("nvvm.shfl.sync.idx" in kernel.asm["llir"]) or ("llvm.amdgcn.ds.bpermute" in kernel.asm["llir"])
