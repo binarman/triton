@@ -7119,6 +7119,9 @@ def test_gather_warp_shuffle(src_shape, indices_shape, axis, src_layout, indices
             axis
         ) + r""" : i32} : (tensor<""" + src_spec + r""", #src_layout>, tensor<""" + indices_spec + r""", #idx_layout>) -> tensor<""" + output_spec + r""", #idx_layout>
     \1 = ttg.convert_layout %out : tensor<""" + output_spec + r""", #idx_layout> -> tensor<""" + output_spec + r""", \6>"""
+        print("injected ir:", ir)
+        print("pattern:", pat)
+        print("replacement:", repl)
         return re.sub(pat, repl, ir)
 
     src = torch.randn(src_shape, device=device)
