@@ -19,6 +19,8 @@
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
+void dump(const mlir::triton::LinearLayout &ll) { llvm::outs() << ll << "\n"; }
+
 #if defined(_MSC_VER) && !defined(__clang__)
 // from https://gist.github.com/pps83/3210a2f980fd02bb2ba2e5a1fc4a2ef0
 #include <intrin.h>
@@ -214,6 +216,11 @@ LinearLayout::LinearLayout(BasesT bases,
 std::optional<std::string>
 LinearLayout::checkInvariants(bool requireSurjective) {
   LDBG("checkInvariants: " << toString());
+  if (bases.empty() && !outDims.empty()) {
+    assert(
+        false &&
+        "Invalid empty LinearLayout, both bases and outDims should be empty");
+  }
   // Check that basis values are non-negative.
   for (const auto &[inDim, inDimBases] : bases) {
     for (const auto &basis : inDimBases) {
@@ -714,6 +721,9 @@ LinearLayout LinearLayout::sublayout(ArrayRef<StringAttr> inDimNames,
       newOutDims.push_back({outDim, outDimSize});
     }
   }
+  // Consider newBases.empty() is equivalent empty mapping.
+  if (newBases.empty())
+    return LinearLayout::empty();
   return LinearLayout(std::move(newBases), std::move(newOutDims),
                       /*requireSurjective=*/false);
 }
@@ -837,8 +847,6 @@ LinearLayout lstsq(const LinearLayout &A, const LinearLayout &B) {
 
   // We need names for the in/out dim of the flattened layout we're going to
   // read off from `m`.  These could be anything, doesn't matter.
-  assert(!A.getInDimNames().empty() &&
-         "attempt to solve lstsq for empty layout");
   StringAttr inDim1D = *A.getInDimNames().begin();
   StringAttr outDim1D = *A.getOutDimNames().begin();
 
@@ -929,8 +937,9 @@ LinearLayout LinearLayout::invertAndCompose(const LinearLayout &outer) const {
   auto BReduced = B.sublayout(BNonIdentityInDims, outDims);
 
   // If one is empty, the other must be empty as well
-  assert((ANonIdentityInDims.empty()) == (BNonIdentityInDims.empty()));
-  bool isEmpty = ANonIdentityInDims.empty();
+  assert((AReduced == LinearLayout::empty()) ==
+         (BReduced == LinearLayout::empty()));
+  bool isEmpty = AReduced == LinearLayout::empty();
 
   auto ret = isEmpty ? LinearLayout::empty() : lstsq(AReduced, BReduced);
 
