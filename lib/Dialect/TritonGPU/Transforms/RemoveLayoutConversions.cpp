@@ -1136,7 +1136,7 @@ void LayoutRematerialization::hoistConvertDotOperand(
       auto dotEnc = dyn_cast<DotOperandEncodingAttr>(opType.getEncoding());
       if (!dotEnc)
         return;
-      if (isa<MmaEncodingTrait>(dotEnc.getParent()))
+      if (isa<MmaEncodingTrait>(dotEnc.getParent() && dotEnc.getOpIdx() == 0))
         dotLikeOps.push_back(op);
     });
     if (dotLikeOps.empty())
