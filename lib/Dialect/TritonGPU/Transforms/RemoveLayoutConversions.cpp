@@ -1118,6 +1118,10 @@ void LayoutRematerialization::hoistConvertDotOperand(
   // The pass is targeted to MMA dot operands
 
   auto canBePipelined = [&](ConvertLayoutOp convertOp) {
+    auto convertEnc =
+        dyn_cast<DotOperandEncodingAttr>(convertOp.getType().getEncoding());
+    if (convertEnc && convertEnc.getOpIdx() != 0)
+      return false;
     // FIXME: Check that the parent is a for loop
     auto parent = convertOp->getParentOp();
     if (!parent)
@@ -1136,7 +1140,7 @@ void LayoutRematerialization::hoistConvertDotOperand(
       auto dotEnc = dyn_cast<DotOperandEncodingAttr>(opType.getEncoding());
       if (!dotEnc)
         return;
-      if (isa<MmaEncodingTrait>(dotEnc.getParent() && dotEnc.getOpIdx() == 0))
+      if (isa<MmaEncodingTrait>(dotEnc.getParent()))
         dotLikeOps.push_back(op);
     });
     if (dotLikeOps.empty())
