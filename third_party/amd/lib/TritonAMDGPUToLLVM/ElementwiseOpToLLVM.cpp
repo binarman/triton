@@ -294,7 +294,7 @@ static SmallVector<Value> cvtFp8ToFp32(Location loc,
                                        const std::string &fp8_format) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   assert(fp8_format == "fp8" || fp8_format == "bf8");
-  std::string ins_str = "v_cvt_pk_f32_" + fp8_format;
+  std::string ins_str = "s_nop 0xf\nv_cvt_pk_f32_" + fp8_format;
 
   auto fp8x4VecTy = vec_ty(i8_ty, 4);
   Value fp8x4Vec = b.undef(fp8x4VecTy);
