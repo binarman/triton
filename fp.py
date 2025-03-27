@@ -1,5 +1,5 @@
 def int_as_f8(a):
-    offset = 7
+    offset = 8
     m = a & 0x7
     e = (a >> 3) & 0xf
     s = (a >> 7) & 1

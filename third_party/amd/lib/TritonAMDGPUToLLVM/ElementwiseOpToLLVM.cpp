@@ -294,7 +294,8 @@ static SmallVector<Value> cvtFp8ToFp32(Location loc,
                                        const std::string &fp8_format) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   assert(fp8_format == "fp8" || fp8_format == "bf8");
-  std::string ins_str = "s_nop 0xf\nv_cvt_pk_f32_" + fp8_format;
+  std::string ins_str =
+      "s_nop 0xf\ns_nop 0xf\ns_nop 0xf\nv_cvt_pk_f32_" + fp8_format;
 
   auto fp8x4VecTy = vec_ty(i8_ty, 4);
   Value fp8x4Vec = b.undef(fp8x4VecTy);
@@ -304,9 +305,11 @@ static SmallVector<Value> cvtFp8ToFp32(Location loc,
 
   GCNBuilder builder1;
   auto &cvt = *builder1.create(ins_str);
+  auto &nops = *builder1.create("s_nop 0xf\ns_nop 0xf\ns_nop 0xf");
   auto res = builder1.newOperand("=v");
   auto operand = builder1.newOperand(i32v, "v");
   cvt(res, operand);
+  nops();
   auto i64v = builder1.launch(rewriter, loc, i64_ty, false);
   auto fp32x2VecTy = vec_ty(f32_ty, 2);
   auto fp32x2Vec = b.bitcast(i64v, fp32x2VecTy);
