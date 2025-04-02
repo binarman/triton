@@ -566,6 +566,58 @@ unsigned getMaxSizePerThread(RankedTensorType type, int dimIdx) {
   return std::max(1, maxSize);
 }
 
+/// Extends global load layout sizePerThread across k dimension, so it could be
+/// transposed in registers.
+///
+/// Consider 2d dot operand idx = 1(i.e. kDim idx = 0), and global load layout
+/// is n-continous:
+///   #ttg.blocked<{sizePerThread = [1, 8], threadsPerWarp = [8, 8], warpsPerCTA
+///   = [1, 1], order = [1, 0]}>
+/// Possible output is:
+///   #ttg.blocked<{sizePerThread = [4, 8], threadsPerWarp = [8, 8], warpsPerCTA
+///   = [1, 1], order = [1, 0]}>
+///
+/// Consider 2d dot operand idx = 0(i.e. kDim idx = 1), global load layout is
+/// m-continous:
+///   #ttg.blocked<{sizePerThread = [8, 1], threadsPerWarp = [8, 8], warpsPerCTA
+///   = [1, 1], order = [0, 1]}>
+/// Possible output is:
+///   #ttg.blocked<{sizePerThread = [8, 8], threadsPerWarp = [8, 8], warpsPerCTA
+///   = [1, 1], order = [0, 1]}>
+///
+/// Number of elements added across K dimension is limited by tensor dtype bit
+/// width and shape across K
+ttg::BlockedEncodingAttr getTransposableBlockedEnc(int dotOperandIdx,
+                                                   RankedTensorType loadType) {
+  // get the K dim according to dotOp operand's index
+  auto shape = loadType.getShape();
+  int kDimNum = dotOperandIdx == 0 ? 1 : 0;
+  // get the current blocked encoding
+  auto loadEnc = loadType.getEncoding();
+  auto blockedEnc = cast<ttg::BlockedEncodingAttr>(loadEnc);
+
+  auto maxkDimSizePerThread = getMaxSizePerThread(loadType, kDimNum);
+  auto elemBitwidth = loadType.getElementType().getIntOrFloatBitWidth();
+  // Current the widest is set to ds_write_b64
+  // In some cases b64 works best, in others 128
+  // TODO introduce a heuristic
+  const unsigned dsBitWidth = 64;
+  auto newKDimSize = std::min(maxkDimSizePerThread, dsBitWidth / elemBitwidth);
+  LDBG("Choose the minimum of numIters: " << newKDimSize << " and numElements: "
+                                          << dsBitWidth / elemBitwidth);
+  SmallVector<unsigned> newSizePerThread{blockedEnc.getSizePerThread()};
+  newSizePerThread[kDimNum] = newKDimSize;
+
+  // return the new blocked encoding
+  auto order = blockedEnc.getOrder();
+  auto ctx = blockedEnc.getContext();
+  auto numWarps = product(blockedEnc.getWarpsPerCTA());
+  auto threadsPerWarp = product(blockedEnc.getThreadsPerWarp());
+  auto numCTAs = product(blockedEnc.getCTALayout().getCTAsPerCGA());
+  return ttg::BlockedEncodingAttr::get(ctx, shape, newSizePerThread, order,
+                                       numWarps, threadsPerWarp, numCTAs);
+}
+
 // Looking for def-use network of following kind:
 // ttg.local_alloc ---x
 //                    |
@@ -585,7 +637,10 @@ matchInThreadTransposePattern(ttg::LocalLoadOp lLoad) {
   if (!opDotOpEnc)
     return failure();
 
-  int kDimNum = opDotOpEnc.getOpIdx() == 0 ? 1 : 0;
+  auto opIdx = opDotOpEnc.getOpIdx();
+  int kDimNum = opIdx == 0 ? 1 : 0;
+  int nonKDimNum = opIdx == 0 ? 0 : 1;
+
   // TODO: support wmma
   if (!isa<ttg::AMDMfmaEncodingAttr, ttg::AMDWmmaEncodingAttr>(
           opDotOpEnc.getParent())) {
@@ -655,11 +710,10 @@ matchInThreadTransposePattern(ttg::LocalLoadOp lLoad) {
   if (expectedLoadType.getRank() != 2)
     return failure();
 
-  auto kDimMaxSizePerThread = getMaxSizePerThread(expectedLoadType, kDimNum);
-  // kDimRepeats == 0 means loadType has unexpected layout
-  // kDimRepeats == 1 means there are no room in k dimension in layout to
-  // transpose in registers
-  if (kDimMaxSizePerThread < 2) {
+  auto newLoadEncoding = getTransposableBlockedEnc(opIdx, expectedLoadType);
+  auto newSizePerThread = newLoadEncoding.getSizePerThread();
+  // if size per thread is [1xn] or [nx1] transpose in threads will do nothing
+  if (newSizePerThread[kDimNum] < 2 || newSizePerThread[nonKDimNum] < 2) {
     LDBG("Can not extend load layout");
     return failure();
   }
@@ -675,58 +729,6 @@ matchInThreadTransposePattern(ttg::LocalLoadOp lLoad) {
   // analyzing local load/store vectorization and estimating bank conflicts?
 
   return pattern;
-}
-
-/// Extends global load layout sizePerThread across k dimension, so it could be
-/// transposed in registers.
-///
-/// Consider 2d dot operand idx = 1(i.e. kDim idx = 0), and global load layout
-/// is n-continous:
-///   #ttg.blocked<{sizePerThread = [1, 8], threadsPerWarp = [8, 8], warpsPerCTA
-///   = [1, 1], order = [1, 0]}>
-/// Possible output is:
-///   #ttg.blocked<{sizePerThread = [4, 8], threadsPerWarp = [8, 8], warpsPerCTA
-///   = [1, 1], order = [1, 0]}>
-///
-/// Consider 2d dot operand idx = 0(i.e. kDim idx = 1), global load layout is
-/// m-continous:
-///   #ttg.blocked<{sizePerThread = [8, 1], threadsPerWarp = [8, 8], warpsPerCTA
-///   = [1, 1], order = [0, 1]}>
-/// Possible output is:
-///   #ttg.blocked<{sizePerThread = [8, 8], threadsPerWarp = [8, 8], warpsPerCTA
-///   = [1, 1], order = [0, 1]}>
-///
-/// Number of elements added across K dimension is limited by tensor dtype bit
-/// width and shape across K
-ttg::BlockedEncodingAttr getTransposableBlockedEnc(int dotOperandIdx,
-                                                   RankedTensorType loadType) {
-  // get the K dim according to dotOp operand's index
-  auto shape = loadType.getShape();
-  int kDimNum = dotOperandIdx == 0 ? 1 : 0;
-  // get the current blocked encoding
-  auto loadEnc = loadType.getEncoding();
-  auto blockedEnc = cast<ttg::BlockedEncodingAttr>(loadEnc);
-
-  auto maxkDimSizePerThread = getMaxSizePerThread(loadType, kDimNum);
-  auto elemBitwidth = loadType.getElementType().getIntOrFloatBitWidth();
-  // Current the widest is set to ds_write_b64
-  // In some cases b64 works best, in others 128
-  // TODO introduce a heuristic
-  const unsigned dsBitWidth = 64;
-  auto newKDimSize = std::min(maxkDimSizePerThread, dsBitWidth / elemBitwidth);
-  LDBG("Choose the minimum of numIters: " << newKDimSize << " and numElements: "
-                                          << dsBitWidth / elemBitwidth);
-  SmallVector<unsigned> newSizePerThread{blockedEnc.getSizePerThread()};
-  newSizePerThread[kDimNum] = newKDimSize;
-
-  // return the new blocked encoding
-  auto order = blockedEnc.getOrder();
-  auto ctx = blockedEnc.getContext();
-  auto numWarps = product(blockedEnc.getWarpsPerCTA());
-  auto threadsPerWarp = product(blockedEnc.getThreadsPerWarp());
-  auto numCTAs = product(blockedEnc.getCTALayout().getCTAsPerCGA());
-  return ttg::BlockedEncodingAttr::get(ctx, shape, newSizePerThread, order,
-                                       numWarps, threadsPerWarp, numCTAs);
 }
 
 class InThreadTransposePattern : public OpRewritePattern<ttg::LocalLoadOp> {

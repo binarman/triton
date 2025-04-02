@@ -128,6 +128,41 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
 
 // -----
 
+#blocked = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [64, 1], warpsPerCTA = [1, 4], order = [0, 1]}>
+#blocked1 = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 64], warpsPerCTA = [4, 1], order = [1, 0]}>
+#shared = #ttg.swizzled_shared<{vec = 4, perPhase = 2, maxPhase = 4, order = [0, 1], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [0, 1]}>
+#smem = #ttg.shared_memory
+#mma = #ttg.amd_mfma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [2, 2], instrShape = [32, 32], isTransposed = true}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32} {
+// CHECK-NOT: #ttg.amd_rotating_shared
+// CHECK-NOT: #ttg.linear
+// CHECK-DAG: [[$BLOCKED1:#.*]] = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [64, 1], warpsPerCTA = [1, 4], order = [0, 1]}>
+// CHECK-DAG: [[$BLOCKED2:#.*]] = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 64], warpsPerCTA = [4, 1], order = [1, 0]}>
+// CHECK-NOT: #ttg.amd_rotating_shared
+// CHECK-NOT: #ttg.linear
+// CHECK-LABEL: inThreadTranspose_small_nonk_neg
+// CHECK-DAG: tt.load {{.*}} : tensor<64x32x!tt.ptr<f16>, [[$BLOCKED1]]>
+// CHECK-DAG: tt.load {{.*}} : tensor<32x64x!tt.ptr<f16>, [[$BLOCKED2]]>
+  tt.func public @inThreadTranspose_small_nonk_neg(%arg0: !tt.ptr<f16> {tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}, %arg1: !tt.ptr<f16> {tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}) {
+    %cst_0 = arith.constant dense<0.000000e+00> : tensor<64x64xf32, #mma>
+    %0 = tt.splat %arg0 : !tt.ptr<f16> -> tensor<64x32x!tt.ptr<f16>, #blocked>
+    %1 = tt.splat %arg1 : !tt.ptr<f16> -> tensor<32x64x!tt.ptr<f16>, #blocked1>
+    %2 = tt.load %0 : tensor<64x32x!tt.ptr<f16>, #blocked>
+    %3 = tt.load %1 : tensor<32x64x!tt.ptr<f16>, #blocked1>
+
+    %4 = ttg.local_alloc %2 : (tensor<64x32xf16, #blocked>) -> !ttg.memdesc<64x32xf16, #shared, #smem>
+    %5 = ttg.local_load %4 : !ttg.memdesc<64x32xf16, #shared, #smem> -> tensor<64x32xf16, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>>
+
+    %6 = ttg.local_alloc %3 : (tensor<32x64xf16, #blocked1>) -> !ttg.memdesc<32x64xf16, #shared, #smem>
+    %7 = ttg.local_load %6 : !ttg.memdesc<32x64xf16, #shared, #smem> -> tensor<32x64xf16, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>
+
+    %8 = tt.dot %5, %7, %cst_0 : tensor<64x32xf16, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> * tensor<32x64xf16, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>> -> tensor<64x64xf32, #mma>
+    tt.return
+  }
+}
+
+// -----
+
 // CHECK-DAG: [[$OLD_LAYOUT:#.*]] = #ttg.blocked<{sizePerThread = [1, 8], threadsPerWarp = [8, 8], warpsPerCTA = [1, 1], order = [1, 0]}>
 // CHECK-DAG: [[$TRANSPOSABLE_LAYOUT:#.*]] = #ttg.blocked<{sizePerThread = [4, 8], threadsPerWarp = [8, 8], warpsPerCTA = [1, 1], order = [1, 0]}>
 // CHECK-DAG: [[$LINEAR:#.*]] = #ttg.linear<{register = {{\[\[}}1, 0], [2, 0], [0, 1], [0, 2], [0, 4], [32, 0{{]]}}, lane = {{\[\[}}0, 8], [0, 16], [0, 32], [4, 0], [8, 0], [16, 0{{]]}}, warp = [], block = []}>
