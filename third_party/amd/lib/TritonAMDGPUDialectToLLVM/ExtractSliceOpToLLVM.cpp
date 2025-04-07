@@ -134,18 +134,7 @@ struct ExtractSliceOpConversion
   matchAndRewrite(amdgpu::ExtractSliceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcTy = op.getSource().getType();
-    auto encoding = srcTy.getEncoding();
-    if (isa<BlockedEncodingAttr, AMDMfmaEncodingAttr, DotOperandEncodingAttr>(
-            encoding)) {
-      return processLayout(op, adaptor, rewriter);
-    } else if (auto sliceLayout = mlir::dyn_cast<SliceEncodingAttr>(encoding)) {
-      auto parent = sliceLayout.getParent();
-      if (isa<BlockedEncodingAttr, AMDMfmaEncodingAttr, DotOperandEncodingAttr>(
-              parent)) {
-        return processLayout(op, adaptor, rewriter);
-      }
-    }
-    return failure();
+    return processLayout(op, adaptor, rewriter);
   }
 };
 } // namespace
