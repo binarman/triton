@@ -116,6 +116,12 @@ def prune_configs(M, N, K, configs, elemBytes_a, elemBytes_b):
         if BLOCK_SIZE_M * BLOCK_SIZE_N < 64:
             continue
         SPLIT_K = config.get("SPLIT_K")
+
+        grid_size = triton.cdiv(M, BLOCK_SIZE_M) * triton.cdiv(N, BLOCK_SIZE_N)
+        num_xcds = 1 if SPLIT_K else 8
+        if grid_size % num_xcds != 0:
+            continue
+
         GROUP_M = config.get("GROUP_SIZE_M")
         if BLOCK_SIZE_M < matrix_instr_nonkdim or BLOCK_SIZE_N < matrix_instr_nonkdim:
             continue
