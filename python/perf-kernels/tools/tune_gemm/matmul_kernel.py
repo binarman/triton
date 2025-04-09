@@ -21,7 +21,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr, M, N, K, stride_am, stride_ak, 
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
 
-    if NUM_XCDS != 1:
+    if NUM_XCDS != 1 and GRID_MN % NUM_XCDS == 0:
         ## pid remapping on xcds
         # Number of pids per XCD in the new arrangement
         pids_per_xcd = (GRID_MN + NUM_XCDS - 1) // NUM_XCDS
