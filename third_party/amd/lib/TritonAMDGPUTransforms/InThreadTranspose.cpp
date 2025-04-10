@@ -84,8 +84,7 @@ void transposeInRegsitersBeforeStoreInLocalMemory(
     ArrayRef<int64_t> loadShape, ttg::BlockedEncodingAttr newLoadEncoding) {
   assert((mlir::isa<ttg::LocalAllocOp, ttg::LocalStoreOp>(memStoreOp)));
   // skip local_alloc with zero arguments
-  if (memStoreOp->getNumOperands() == 0)
-    return;
+  assert(memStoreOp->getNumOperands() != 0);
   auto data = memStoreOp->getOperand(0);
   rewriter.setInsertionPoint(memStoreOp);
 
@@ -107,28 +106,63 @@ void transposeInRegsitersBeforeStoreInLocalMemory(
   rewriter.finalizeOpModification(memStoreOp);
 }
 
-Attribute createNewSharedEncoding(RankedTensorType operandType) {
-  auto ctx = operandType.getContext();
+ttg::SwizzledSharedEncodingAttr
+createCommonSharedLayout(RankedTensorType loadType,
+                         SmallVector<unsigned> order) {
+  auto ctx = loadType.getContext();
   auto dotOperandEnc =
-      cast<ttg::DotOperandEncodingAttr>(operandType.getEncoding());
+      cast<ttg::DotOperandEncodingAttr>(loadType.getEncoding());
   auto ctaLayout = ttg::getCTALayout(dotOperandEnc);
-  auto bitWidth = operandType.getElementTypeBitWidth();
+  auto bitWidth = loadType.getElementTypeBitWidth();
+
+  return ttg::SwizzledSharedEncodingAttr::get(
+      ctx, dotOperandEnc, loadType.getShape(), order, ctaLayout, bitWidth,
+      /*needTrans=*/false);
+}
+
+ttg::AMDRotatingSharedEncodingAttr
+createRotatingSharedLayout(RankedTensorType loadType) {
+  auto ctx = loadType.getContext();
+  auto dotOperandEnc =
+      cast<ttg::DotOperandEncodingAttr>(loadType.getEncoding());
+  auto ctaLayout = ttg::getCTALayout(dotOperandEnc);
+  auto bitWidth = loadType.getElementTypeBitWidth();
   SmallVector<unsigned> order{1, 0};
   if (dotOperandEnc.getOpIdx() == 1)
     std::swap(order[0], order[1]);
 
   auto tempAttr = ttg::SwizzledSharedEncodingAttr::get(
-      ctx, dotOperandEnc, operandType.getShape(), order, ctaLayout, bitWidth,
+      ctx, dotOperandEnc, loadType.getShape(), order, ctaLayout, bitWidth,
       /*needTrans=*/false);
 
   auto sharedVec = tempAttr.getVec();
   auto perPhase = tempAttr.getPerPhase();
   auto maxPhase = tempAttr.getMaxPhase();
 
-  auto newSharedEnc = ttg::AMDRotatingSharedEncodingAttr::get(
-      ctx, sharedVec, perPhase, maxPhase, order, ctaLayout);
+  return ttg::AMDRotatingSharedEncodingAttr::get(ctx, sharedVec, perPhase,
+                                                 maxPhase, order, ctaLayout);
+}
 
-  return newSharedEnc;
+Attribute createNewSharedEncoding(RankedTensorType storeType,
+                                  RankedTensorType loadType) {
+  auto rotatingEnc = createRotatingSharedLayout(loadType);
+  auto dotOperandEnc =
+      dyn_cast<ttg::DotOperandEncodingAttr>(loadType.getEncoding());
+  if (!dotOperandEnc)
+    return rotatingEnc;
+  auto mfmaEnc = dyn_cast<ttg::AMDMfmaEncodingAttr>(dotOperandEnc.getParent());
+  if (!mfmaEnc)
+    return rotatingEnc;
+  unsigned nonKDim =
+      dotOperandEnc.getOpIdx() == 0 ? mfmaEnc.getMDim() : mfmaEnc.getNDim();
+  if (nonKDim > rotatingEnc.getMaxPhase() * rotatingEnc.getPerPhase()) {
+    // in this case rotating swizzling produces bank conflicts,
+    // it is more beneficial to not swizzle memory at all
+    SmallVector<unsigned> order(rotatingEnc.getOrder());
+    std::swap(order[0], order[1]);
+    return createCommonSharedLayout(loadType, order);
+  }
+  return rotatingEnc;
 }
 
 void changeSharedEncoding(PatternRewriter &rewriter, Value memVal,
@@ -153,7 +187,8 @@ void changeSharedEncoding(PatternRewriter &rewriter, Value memVal,
 /// chain
 struct GlobalToSharedMemoryOpChain {
   SetVector<tt::LoadOp> globalLoads;
-  // list of localAllocOp and localStoreOp operations
+  // list of localAllocOp and localStoreOp operations,
+  // which requires operand transposed in registers
   SetVector<Operation *> localAllocStores;
   // list of MemDescSubviewOp, control flow results and block operands
   SmallVector<Value> sharedMemVals;
@@ -504,7 +539,9 @@ findReachableSMemOps(ttg::LocalLoadOp root) {
       Value smemOperand;
       Value smemOutput;
       if (isa<ttg::LocalAllocOp>(candidate)) {
-        foundNetwork.localAllocStores.insert(candidate);
+        if (candidate->getNumOperands() > 0) {
+          foundNetwork.localAllocStores.insert(candidate);
+        }
         smemOutput = candidate->getResult(0);
       } else if (isa<ttg::LocalStoreOp>(candidate)) {
         foundNetwork.localAllocStores.insert(candidate);
@@ -762,13 +799,18 @@ public:
     }
 
     LDBG("Inserting transpose in registers before store in LDS");
-    for (auto memOp : pattern.localAllocStores)
+    for (auto memOp : pattern.localAllocStores) {
       transposeInRegsitersBeforeStoreInLocalMemory(rewriter, memOp, loadShape,
                                                    newBlockedEnc);
+    }
 
     LDBG("Adjust shared encoding");
+    auto localStore = pattern.localAllocStores.front();
+    auto localStoreType =
+        cast<RankedTensorType>(localStore->getOperand(0).getType());
+    auto localLoadType = localLoad.getType();
     auto newSharedEncoding =
-        createNewSharedEncoding(cast<RankedTensorType>(localLoad.getType()));
+        createNewSharedEncoding(localStoreType, localLoadType);
     for (auto memVal : pattern.sharedMemVals)
       changeSharedEncoding(rewriter, memVal, newSharedEncoding);
     return success();
