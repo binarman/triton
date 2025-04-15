@@ -564,6 +564,43 @@ TEST_F(LinearEncodingTest, DistributedEncodingToLinearEncoding) {
     }
   }
 }
+
+TEST(getShapePerCTATile, LayoutTests) {
+  MLIRContext ctx;
+  ctx.getOrLoadDialect<TritonGPUDialect>();
+
+  auto ctaLayout =
+      triton::gpu::CTALayoutAttr::get(&ctx, {1, 1}, {1, 1}, {1, 0});
+  auto fp32ty = mlir::Float32Type::get(&ctx);
+  auto mfmaLayout1 = triton::gpu::AMDMfmaEncodingAttr::get(
+      &ctx, /*major v*/ 3, /*minor v*/ 0, /*warps*/ {4, 1}, /*mDim*/ 32,
+      /*nDim*/ 32, /*transposed*/ false, /*ctaLayout*/ ctaLayout);
+  auto tensorMfmaType1 = RankedTensorType::get({128, 128}, fp32ty, mfmaLayout1);
+  auto ctaTile1 = triton::gpu::getShapePerCTATile(tensorMfmaType1);
+  ASSERT_EQ(ctaTile1, SmallVector<unsigned>({128u, 32u}));
+
+  auto mfmaLayout2 = triton::gpu::AMDMfmaEncodingAttr::get(
+      &ctx, /*major v*/ 3, /*minor v*/ 0, /*warps*/ {1, 4}, /*mDim*/ 32,
+      /*nDim*/ 32, /*transposed*/ false, /*ctaLayout*/ ctaLayout);
+  auto tensorMfmaType2 = RankedTensorType::get({128, 128}, fp32ty, mfmaLayout2);
+  auto ctaTile2 = triton::gpu::getShapePerCTATile(tensorMfmaType2);
+  ASSERT_EQ(ctaTile2, SmallVector<unsigned>({8u, 128u}));
+
+  auto mfmaOp0Layout = triton::gpu::DotOperandEncodingAttr::get(
+      &ctx, /*opIdx*/ 0, mfmaLayout1, /*kWidth*/ 4);
+  auto tensorMfmaOp0Type =
+      RankedTensorType::get({128, 128}, fp32ty, mfmaOp0Layout);
+  auto ctaTileOp0 = triton::gpu::getShapePerCTATile(tensorMfmaOp0Type);
+  ASSERT_EQ(ctaTileOp0, SmallVector<unsigned>({128u, 8u}));
+
+  auto mfmaOp1Layout = triton::gpu::DotOperandEncodingAttr::get(
+      &ctx, /*opIdx*/ 1, mfmaLayout2, /*kWidth*/ 4);
+  auto tensorMfmaOp1Type =
+      RankedTensorType::get({128, 128}, fp32ty, mfmaOp1Layout);
+  auto ctaTileOp1 = triton::gpu::getShapePerCTATile(tensorMfmaOp1Type);
+  ASSERT_EQ(ctaTileOp1, SmallVector<unsigned>({8u, 128u}));
+}
+
 } // namespace
 } // namespace mlir::triton::gpu
 
