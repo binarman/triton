@@ -919,6 +919,7 @@ It is characterized by the following parameters:
 - `warpsPerCTA` indicates the warp layout in the block.
 - `MDim` and `NDim` indicate the dimension of the output of the mfma instruction.
 - `isTransposed` indicates the result tensor is transposed so that it can be converted to dotOperand layout
+- `isRedundant` indicates that tensor do not have duplicating registers that appears in case of small tensors
 without going to shared memory. This is used in the case of chained dot (E.g. Flash-Attention kernel).
 
 Example 1:
@@ -1011,8 +1012,21 @@ V [ 0,4,8...60   1,5...61     2,6...62     3,7...63    ]   [ 128,132...188  129,
     "unsigned":$MDim,
     "unsigned":$NDim,
     "bool":$isTransposed,
+    "bool":$isRedundant,
     "CTALayoutAttr":$CTALayout
   );
+
+  let builders = [
+    AttrBuilder<(ins "unsigned": $vMajor,
+                     "unsigned": $vMinor,
+                     "ArrayRef<unsigned>":$warps,
+                     "unsigned":$mdim,
+                     "unsigned":$ndim,
+                     "bool":$transposed,
+                     "CTALayoutAttr":$ctaLayout), [{
+        return $_get(context, vMajor, vMinor, warps, mdim, ndim, transposed, /*isRedundant*/true, ctaLayout);
+    }]>,
+  ];
 
   let extraClassDeclaration = extraDistributedDeclaration # [{
     SmallVector<int64_t> getInstrShapeForOperand(int kWidth, int opIdx) const;

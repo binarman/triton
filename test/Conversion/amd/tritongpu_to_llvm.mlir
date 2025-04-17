@@ -380,3 +380,71 @@ module attributes {"ttg.target" = "hip:gfx942", "ttg.num-ctas" = 1 : i32, "ttg.n
     tt.return
   }
 }
+
+// -----
+
+#mfma32 = #ttg.amd_mfma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [32, 32], isTransposed = false}>
+#smem = #ttg.shared_memory
+#shared = #ttg.swizzled_shared<{vec = 1, perPhase=1, maxPhase=1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 64 : i32} {
+  // CHECK-LABEL: small_mfma_tensor_elementwise
+  tt.func public @small_mfma_tensor_elementwise(%input: tensor<8x128xf32, #mfma32>) {
+    // CHECK-COUNT-16: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK-NOT: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK: llvm.store
+    %exp = math.exp2 %input : tensor<8x128xf32, #mfma32>
+    %dummy = ttg.local_alloc %exp : (tensor<8x128xf32, #mfma32>) -> !ttg.memdesc<8x128xf32, #shared, #smem, 8x128>
+    tt.return
+  }
+}
+
+// -----
+
+#mfma32 = #ttg.amd_mfma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [32, 32], isTransposed = false, isRedundant = false}>
+#smem = #ttg.shared_memory
+#shared = #ttg.swizzled_shared<{vec = 1, perPhase=1, maxPhase=1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 64 : i32} {
+  // CHECK-LABEL: small_mfma_tensor_elementwise
+  tt.func public @small_mfma_tensor_elementwise_non_redundant(%input: tensor<8x128xf32, #mfma32>) {
+    // CHECK-COUNT-4: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK-NOT: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK: llvm.store
+    %exp = math.exp2 %input : tensor<8x128xf32, #mfma32>
+    %dummy = ttg.local_alloc %exp : (tensor<8x128xf32, #mfma32>) -> !ttg.memdesc<8x128xf32, #shared, #smem, 8x128>
+    tt.return
+  }
+}
+
+// -----
+
+#mfma16 = #ttg.amd_mfma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [16, 16], isTransposed = false}>
+#smem = #ttg.shared_memory
+#shared = #ttg.swizzled_shared<{vec = 1, perPhase=1, maxPhase=1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 64 : i32} {
+  // CHECK-LABEL: small_mfma_tensor_elementwise
+  tt.func public @small_mfma_tensor_elementwise(%input: tensor<2x128xf32, #mfma16>) {
+    // CHECK-COUNT-8: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK-NOT: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK: llvm.store
+    %exp = math.exp2 %input : tensor<2x128xf32, #mfma16>
+    %dummy = ttg.local_alloc %exp : (tensor<2x128xf32, #mfma16>) -> !ttg.memdesc<2x128xf32, #shared, #smem, 2x128>
+    tt.return
+  }
+}
+
+// -----
+
+#mfma16 = #ttg.amd_mfma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [16, 16], isTransposed = false, isRedundant = false}>
+#smem = #ttg.shared_memory
+#shared = #ttg.swizzled_shared<{vec = 1, perPhase=1, maxPhase=1, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 64 : i32} {
+  // CHECK-LABEL: small_mfma_tensor_elementwise
+  tt.func public @small_mfma_tensor_elementwise_non_redundant(%input: tensor<2x128xf32, #mfma16>) {
+    // CHECK-COUNT-4: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK-NOT: llvm.call @llvm.amdgcn.exp2.f32
+    // CHECK: llvm.store
+    %exp = math.exp2 %input : tensor<2x128xf32, #mfma16>
+    %dummy = ttg.local_alloc %exp : (tensor<2x128xf32, #mfma16>) -> !ttg.memdesc<2x128xf32, #shared, #smem, 2x128>
+    tt.return
+  }
+}
