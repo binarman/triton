@@ -775,7 +775,7 @@ LogicalResult rewriteElementWiseOp(OpBuilder &rewriter, OpTy op) {
     // src and res can have different refineable shapes if different layouts.
     refinedShape.push_back(
         std::max(srcShapePerCtaTile[i], resShapePerCtaTile[i]));
-    numReps.push_back(srcShape[i] / srcShapePerCtaTile[i]);
+    numReps.push_back(srcShape[i] / refinedShape[i]);
   }
 
   if (product<int64_t>(numReps) == 1)
@@ -1085,13 +1085,17 @@ struct TritonAMDGPURefineOps
       return signalPassFailure();
     }
 
+    SmallVector<mlir::Block *> blocksToProcess;
+
     mod->walk([&](amdgpu::InstructionSchedHint hint) {
-      if (hint.getVariant() != amdgpu::SchedHint::refine_ops) {
-        return WalkResult::advance();
+      if (hint.getVariant() == amdgpu::SchedHint::refine_ops) {
+        auto *block = hint->getBlock();
+        blocksToProcess.push_back(block);
       }
+      return WalkResult::advance();
+    });
 
-      auto *block = hint->getBlock();
-
+    for (auto *block : blocksToProcess) {
       block->walk([&](triton::gpu::LocalLoadOp localLoadOp) {
         OpBuilder rewriter(localLoadOp->getContext());
         if (localLoadOp->getNumOperands() == 1) {
@@ -1190,8 +1194,7 @@ struct TritonAMDGPURefineOps
         }
       });
 #endif
-      return WalkResult::advance();
-    });
+    }
   }
 
 private:

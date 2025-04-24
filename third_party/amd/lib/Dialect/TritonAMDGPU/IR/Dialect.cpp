@@ -70,9 +70,10 @@ LogicalResult ExtractSliceOp::verify() {
   if (srcElementType != resultElementType) {
     return emitError("result element type must match source element type");
   }
-  if (srcLayout != resultLayout) {
-    return emitError("result layout must match source layout");
-  }
+  // TODO make more general check
+  // if (srcLayout != resultLayout) {
+  //   return emitError("result layout must match source layout");
+  // }
   if (srcTy.getRank() != resultTy.getRank()) {
     return emitError("result rank must be equal to source rank");
   }
