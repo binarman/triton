@@ -707,6 +707,16 @@ SmallVector<unsigned> getRefinedShapePerCTATile(Type type) {
   return mlir::triton::gpu::getShapePerCTATile(tensorType);
 }
 
+ttg::DistributedEncodingTrait
+refineElementwiseEncoding(Attribute origEncoding,
+                          ArrayRef<int64_t> refinedShape) {
+  auto linearLayout = ttg::toLinearLayout(refinedShape, origEncoding);
+  auto ctx = origEncoding.getContext();
+  StringAttr kReg = StringAttr::get(ctx, "register");
+  linearLayout = linearLayout.removeZeroBasesAlongDim(kReg);
+  return ttg::LinearEncodingAttr::get(ctx, linearLayout);
+}
+
 // Refine ops with distributed layouts.
 // Assumes same layout for operands.
 template <typename OpTy>
@@ -772,10 +782,14 @@ LogicalResult rewriteElementWiseOp(OpBuilder &rewriter, OpTy op) {
     return success();
 
   // Create refined ops.
+  auto refinedSrcEncoding =
+      refineElementwiseEncoding(srcEncoding, refinedShape);
+  auto refinedResEncoding =
+      refineElementwiseEncoding(resEncoding, refinedShape);
   auto refinedTensorTypeSrc = RankedTensorType::get(
-      refinedShape, srcType.getElementType(), srcEncoding);
+      refinedShape, srcType.getElementType(), refinedSrcEncoding);
   auto refinedTensorTypeRes = RankedTensorType::get(
-      refinedShape, resType.getElementType(), resEncoding);
+      refinedShape, resType.getElementType(), refinedResEncoding);
 
   rewriter.setInsertionPointAfter(op);
   SmallVector<Value> refinedOps;
