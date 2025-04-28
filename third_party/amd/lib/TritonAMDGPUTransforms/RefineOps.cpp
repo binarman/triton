@@ -766,7 +766,7 @@ LogicalResult rewriteElementWiseOp(PatternRewriter &rewriter, OpTy op) {
     // src and res can have different refineable shapes if different layouts.
     refinedShape.push_back(
         std::max(srcShapePerCtaTile[i], resShapePerCtaTile[i]));
-    numReps.push_back(srcShape[i] / srcShapePerCtaTile[i]);
+    numReps.push_back(srcShape[i] / refinedShape[i]);
   }
 
   if (product<int64_t>(numReps) == 1)
