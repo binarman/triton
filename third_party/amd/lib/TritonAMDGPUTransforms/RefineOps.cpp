@@ -928,6 +928,20 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
   ElementWiseOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : RefineRewritePattern<OpTy>(context, benefit) {}
 
+  static ttg::DistributedEncodingTrait
+  refineElementwiseEncoding(Attribute origEncoding,
+                            ArrayRef<int64_t> refinedShape) {
+    auto redundantLinearLayout =
+        ttg::toLinearLayout(refinedShape, origEncoding);
+    auto ctx = origEncoding.getContext();
+    StringAttr kReg = StringAttr::get(ctx, "register");
+    auto leanLinearLayout = redundantLinearLayout.removeZeroBasesAlongDim(kReg);
+    if (leanLinearLayout == redundantLinearLayout)
+      return cast<ttg::DistributedEncodingTrait>(origEncoding);
+    else
+      return ttg::LinearEncodingAttr::get(ctx, leanLinearLayout);
+  }
+
   // Refine ops with distributed layouts.
   // Assumes same layout for operands.
   LogicalResult rewriteElementWiseOp(PatternRewriter &rewriter, OpTy op) const {
@@ -993,10 +1007,15 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
       return success();
 
     // Create refined ops.
+    auto refinedSrcEncoding =
+        refineElementwiseEncoding(srcEncoding, refinedShape);
+    auto refinedResEncoding =
+        refineElementwiseEncoding(resEncoding, refinedShape);
+
     auto refinedTensorTypeSrc = RankedTensorType::get(
-        refinedShape, srcType.getElementType(), srcEncoding);
+        refinedShape, srcType.getElementType(), refinedSrcEncoding);
     auto refinedTensorTypeRes = RankedTensorType::get(
-        refinedShape, resType.getElementType(), resEncoding);
+        refinedShape, resType.getElementType(), refinedResEncoding);
 
     rewriter.setInsertionPointAfter(op);
     SmallVector<Value> refinedOps;
