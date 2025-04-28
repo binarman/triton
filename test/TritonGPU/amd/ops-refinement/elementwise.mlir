@@ -128,23 +128,26 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 // -----
 
-#mma = #ttg.amd_mfma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [32, 32], isTransposed = true}>
-#mma1 = #ttg.amd_mfma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 16], isTransposed = true}>
+#blocked1 = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [32, 2], warpsPerCTA = [4, 1], order = [1, 0]}>
+#blocked2 = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [16, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 16384 : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32} {
-  tt.func public @convert_layout(%arg0: tensor<128x64xf16, #mma>) attributes {noinline = false} {
+  tt.func public @convert_layout(%arg0: tensor<128x64xf16, #blocked1>) attributes {noinline = false} {
+    // CHECK-DAG: [[$SRC_LAYOUT:#.*]] = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [32, 2], warpsPerCTA = [4, 1], order = [1, 0]}>
+    // CHECK-DAG: [[$DST_LAYOUT:#.*]] = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [16, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
+
     // CHECK-LABEL: convert_layout
 
-    // CHECK: [[ES_0:%.*]] = amdgpu.extract_slice %arg0 [0, 0] : tensor<128x64xf16, #mma> to tensor<128x16xf16, #mma>
-    // CHECK: [[CL_0:%.*]] = ttg.convert_layout [[ES_0]] : tensor<128x16xf16, #mma> -> tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>
-    // CHECK: [[ES_1:%.*]] = amdgpu.extract_slice %arg0 [0, 16] : tensor<128x64xf16, #mma> to tensor<128x16xf16, #mma>
-    // CHECK: [[CL_1:%.*]] = ttg.convert_layout [[ES_1]] : tensor<128x16xf16, #mma> -> tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>
-    // CHECK: [[ES_2:%.*]] = amdgpu.extract_slice %arg0 [0, 32] : tensor<128x64xf16, #mma> to tensor<128x16xf16, #mma>
-    // CHECK: [[CL_2:%.*]] = ttg.convert_layout [[ES_2]] : tensor<128x16xf16, #mma> -> tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>
-    // CHECK: [[ES_3:%.*]] = amdgpu.extract_slice %arg0 [0, 48] : tensor<128x64xf16, #mma> to tensor<128x16xf16, #mma>
-    // CHECK: [[CL_3:%.*]] = ttg.convert_layout [[ES_3]] : tensor<128x16xf16, #mma> -> tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>
-    // CHECK: %8 = amdgpu.concat [[CL_0]], [[CL_1]], [[CL_2]], [[CL_3]] [1, 4] {loweringOrder = array<i64: 1, 0>} : tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>, tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>, tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>, tensor<128x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>> -> tensor<128x64xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>
+    // CHECK: [[ES_0:%.*]] = amdgpu.extract_slice %arg0 [0, 0] : tensor<128x64xf16, [[$SRC_LAYOUT]]> to tensor<128x16xf16, [[$SRC_LAYOUT]]>
+    // CHECK: [[CL_0:%.*]] = ttg.convert_layout [[ES_0]] : tensor<128x16xf16, [[$SRC_LAYOUT]]> -> tensor<128x16xf16, [[$DST_LAYOUT]]>
+    // CHECK: [[ES_1:%.*]] = amdgpu.extract_slice %arg0 [0, 16] : tensor<128x64xf16, [[$SRC_LAYOUT]]> to tensor<128x16xf16, [[$SRC_LAYOUT]]>
+    // CHECK: [[CL_1:%.*]] = ttg.convert_layout [[ES_1]] : tensor<128x16xf16, [[$SRC_LAYOUT]]> -> tensor<128x16xf16, [[$DST_LAYOUT]]>
+    // CHECK: [[ES_2:%.*]] = amdgpu.extract_slice %arg0 [0, 32] : tensor<128x64xf16, [[$SRC_LAYOUT]]> to tensor<128x16xf16, [[$SRC_LAYOUT]]>
+    // CHECK: [[CL_2:%.*]] = ttg.convert_layout [[ES_2]] : tensor<128x16xf16, [[$SRC_LAYOUT]]> -> tensor<128x16xf16, [[$DST_LAYOUT]]>
+    // CHECK: [[ES_3:%.*]] = amdgpu.extract_slice %arg0 [0, 48] : tensor<128x64xf16, [[$SRC_LAYOUT]]> to tensor<128x16xf16, [[$SRC_LAYOUT]]>
+    // CHECK: [[CL_3:%.*]] = ttg.convert_layout [[ES_3]] : tensor<128x16xf16, [[$SRC_LAYOUT]]> -> tensor<128x16xf16, [[$DST_LAYOUT]]>
+    // CHECK: %8 = amdgpu.concat [[CL_0]], [[CL_1]], [[CL_2]], [[CL_3]] [1, 4] {loweringOrder = array<i64: 1, 0>} : tensor<128x16xf16, [[$DST_LAYOUT]]>, tensor<128x16xf16, [[$DST_LAYOUT]]>, tensor<128x16xf16, [[$DST_LAYOUT]]>, tensor<128x16xf16, [[$DST_LAYOUT]]> -> tensor<128x64xf16, [[$DST_LAYOUT]]>
 
-    %0 = ttg.convert_layout %arg0 : tensor<128x64xf16, #mma> -> tensor<128x64xf16, #ttg.dot_op<{opIdx = 0, parent = #mma1, kWidth = 4}>>
+    %0 = ttg.convert_layout %arg0 : tensor<128x64xf16, #blocked1> -> tensor<128x64xf16, #blocked2>
     amdgpu.instruction_sched_hint {isBufferLoadsAEnabled = false, isBufferLoadsBEnabled = false, numDsReadsA = #amdgpu.InstCounter<0, none>, numDsReadsB = #amdgpu.InstCounter<0, none>, numDsWritesA = #amdgpu.InstCounter<0, none>, numDsWritesB = #amdgpu.InstCounter<0, none>, numGlobalLoadsA = #amdgpu.InstCounter<0, none>, numGlobalLoadsB = #amdgpu.InstCounter<0, none>, numMMAs = #amdgpu.InstCounter<0, none>, variant = #amdgpu.SchedHintVariant<refine_ops>}
     tt.return
   }
@@ -162,5 +165,22 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     amdgpu.instruction_sched_hint {isBufferLoadsAEnabled = false, isBufferLoadsBEnabled = false, numDsReadsA = #amdgpu.InstCounter<0, none>, numDsReadsB = #amdgpu.InstCounter<0, none>, numDsWritesA = #amdgpu.InstCounter<0, none>, numDsWritesB = #amdgpu.InstCounter<0, none>, numGlobalLoadsA = #amdgpu.InstCounter<0, none>, numGlobalLoadsB = #amdgpu.InstCounter<0, none>, numMMAs = #amdgpu.InstCounter<0, none>, variant = #amdgpu.SchedHintVariant<refine_ops>}
     %0 = ttg.convert_layout %arg0 : tensor<128x32xf32, #blocked1> -> tensor<128x32xf32, #blocked2>
     tt.return %0 : tensor<128x32xf32, #blocked2>
+  }
+}
+
+// -----
+
+// CHECK-DAG: [[$MMA:#.*]] = #ttg.amd_mfma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [32, 32], isTransposed = true}>
+// CHECK-DAG: [[$LINEAR:#.*]] = #ttg.linear
+// CHECK-LABEL: @mma_slicing_kernel
+// CHECK-NOT: amdgpu.extract_slice {{.*}} : tensor<256x32xf32, [[$MMA]]> to tensor<128x8xf32, [[$MMA]]>
+// CHECK-COUNT-8: amdgpu.extract_slice {{.*}} : tensor<256x32xf32, [[$MMA]]> to tensor<128x8xf32, [[$LINEAR]]>
+// CHECK: amdgpu.concat
+#mma = #ttg.amd_mfma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [32, 32], isTransposed = true}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32} {
+  tt.func public @mma_slicing_kernel(%arg0: tensor<256x32xf32, #mma>) -> tensor<256x32xf32, #mma> attributes {noinline = false} {
+    amdgpu.instruction_sched_hint {isBufferLoadsAEnabled = false, isBufferLoadsBEnabled = false, numDsReadsA = #amdgpu.InstCounter<0, none>, numDsReadsB = #amdgpu.InstCounter<0, none>, numDsWritesA = #amdgpu.InstCounter<0, none>, numDsWritesB = #amdgpu.InstCounter<0, none>, numGlobalLoadsA = #amdgpu.InstCounter<0, none>, numGlobalLoadsB = #amdgpu.InstCounter<0, none>, numMMAs = #amdgpu.InstCounter<0, none>, variant = #amdgpu.SchedHintVariant<refine_ops>}
+    %0 = math.exp2 %arg0 : tensor<256x32xf32, #mma>
+    tt.return %0 : tensor<256x32xf32, #mma>
   }
 }

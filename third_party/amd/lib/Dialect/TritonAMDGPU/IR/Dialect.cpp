@@ -70,9 +70,11 @@ LogicalResult ExtractSliceOp::verify() {
   if (srcElementType != resultElementType) {
     return emitError("result element type must match source element type");
   }
-  if (srcLayout != resultLayout) {
-    return emitError("result layout must match source layout");
-  }
+  // We do not want this strict requirement,
+  // https://github.com/triton-lang/triton/pull/6417 implements better check
+  // if (srcLayout != resultLayout) {
+  //   return emitError("result layout must match source layout");
+  // }
   if (srcTy.getRank() != resultTy.getRank()) {
     return emitError("result rank must be equal to source rank");
   }
