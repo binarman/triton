@@ -1061,13 +1061,18 @@ struct RefineRewritePattern : public OpRewritePattern<OpTy> {
 
 private:
   bool isRefinable(Operation *op) const {
-    auto result =
-        op->getBlock()->walk([](triton::amdgpu::InstructionSchedHint hint) {
-          if (hint.getVariant() == triton::amdgpu::SchedHint::refine_ops)
-            return WalkResult::interrupt();
-          return WalkResult::advance();
-        });
-    return result.wasInterrupted();
+    mlir::Block *block = op->getBlock();
+    while (block) {
+      for (auto &op : block->getOperations()) {
+        if (auto hint = dyn_cast<triton::amdgpu::InstructionSchedHint>(op)) {
+          if (hint.getVariant() == triton::amdgpu::SchedHint::refine_ops) {
+            return true;
+          }
+        }
+      }
+      block = block->getParentOp()->getBlock();
+    }
+    return false;
   }
 };
 
