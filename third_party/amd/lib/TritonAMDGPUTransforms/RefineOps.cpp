@@ -1045,12 +1045,39 @@ LogicalResult rewriteBroadcastOp(PatternRewriter &rewriter,
   return success();
 }
 
-struct LocalLoadOpPattern : public OpRewritePattern<triton::gpu::LocalLoadOp> {
-  LocalLoadOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
+template <typename OpTy>
+struct RefineRewritePattern : public OpRewritePattern<OpTy> {
+  RefineRewritePattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpRewritePattern<OpTy>(context, benefit) {}
 
-  LogicalResult matchAndRewrite(triton::gpu::LocalLoadOp op,
-                                PatternRewriter &rewriter) const override {
+  virtual LogicalResult apply(OpTy op, PatternRewriter &rewriter) const = 0;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const final {
+    if (!isRefinable(op))
+      return failure();
+    return apply(op, rewriter);
+  }
+
+private:
+  bool isRefinable(Operation *op) const {
+    auto result =
+        op->getBlock()->walk([](triton::amdgpu::InstructionSchedHint hint) {
+          if (hint.getVariant() == triton::amdgpu::SchedHint::refine_ops)
+            return WalkResult::interrupt();
+          return WalkResult::advance();
+        });
+    return result.wasInterrupted();
+  }
+};
+
+struct LocalLoadOpPattern
+    : public RefineRewritePattern<triton::gpu::LocalLoadOp> {
+  LocalLoadOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, benefit) {}
+
+  LogicalResult apply(triton::gpu::LocalLoadOp op,
+                      PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) {
       return failure();
     }
@@ -1062,12 +1089,12 @@ struct LocalLoadOpPattern : public OpRewritePattern<triton::gpu::LocalLoadOp> {
   }
 };
 
-struct DotOpPattern : public OpRewritePattern<triton::DotOp> {
+struct DotOpPattern : public RefineRewritePattern<triton::DotOp> {
   DotOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
+      : RefineRewritePattern(context, benefit) {}
 
-  LogicalResult matchAndRewrite(triton::DotOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult apply(triton::DotOp op,
+                      PatternRewriter &rewriter) const override {
     auto result = rewriteMFMA(rewriter, op);
     if (failed(result)) {
       LDBG("failed to refine tt.Dot: " << *op);
@@ -1076,12 +1103,12 @@ struct DotOpPattern : public OpRewritePattern<triton::DotOp> {
   }
 };
 
-struct LoadOpPattern : public OpRewritePattern<triton::LoadOp> {
+struct LoadOpPattern : public RefineRewritePattern<triton::LoadOp> {
   LoadOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
+      : RefineRewritePattern(context, benefit) {}
 
-  LogicalResult matchAndRewrite(triton::LoadOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult apply(triton::LoadOp op,
+                      PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) {
       return failure();
     }
@@ -1094,12 +1121,12 @@ struct LoadOpPattern : public OpRewritePattern<triton::LoadOp> {
 };
 
 struct LocalStoreOpPattern
-    : public OpRewritePattern<triton::gpu::LocalStoreOp> {
+    : public RefineRewritePattern<triton::gpu::LocalStoreOp> {
   LocalStoreOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
+      : RefineRewritePattern(context, benefit) {}
 
-  LogicalResult matchAndRewrite(triton::gpu::LocalStoreOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult apply(triton::gpu::LocalStoreOp op,
+                      PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 2) {
       return failure();
     }
@@ -1111,12 +1138,12 @@ struct LocalStoreOpPattern
   }
 };
 
-struct ReduceOpPattern : public OpRewritePattern<triton::ReduceOp> {
+struct ReduceOpPattern : public RefineRewritePattern<triton::ReduceOp> {
   ReduceOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
+      : RefineRewritePattern(context, benefit) {}
 
-  LogicalResult matchAndRewrite(triton::ReduceOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult apply(triton::ReduceOp op,
+                      PatternRewriter &rewriter) const override {
     auto result = rewriteReduceOp(rewriter, op);
     if (failed(result)) {
       LDBG("failed to refine tt.reduce: " << *op);
@@ -1126,12 +1153,11 @@ struct ReduceOpPattern : public OpRewritePattern<triton::ReduceOp> {
 };
 
 template <typename OpTy>
-struct ElementWiseOpPattern : public OpRewritePattern<OpTy> {
+struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
   ElementWiseOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern<OpTy>(context, benefit) {}
+      : RefineRewritePattern<OpTy>(context, benefit) {}
 
-  LogicalResult matchAndRewrite(OpTy op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult apply(OpTy op, PatternRewriter &rewriter) const override {
     auto result = rewriteElementWiseOp<OpTy>(rewriter, op);
     if (failed(result)) {
       LDBG("failed to refine elementwise op: " << *op);
@@ -1140,12 +1166,12 @@ struct ElementWiseOpPattern : public OpRewritePattern<OpTy> {
   }
 };
 
-struct ExpandDimsOpPattern : public OpRewritePattern<triton::ExpandDimsOp> {
+struct ExpandDimsOpPattern : public RefineRewritePattern<triton::ExpandDimsOp> {
   ExpandDimsOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
+      : RefineRewritePattern(context, benefit) {}
 
-  LogicalResult matchAndRewrite(triton::ExpandDimsOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult apply(triton::ExpandDimsOp op,
+                      PatternRewriter &rewriter) const override {
     auto result = rewriteExpandDimsOp(rewriter, op);
     if (failed(result)) {
       LDBG("failed to refine tt.expand_dims: " << *op);
@@ -1154,12 +1180,12 @@ struct ExpandDimsOpPattern : public OpRewritePattern<triton::ExpandDimsOp> {
   }
 };
 
-struct BroadcastOpPattern : public OpRewritePattern<BroadcastOp> {
+struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
   BroadcastOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
+      : RefineRewritePattern(context, benefit) {}
 
-  LogicalResult matchAndRewrite(triton::BroadcastOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult apply(triton::BroadcastOp op,
+                      PatternRewriter &rewriter) const override {
     auto result = rewriteBroadcastOp(rewriter, op);
     if (failed(result)) {
       LDBG("failed to refine tt.broadcast: " << *op);
