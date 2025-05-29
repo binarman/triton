@@ -1,5 +1,6 @@
 #include "TritonAMDGPUToLLVM/TargetUtils.h"
 #include "TritonAMDGPUTransforms/Passes.h"
+#include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -304,6 +305,39 @@ Value createLocalAlloc(OpBuilder &builder, Location loc, Value loadVal,
   return builder.create<ttg::LocalAllocOp>(loc, ldsBufferType, loadVal);
 }
 
+Value createLocalAlloc(OpBuilder &builder, Location loc,
+                       RankedTensorType tensorTy, int64_t hoistKSize,
+                       int64_t blockKSize, StringRef archGen) {
+  SmallVector<int64_t> bufferShape(tensorTy.getShape().begin(),
+                                   tensorTy.getShape().end());
+
+  auto isaFamily = triton::AMD::deduceISAFamily(archGen);
+  const unsigned numBanks = (isaFamily == ISAFamily::CDNA4) ? 64 : 32;
+  const unsigned bankBitWidth = 32;
+  const unsigned simdWidth = 16;
+  constexpr int elemBitWidth = 8; // scale is 8-bit E8M0 float
+  int elemsPerOneBanksRow = (numBanks * bankBitWidth) / elemBitWidth;
+  int perPhase =
+      std::max(1, static_cast<int>(elemsPerOneBanksRow / hoistKSize));
+  int maxPhase =
+      std::max(std::min(simdWidth / perPhase,
+                        static_cast<unsigned>(hoistKSize / blockKSize)),
+               1u);
+
+  Type eType = tensorTy.getElementType();
+  auto CTALayout = ttg::getCTALayout(tensorTy.getEncoding());
+  auto sharedEnc = ttg::SwizzledSharedEncodingAttr::get(
+      tensorTy.getContext(), blockKSize, perPhase, maxPhase,
+      ttg::getOrder(cast<ttg::DistributedEncodingTrait>(tensorTy.getEncoding()),
+                    tensorTy.getShape()),
+      CTALayout);
+  auto ldsBufferType = ttg::MemDescType::get(
+      bufferShape, eType, sharedEnc,
+      triton::gpu::SharedMemorySpaceAttr::get(tensorTy.getContext()),
+      /*mutableMemory=*/true);
+  return builder.create<ttg::LocalAllocOp>(loc, ldsBufferType);
+}
+
 Value widen2dPtrCase(OpBuilder builder, Operation *aPtrs, int64_t hoistKSize) {
   // We assume the operands of this addptr come from broadcast
   Operation *bcastK, *bcastM;
@@ -393,8 +427,14 @@ Value widen1dPtrCase(OpBuilder builder, triton::BroadcastOp bcast,
   return newBcastValue;
 }
 
-Value hoistLoad(scf::ForOp forOp, Operation *op, int64_t newUpperBound, int ub,
-                StringRef archGen) {
+struct HoistedLoad {
+  Operation *loadOp;
+  Value localAllocVal;
+  Value asyncTokenVal;
+};
+
+HoistedLoad hoistLoad(scf::ForOp forOp, Operation *op, int64_t newUpperBound,
+                      int ub, StringRef archGen) {
   triton::LoadOp loadOp = dyn_cast<triton::LoadOp>(op);
   int64_t blockKSize =
       dyn_cast<RankedTensorType>(loadOp.getPtr().getType()).getShape().back();
@@ -452,27 +492,61 @@ Value hoistLoad(scf::ForOp forOp, Operation *op, int64_t newUpperBound, int ub,
     newPtrVal = widen1dPtrCase(builder, bcast, hoistKSize);
   }
 
-  // The we create the aggregated load with the "fat" pointer
-  // create: load newPtr
-  Value aggregatedLoadVal;
-  if (maskM)
-    aggregatedLoadVal = builder.create<triton::LoadOp>(
-        forOp.getLoc(), newPtrVal, newMaskVal, newOtherVal, loadOp.getCache(),
-        loadOp.getEvict(), loadOp.getIsVolatile());
-  else
-    aggregatedLoadVal = builder.create<triton::LoadOp>(
-        forOp.getLoc(), newPtrVal, loadOp.getCache(), loadOp.getEvict(),
-        loadOp.getIsVolatile());
+  std::string useAsyncCopy =
+      mlir::triton::tools::getStrEnv("TRITON_HIP_USE_ASYNC_COPY");
+  if (useAsyncCopy == "" || useAsyncCopy == "0") {
+    // The we create the aggregated load with the "fat" pointer
+    // create: load newPtr
+    Value aggregatedLoadVal;
+    if (maskM)
+      aggregatedLoadVal = builder.create<triton::LoadOp>(
+          forOp.getLoc(), newPtrVal, newMaskVal, newOtherVal, loadOp.getCache(),
+          loadOp.getEvict(), loadOp.getIsVolatile());
+    else
+      aggregatedLoadVal = builder.create<triton::LoadOp>(
+          forOp.getLoc(), newPtrVal, loadOp.getCache(), loadOp.getEvict(),
+          loadOp.getIsVolatile());
 
-  // Store loaded tensor into LDS
-  auto localAllocVal =
-      createLocalAlloc(builder, forOp.getLoc(), aggregatedLoadVal, hoistKSize,
-                       blockKSize, archGen);
+    // Store loaded tensor into LDS
+    Value localAllocVal =
+        createLocalAlloc(builder, forOp.getLoc(), aggregatedLoadVal, hoistKSize,
+                         blockKSize, archGen);
+    HoistedLoad result;
+    result.loadOp = aggregatedLoadVal.getDefiningOp();
+    result.localAllocVal = localAllocVal;
+    return result;
+  } else {
+    auto ty = dyn_cast<RankedTensorType>(loadOp.getType());
+    SmallVector<int64_t> newShape(ty.getShape().begin(), ty.getShape().end());
+    newShape[1] = hoistKSize;
+    auto newTy =
+        RankedTensorType::get(newShape, ty.getElementType(), ty.getEncoding());
 
-  return localAllocVal;
+    // The we create the aggregated load with the "fat" pointer
+    // create: load newPtr
+    auto loadTy = cast<RankedTensorType>(newTy);
+    Value localAllocVal = createLocalAlloc(builder, forOp.getLoc(), loadTy,
+                                           hoistKSize, blockKSize, archGen);
+    Value aggregatedLoadToken;
+    aggregatedLoadToken = builder.create<ttg::AsyncCopyGlobalToLocalOp>(
+        forOp.getLoc(), newPtrVal, localAllocVal, newMaskVal, newOtherVal,
+        loadOp.getCache(), loadOp.getEvict(), loadOp.getIsVolatile());
+    HoistedLoad result;
+    result.loadOp = aggregatedLoadToken.getDefiningOp();
+    result.localAllocVal = localAllocVal;
+
+    auto asyncCommitGroup = builder.create<ttg::AsyncCommitGroupOp>(
+        forOp.getLoc(), aggregatedLoadToken);
+    // create async wait
+    result.asyncTokenVal = builder.create<ttg::AsyncWaitOp>(
+        forOp.getLoc(), asyncCommitGroup.getResult(), 0);
+
+    return result;
+  }
 }
 
-void processLoopBody(scf::ForOp forOp, Operation *op, Value localAllocVal) {
+void processLoopBody(scf::ForOp forOp, Operation *op,
+                     HoistedLoad localAllocData) {
   // Now we have hoisted the loadOp out of the loop and make it "fat"
   // We have also inserted a local_alloc op right after the load to put
   // everything into LDS.
@@ -490,8 +564,8 @@ void processLoopBody(scf::ForOp forOp, Operation *op, Value localAllocVal) {
   // 5. bScale = local_load bScaleLocalBuf
   // 6. acc = dot opA, aScale, opB, bScale, acc
   OpBuilder builder(forOp);
-  builder.setInsertionPoint(op);
   Location loc = forOp.getLoc();
+  builder.setInsertionPoint(op);
   // step 1: bufOff = i * BLOCK_K
   auto loadOp = dyn_cast<tt::LoadOp>(op);
   // llvm::outs() << "ORIGINAL LOAD:" << loadOp << "\n";
@@ -508,6 +582,7 @@ void processLoopBody(scf::ForOp forOp, Operation *op, Value localAllocVal) {
   localBufOff[0] = zero;      // along M dim
   localBufOff[1] = bufOffVal; // along K dim
 
+  Value localAllocVal = localAllocData.localAllocVal;
   ttg::MemDescType allocTy = cast<ttg::MemDescType>(localAllocVal.getType());
   Attribute sharedMemorySpace =
       ttg::SharedMemorySpaceAttr::get(forOp.getContext());
@@ -521,15 +596,15 @@ void processLoopBody(scf::ForOp forOp, Operation *op, Value localAllocVal) {
   Operation *use = *loadOp.getResult().getUsers().begin();
   if (isa<triton::DotScaledOp>(use)) {
     // direct load
-    auto localLoadVal =
-        builder.create<ttg::LocalLoadOp>(loc, loadOp.getType(), ldsSubview);
+    auto localLoadVal = builder.create<ttg::LocalLoadOp>(
+        loc, loadOp.getType(), ldsSubview, localAllocData.asyncTokenVal);
     loadOp.getResult().replaceAllUsesWith(localLoadVal);
   } else {
     assert(isa<ttg::ConvertLayoutOp>(use) &&
            "User of load scale should be either cvt or dot_scaled");
     auto cvt = dyn_cast<ttg::ConvertLayoutOp>(use);
-    auto localLoadVal =
-        builder.create<ttg::LocalLoadOp>(loc, cvt.getType(), ldsSubview);
+    auto localLoadVal = builder.create<ttg::LocalLoadOp>(
+        loc, cvt.getType(), ldsSubview, localAllocData.asyncTokenVal);
 
     cvt.getResult().replaceAllUsesWith(localLoadVal);
     cvt.erase();
@@ -592,25 +667,21 @@ Value getKStride(OpBuilder &builder, Value ptr) {
   assert(false && "expect constantOp or splatOp as a stride multiplier");
 }
 
-void generateOuterLoop(scf::ForOp forOp, Value aScaleLocalAllocVal,
-                       Value bScaleLocalAllocVal, int64_t hoistFactor,
+void generateOuterLoop(scf::ForOp forOp, HoistedLoad hoistedAScale,
+                       HoistedLoad hoistedBScale, int64_t hoistFactor,
                        int64_t newUpperBound) {
   // Set up ops/info required to build outer loop.
-  auto aScaleLocalAllocOp =
-      llvm::cast<ttg::LocalAllocOp>(aScaleLocalAllocVal.getDefiningOp());
-  auto bScaleLocalAllocOp =
-      llvm::cast<ttg::LocalAllocOp>(bScaleLocalAllocVal.getDefiningOp());
-  auto aScaleLoadOp = dyn_cast_or_null<triton::LoadOp>(
-      getLoadOpFromScale(aScaleLocalAllocOp.getSrc()));
-  auto bScaleLoadOp = dyn_cast_or_null<triton::LoadOp>(
-      getLoadOpFromScale(bScaleLocalAllocOp.getSrc()));
-  assert(aScaleLoadOp && bScaleLoadOp &&
+  auto aScaleLocalAllocOp = llvm::cast<ttg::LocalAllocOp>(
+      hoistedAScale.localAllocVal.getDefiningOp());
+  auto bScaleLocalAllocOp = llvm::cast<ttg::LocalAllocOp>(
+      hoistedBScale.localAllocVal.getDefiningOp());
+  auto aScalePtr = hoistedAScale.loadOp->getOperand(0);
+  auto bScalePtr = hoistedBScale.loadOp->getOperand(0);
+  assert(aScalePtr && bScalePtr &&
          "Expected src of local alloc to be loadOp to generate outer loop.");
 
   int64_t hoistKSize =
-      dyn_cast<RankedTensorType>(aScaleLoadOp.getPtr().getType())
-          .getShape()
-          .back();
+      dyn_cast<RankedTensorType>(aScalePtr.getType()).getShape().back();
 
   OpBuilder builder(forOp);
   Location loc = forOp.getLoc();
@@ -626,31 +697,45 @@ void generateOuterLoop(scf::ForOp forOp, Value aScaleLocalAllocVal,
       loc, builder.getI32IntegerAttr(newUpperBound));
 
   auto createGlobalLoadLocalAlloc =
-      [&builder,
-       &hoistKSize](Location loc, triton::LoadOp loadOp, Value offsetEl,
-                    Value localAllocVal) -> std::tuple<Value, Value, Value> {
-    auto aPtr = loadOp.getPtr();
+      [&builder, &hoistKSize](Location loc, HoistedLoad loadData,
+                              Value offsetEl) -> std::tuple<Value, Value> {
+    auto aPtr = loadData.loadOp->getOperand(0);
     auto aPtrTy = cast<RankedTensorType>(aPtr.getType());
     auto offsetTy = RankedTensorType::get(
         aPtrTy.getShape(), builder.getIntegerType(32), aPtrTy.getEncoding());
     Value offset = builder.create<tt::SplatOp>(loc, offsetTy, offsetEl);
     Value newAPtr = builder.create<tt::AddPtrOp>(loc, aPtrTy, aPtr, offset);
 
-    IRMapping loadMapping;
-    loadMapping.map(aPtr, newAPtr);
-    Operation *newLoadOp = builder.clone(*loadOp.getOperation(), loadMapping);
+    if (!loadData.asyncTokenVal) {
+      IRMapping loadMapping;
+      loadMapping.map(aPtr, newAPtr);
+      Operation *newLoadOp = builder.clone(*loadData.loadOp, loadMapping);
 
-    auto newLocalAllocOp = builder.create<ttg::LocalAllocOp>(
-        loc, localAllocVal.getType(), newLoadOp->getResults()[0]);
+      auto newLocalAllocOp = builder.create<ttg::LocalAllocOp>(
+          loc, loadData.localAllocVal.getType(), newLoadOp->getResults()[0]);
 
-    return {aPtr, newLoadOp->getResults()[0], newLocalAllocOp.getResult()};
+      return {newLoadOp->getResults()[0], newLocalAllocOp.getResult()};
+    } else {
+      IRMapping loadMapping;
+      loadMapping.map(aPtr, newAPtr);
+      Operation *newLoadOp = builder.clone(*loadData.loadOp, loadMapping);
+
+      // Create new token
+      auto asyncCommitGroup = builder.create<ttg::AsyncCommitGroupOp>(
+          loc, newLoadOp->getResults()[0]);
+      // create async wait
+      Value newToken = builder.create<ttg::AsyncWaitOp>(
+          loc, asyncCommitGroup.getResult(), 0);
+
+      return {newToken, loadData.localAllocVal};
+    }
   };
 
   auto outerDimLoop = builder.create<scf::ForOp>(
       loc, lb, ub, step, oldInits,
       [&](OpBuilder &b, Location loc, Value iv, ValueRange args) {
-        Value aKStride = getKStride(builder, aScaleLoadOp.getPtr());
-        Value bKStride = getKStride(builder, bScaleLoadOp.getPtr());
+        Value aKStride = getKStride(builder, aScalePtr);
+        Value bKStride = getKStride(builder, bScalePtr);
 
         Value offsetElA = builder.create<arith::ConstantOp>(
             loc, builder.getI32IntegerAttr(hoistKSize));
@@ -664,17 +749,20 @@ void generateOuterLoop(scf::ForOp forOp, Value aScaleLocalAllocVal,
           offsetElB = builder.create<arith::MulIOp>(loc, offsetElB, bKStride);
         offsetElB = builder.create<arith::MulIOp>(loc, iv, offsetElB);
 
-        auto [aScalePtr, newAScaleLoadedVal, newAScaleLocalAllocVal] =
-            createGlobalLoadLocalAlloc(loc, aScaleLoadOp, offsetElA,
-                                       aScaleLocalAllocVal);
-        auto [bScalePtr, newBScaleLoadedVal, newBScaleLocalAllocVal] =
-            createGlobalLoadLocalAlloc(loc, bScaleLoadOp, offsetElB,
-                                       bScaleLocalAllocVal);
+        auto [newAScaleLoadedVal, newAScaleLocalAllocVal] =
+            createGlobalLoadLocalAlloc(loc, hoistedAScale, offsetElA);
+        auto [newBScaleLoadedVal, newBScaleLocalAllocVal] =
+            createGlobalLoadLocalAlloc(loc, hoistedBScale, offsetElB);
+
         IRMapping mapping;
-        mapping.map(aScaleLoadOp.getResult(), newAScaleLoadedVal);
-        mapping.map(bScaleLoadOp.getResult(), newBScaleLoadedVal);
-        mapping.map(aScaleLocalAllocVal, newAScaleLocalAllocVal);
-        mapping.map(bScaleLocalAllocVal, newBScaleLocalAllocVal);
+        mapping.map(hoistedAScale.loadOp->getResult(0), newAScaleLoadedVal);
+        mapping.map(hoistedBScale.loadOp->getResult(0), newBScaleLoadedVal);
+        if (hoistedAScale.asyncTokenVal)
+          mapping.map(hoistedAScale.asyncTokenVal, newAScaleLoadedVal);
+        if (hoistedBScale.asyncTokenVal)
+          mapping.map(hoistedBScale.asyncTokenVal, newBScaleLoadedVal);
+        mapping.map(hoistedAScale.localAllocVal, newAScaleLocalAllocVal);
+        mapping.map(hoistedBScale.localAllocVal, newBScaleLocalAllocVal);
         for (auto [index, initVal] : llvm::enumerate(oldInits)) {
           mapping.map(initVal, args[index]);
         }
@@ -682,9 +770,32 @@ void generateOuterLoop(scf::ForOp forOp, Value aScaleLocalAllocVal,
         auto newInnerForOp = llvm::cast<scf::ForOp>(newInnerLoop);
         newInnerForOp.setUpperBound(newInnerUB);
         builder.create<scf::YieldOp>(loc, newInnerLoop->getResults());
+        // auto unrolled = loopUnrollFull(newInnerForOp);
       });
   forOp.getResults()[0].replaceAllUsesWith(outerDimLoop.getResults()[0]);
   forOp.erase();
+
+  if (hoistedAScale.asyncTokenVal) {
+    auto asyncWait = hoistedAScale.asyncTokenVal.getDefiningOp();
+    auto commitGroup = asyncWait->getOperand(0).getDefiningOp();
+    asyncWait->erase();
+    commitGroup->erase();
+  }
+
+  if (hoistedBScale.asyncTokenVal) {
+    auto asyncWait = hoistedBScale.asyncTokenVal.getDefiningOp();
+    auto commitGroup = asyncWait->getOperand(0).getDefiningOp();
+    asyncWait->erase();
+    commitGroup->erase();
+  }
+
+  if (hoistedAScale.loadOp->use_empty()) {
+    hoistedAScale.loadOp->erase();
+  }
+
+  if (hoistedBScale.loadOp->use_empty()) {
+    hoistedBScale.loadOp->erase();
+  }
 
   if (aScaleLocalAllocOp->use_empty()) {
     aScaleLocalAllocOp.erase();
@@ -694,12 +805,12 @@ void generateOuterLoop(scf::ForOp forOp, Value aScaleLocalAllocVal,
     bScaleLocalAllocOp.erase();
   }
 
-  if (aScaleLoadOp->use_empty()) {
-    aScaleLoadOp.erase();
+  if (hoistedAScale.loadOp->use_empty()) {
+    hoistedAScale.loadOp->erase();
   }
 
-  if (bScaleLoadOp->use_empty()) {
-    bScaleLoadOp.erase();
+  if (hoistedBScale.loadOp->use_empty()) {
+    hoistedBScale.loadOp->erase();
   }
 }
 
@@ -767,15 +878,15 @@ struct AggregateLoad : public TritonAMDGPUAggregateLoadBase<AggregateLoad> {
       for (auto [index, loadOps] : llvm::enumerate(validLoads)) {
         auto [newUpperBound, hoistFactor] = hoistLoopSpecs[index];
         auto [aScaleLoadOp, bScaleLoadOp] = loadOps;
-        auto aScaleLocalAllocValue = hoistLoad(
-            forOp, aScaleLoadOp, newUpperBound, ub, this->archGenerationName);
-        auto bScaleLocalAllocValue = hoistLoad(
-            forOp, bScaleLoadOp, newUpperBound, ub, this->archGenerationName);
-        processLoopBody(forOp, aScaleLoadOp, aScaleLocalAllocValue);
-        processLoopBody(forOp, bScaleLoadOp, bScaleLocalAllocValue);
+        auto newAScaleData = hoistLoad(forOp, aScaleLoadOp, newUpperBound, ub,
+                                       this->archGenerationName);
+        auto newBScaleData = hoistLoad(forOp, bScaleLoadOp, newUpperBound, ub,
+                                       this->archGenerationName);
+        processLoopBody(forOp, aScaleLoadOp, newAScaleData);
+        processLoopBody(forOp, bScaleLoadOp, newBScaleData);
         if (hoistFactor > 1) {
-          generateOuterLoop(forOp, aScaleLocalAllocValue, bScaleLocalAllocValue,
-                            hoistFactor, newUpperBound);
+          generateOuterLoop(forOp, newAScaleData, newBScaleData, hoistFactor,
+                            newUpperBound);
         }
         cnt++;
       }
