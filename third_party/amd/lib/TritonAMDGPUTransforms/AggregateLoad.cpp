@@ -37,14 +37,16 @@ int64_t getAllocSize(ShapedType type) {
 
 Operation *getLoadOpFromScale(Value scale) {
   Operation *op = scale.getDefiningOp();
-  if (isa<triton::LoadOp>(op)) {
-    return op;
-  } else if (isa<ttg::ConvertLayoutOp>(op)) {
-    op = dyn_cast<ttg::ConvertLayoutOp>(op).getSrc().getDefiningOp();
-    return isa<triton::LoadOp>(op) ? op : nullptr;
+  while (!isa<triton::LoadOp>(op)) {
+    if (auto convert = dyn_cast<ttg::ConvertLayoutOp>(op)) {
+      op = convert.getSrc().getDefiningOp();
+    } else if (auto reshape = dyn_cast<triton::ReshapeOp>(op)) {
+      op = reshape.getSrc().getDefiningOp();
+    } else {
+      return nullptr;
+    }
   }
-
-  return nullptr;
+  return op;
 }
 
 void findValidLoads(scf::ForOp forOp,
