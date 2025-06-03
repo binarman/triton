@@ -341,6 +341,37 @@ Value createLocalAlloc(OpBuilder &builder, Location loc,
 }
 
 Value widen2dPtrCase(OpBuilder builder, Operation *aPtrs, int64_t hoistKSize) {
+  if (isa<triton::SplatOp>(aPtrs->getOperand(0).getDefiningOp()) &&
+      isa<triton::ExpandDimsOp>(aPtrs->getOperand(1).getDefiningOp())) {
+    // %67 = tt.splat %66 : !tt.ptr<i8> -> tensor<1x256x!tt.ptr<i8>, #blocked3>
+    // %58 = tt.make_range {end = 256 : i32, start = 0 : i32} : tensor<256xi32,
+    // #ttg.slice<{dim = 0, parent = #blocked3}>> %60 = tt.expand_dims %58 {axis
+    // = 0 : i32} : tensor<256xi32, #ttg.slice<{dim = 0, parent = #blocked3}>>
+    // -> tensor<1x256xi32, #blocked3> %68 = tt.addptr %67, %60 :
+    // tensor<1x256x!tt.ptr<i8>, #blocked3>, tensor<1x256xi32, #blocked3>
+    auto splatOp = cast<triton::SplatOp>(aPtrs->getOperand(0).getDefiningOp());
+    auto expandOp =
+        cast<triton::ExpandDimsOp>(aPtrs->getOperand(1).getDefiningOp());
+    assert(expandOp.getAxis() == 0 && "expect pattern with dim 0 extension");
+    auto rangeOp = cast<triton::MakeRangeOp>(expandOp.getSrc().getDefiningOp());
+    auto ctx = builder.getContext();
+    // expand splat branch
+    auto oldSplatType = splatOp.getType();
+    SmallVector<int64_t> newShape{oldSplatType.getShape()};
+    newShape[1] = hoistKSize;
+    auto newSplatType = RankedTensorType::get(
+        newShape, oldSplatType.getElementType(), oldSplatType.getEncoding());
+    Value newSplatVal = builder.create<triton::SplatOp>(
+        splatOp.getLoc(), newSplatType, splatOp.getSrc());
+    // expand dimsOp branch
+    auto newMakeRangeValue = extendMakeRange(builder, rangeOp, hoistKSize);
+    Value newExpandDimsVal = builder.create<triton::ExpandDimsOp>(
+        expandOp.getLoc(), newMakeRangeValue, expandOp.getAxis());
+
+    auto newPtrVal = builder.create<triton::AddPtrOp>(
+        aPtrs->getLoc(), newSplatType, newSplatVal, newExpandDimsVal);
+    return newPtrVal;
+  }
   // We assume the operands of this addptr come from broadcast
   Operation *bcastK, *bcastM;
   for (Value ptrOperand : aPtrs->getOperands()) {
