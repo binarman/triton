@@ -319,17 +319,16 @@ Value createLocalAlloc(OpBuilder &builder, Location loc,
   const unsigned simdWidth = 16;
   constexpr int elemBitWidth = 8; // scale is 8-bit E8M0 float
   int elemsPerOneBanksRow = (numBanks * bankBitWidth) / elemBitWidth;
-  int perPhase =
-      std::max(1, static_cast<int>(elemsPerOneBanksRow / hoistKSize));
-  int maxPhase =
-      std::max(std::min(simdWidth / perPhase,
-                        static_cast<unsigned>(hoistKSize / blockKSize)),
-               1u);
+  int vecSize = 16;
+  int perPhase = std::max(1, static_cast<int>(elemsPerOneBanksRow / vecSize));
+  int maxPhase = std::max(std::min(simdWidth / perPhase,
+                                   static_cast<unsigned>(vecSize / blockKSize)),
+                          1u);
 
   Type eType = tensorTy.getElementType();
   auto CTALayout = ttg::getCTALayout(tensorTy.getEncoding());
   auto sharedEnc = ttg::SwizzledSharedEncodingAttr::get(
-      tensorTy.getContext(), blockKSize, perPhase, maxPhase,
+      tensorTy.getContext(), vecSize, perPhase, maxPhase,
       ttg::getOrder(cast<ttg::DistributedEncodingTrait>(tensorTy.getEncoding()),
                     tensorTy.getShape()),
       CTALayout);
