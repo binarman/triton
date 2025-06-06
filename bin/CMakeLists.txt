@@ -17,6 +17,7 @@ target_link_libraries(triton-opt PRIVATE
   MLIROptLib
   MLIRPass
   MLIRTransforms
+  MLIRSCFTestPasses
 )
 
 mlir_check_all_link_libraries(triton-opt)
@@ -36,6 +37,7 @@ target_link_libraries(triton-reduce PRIVATE
   MLIRReduceLib
   MLIRPass
   MLIRTransforms
+  MLIRSCFTestPasses
 )
 
 mlir_check_all_link_libraries(triton-reduce)
@@ -54,6 +56,7 @@ target_link_libraries(triton-lsp PRIVATE
   MLIRLspServerLib
   MLIRPass
   MLIRTransforms
+  MLIRSCFTestPasses
 )
 
 mlir_check_all_link_libraries(triton-lsp)
@@ -86,4 +89,5 @@ target_link_libraries(triton-tensor-layout PRIVATE
   ${dialect_libs}
   TritonTestAnalysis
   TritonAMDGPUTestAnalysis
+  MLIRSCFTestPasses
   )

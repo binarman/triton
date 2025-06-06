@@ -30,7 +30,10 @@
 #include "mlir/InitAllPasses.h"
 
 namespace mlir {
+
 namespace test {
+void registerTestLoopUnrollingPass();
+
 void registerTestAliasPass();
 void registerTestAlignmentPass();
 void registerTestAllocationPass();
@@ -88,6 +91,8 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
 
   // NVGPU transform passes
   mlir::registerNVHopperTransformsPasses();
+
+  mlir::test::registerTestLoopUnrollingPass();
 
   registry.insert<
       mlir::triton::TritonDialect, mlir::cf::ControlFlowDialect,
