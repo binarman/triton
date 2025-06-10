@@ -1,0 +1,10 @@
+1. Unroll original loop:
+
+  ./build/bin/triton-opt --test-loop-unrolling=unroll-factor=4 custom_stripped.mlir > unrolled.mlir
+
+2. manually aggregate loads, saved to unrolled.mlir file.
+  first loop aggregates scales and do not pipeline them, do not save scales to lds
+  second loop is a normal one
+
+3. cleanup IR and update wait coutners:
+  ./build/bin/triton-opt --tritonamdgpu-update-async-wait-count=arch-generation-name=gfx950 --canonicalize unrolled.mlir > final.mlir
