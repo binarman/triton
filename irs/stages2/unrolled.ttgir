@@ -103,16 +103,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
       %63 = arith.addi %62, %60 : tensor<4x256xi32, #blocked3>
       %64 = ttg.local_alloc : () -> !ttg.memdesc<1x128x128xi8, #shared, #smem, mutable>
       %65 = ttg.local_alloc : () -> !ttg.memdesc<1x128x256xi8, #shared1, #smem, mutable>
-      %66 = ttg.local_alloc : () -> !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable>
-      %67 = ttg.local_alloc : () -> !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable>
-      %68 = amdgpu.buffer_load %arg3[%63] stride = %arg12 : tensor<4x256xi8, #blocked3>
-      %69 = amdgpu.buffer_load %arg4[%50] stride = %arg13 : tensor<8x256xi8, #blocked2>
+
       %70 = amdgpu.buffer_load %arg0[%27] stride = %arg8 : tensor<128x128xi8, #blocked>
       %71 = amdgpu.buffer_load %arg1[%35] cacheModifier = cg stride = %arg9 : tensor<128x256xi8, #blocked1>
-      %72 = ttg.memdesc_subview %66[%c0_i32, %c0_i32, %c0_i32] : !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-      ttg.local_store %68, %72 : tensor<4x256xi8, #blocked3> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-      %73 = ttg.memdesc_subview %67[%c0_i32, %c0_i32, %c0_i32] : !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
-      ttg.local_store %69, %73 : tensor<8x256xi8, #blocked2> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
+
       %74 = ttg.memdesc_subview %64[%c0_i32, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x128xi8, #shared, #smem, mutable> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
       ttg.local_store %70, %74 : tensor<128x128xi8, #blocked> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
       %75 = ttg.memdesc_subview %65[%c0_i32, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x256xi8, #shared1, #smem, mutable> -> !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
@@ -147,7 +141,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
       %c60_i32 = arith.constant 60 : i32
       %c4_i32_0 = arith.constant 4 : i32
-      %76:10 = scf.for %arg14 = %c0_i32 to %c60_i32 step %c4_i32_0 iter_args(%arg15 = %cst, %arg16 = %arg3, %arg17 = %arg4, %arg18 = %arg0, %arg19 = %arg1, %arg20 = %c0_i32, %arg21 = %72, %arg22 = %73, %arg23 = %74, %arg24 = %75) -> (tensor<128x256xf32, #mma>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, i32, !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<128x128xi8, #shared, #smem, mutable>, !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>)  : i32 {
+      %76:8 = scf.for %arg14 = %c0_i32 to %c60_i32 step %c4_i32_0 iter_args(%arg15 = %cst, %arg16 = %arg3, %arg17 = %arg4, %arg18 = %arg0, %arg19 = %arg1, %arg20 = %c0_i32, %arg23 = %74, %arg24 = %75) -> (tensor<128x256xf32, #mma>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, i32, !ttg.memdesc<128x128xi8, #shared, #smem, mutable>, !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>)  : i32 {
         // insert aggregated loads for scales
         // insert extract_slice
         // remove old non aggregated loads
@@ -163,12 +157,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %119 = tt.addptr %arg19, %c128_i32 : !tt.ptr<i8>, i32
         %120 = tt.addptr %arg16, %c256_i32 : !tt.ptr<i8>, i32
         %121 = tt.addptr %arg17, %c256_i32 : !tt.ptr<i8>, i32
-        %122 = amdgpu.buffer_load %120[%63] stride = %arg12 : tensor<4x256xi8, #blocked3>
-        %123 = ttg.local_load %arg21 : !ttg.memdesc<4x256xi8, #shared2, #smem, mutable> -> tensor<4x256xi8, #linear>
-        %124 = amdgpu.buffer_load %121[%50] stride = %arg13 : tensor<8x256xi8, #blocked2>
-
-
-        %125 = ttg.local_load %arg22 : !ttg.memdesc<8x256xi8, #shared2, #smem, mutable> -> tensor<8x256xi8, #linear1>
 
         %a_slice0 = amdgpu.extract_slice %a_agg [0, 0] : tensor<4x1024xi8, #linear> to tensor<4x256xi8, #linear>
         %b_slice0 = amdgpu.extract_slice %b_agg [0, 0] : tensor<8x1024xi8, #linear1> to tensor<8x256xi8, #linear1>
@@ -183,10 +171,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %133 = arith.addi %arg20, %c1_i32 : i32
         %134 = arith.cmpi slt, %133, %c1_i32 : i32
         %135 = arith.select %134, %133, %c0_i32 : i32
-        %136 = ttg.memdesc_subview %66[%135, %c0_i32, %c0_i32] : !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %122, %136 : tensor<4x256xi8, #blocked3> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        %137 = ttg.memdesc_subview %67[%135, %c0_i32, %c0_i32] : !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %124, %137 : tensor<8x256xi8, #blocked2> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
         %138 = ttg.memdesc_subview %64[%135, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x128xi8, #shared, #smem, mutable> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         ttg.local_store %128, %138 : tensor<128x128xi8, #blocked> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         %139 = ttg.memdesc_subview %65[%135, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x256xi8, #shared1, #smem, mutable> -> !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
@@ -195,10 +179,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %141 = tt.addptr %119, %c128_i32 : !tt.ptr<i8>, i32
         %142 = tt.addptr %120, %c256_i32 : !tt.ptr<i8>, i32
         %143 = tt.addptr %121, %c256_i32 : !tt.ptr<i8>, i32
-        %144 = amdgpu.buffer_load %142[%63] stride = %arg12 : tensor<4x256xi8, #blocked3>
-        %145 = ttg.local_load %136 : !ttg.memdesc<4x256xi8, #shared2, #smem, mutable> -> tensor<4x256xi8, #linear>
-        %146 = amdgpu.buffer_load %143[%50] stride = %arg13 : tensor<8x256xi8, #blocked2>
-        %147 = ttg.local_load %137 : !ttg.memdesc<8x256xi8, #shared2, #smem, mutable> -> tensor<8x256xi8, #linear1>
 
         %a_slice1 = amdgpu.extract_slice %a_agg [0, 0] : tensor<4x1024xi8, #linear> to tensor<4x256xi8, #linear>
         %b_slice1 = amdgpu.extract_slice %b_agg [0, 0] : tensor<8x1024xi8, #linear1> to tensor<8x256xi8, #linear1>
@@ -212,10 +192,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %155 = arith.addi %135, %c1_i32 : i32
         %156 = arith.cmpi slt, %155, %c1_i32 : i32
         %157 = arith.select %156, %155, %c0_i32 : i32
-        %158 = ttg.memdesc_subview %66[%157, %c0_i32, %c0_i32] : !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %144, %158 : tensor<4x256xi8, #blocked3> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        %159 = ttg.memdesc_subview %67[%157, %c0_i32, %c0_i32] : !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %146, %159 : tensor<8x256xi8, #blocked2> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
         %160 = ttg.memdesc_subview %64[%157, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x128xi8, #shared, #smem, mutable> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         ttg.local_store %150, %160 : tensor<128x128xi8, #blocked> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         %161 = ttg.memdesc_subview %65[%157, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x256xi8, #shared1, #smem, mutable> -> !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
@@ -224,10 +200,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %163 = tt.addptr %141, %c128_i32 : !tt.ptr<i8>, i32
         %164 = tt.addptr %142, %c256_i32 : !tt.ptr<i8>, i32
         %165 = tt.addptr %143, %c256_i32 : !tt.ptr<i8>, i32
-        %166 = amdgpu.buffer_load %164[%63] stride = %arg12 : tensor<4x256xi8, #blocked3>
-        %167 = ttg.local_load %158 : !ttg.memdesc<4x256xi8, #shared2, #smem, mutable> -> tensor<4x256xi8, #linear>
-        %168 = amdgpu.buffer_load %165[%50] stride = %arg13 : tensor<8x256xi8, #blocked2>
-        %169 = ttg.local_load %159 : !ttg.memdesc<8x256xi8, #shared2, #smem, mutable> -> tensor<8x256xi8, #linear1>
 
         %a_slice2 = amdgpu.extract_slice %a_agg [0, 0] : tensor<4x1024xi8, #linear> to tensor<4x256xi8, #linear>
         %b_slice2 = amdgpu.extract_slice %b_agg [0, 0] : tensor<8x1024xi8, #linear1> to tensor<8x256xi8, #linear1>
@@ -241,10 +213,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %177 = arith.addi %157, %c1_i32 : i32
         %178 = arith.cmpi slt, %177, %c1_i32 : i32
         %179 = arith.select %178, %177, %c0_i32 : i32
-        %180 = ttg.memdesc_subview %66[%179, %c0_i32, %c0_i32] : !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %166, %180 : tensor<4x256xi8, #blocked3> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        %181 = ttg.memdesc_subview %67[%179, %c0_i32, %c0_i32] : !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %168, %181 : tensor<8x256xi8, #blocked2> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
         %182 = ttg.memdesc_subview %64[%179, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x128xi8, #shared, #smem, mutable> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         ttg.local_store %172, %182 : tensor<128x128xi8, #blocked> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         %183 = ttg.memdesc_subview %65[%179, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x256xi8, #shared1, #smem, mutable> -> !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
@@ -253,10 +221,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %185 = tt.addptr %163, %c128_i32 : !tt.ptr<i8>, i32
         %186 = tt.addptr %164, %c256_i32 : !tt.ptr<i8>, i32
         %187 = tt.addptr %165, %c256_i32 : !tt.ptr<i8>, i32
-        %188 = amdgpu.buffer_load %186[%63] stride = %arg12 : tensor<4x256xi8, #blocked3>
-        %189 = ttg.local_load %180 : !ttg.memdesc<4x256xi8, #shared2, #smem, mutable> -> tensor<4x256xi8, #linear>
-        %190 = amdgpu.buffer_load %187[%50] stride = %arg13 : tensor<8x256xi8, #blocked2>
-        %191 = ttg.local_load %181 : !ttg.memdesc<8x256xi8, #shared2, #smem, mutable> -> tensor<8x256xi8, #linear1>
 
         %a_slice3 = amdgpu.extract_slice %a_agg [0, 0] : tensor<4x1024xi8, #linear> to tensor<4x256xi8, #linear>
         %b_slice3 = amdgpu.extract_slice %b_agg [0, 0] : tensor<8x1024xi8, #linear1> to tensor<8x256xi8, #linear1>
@@ -270,18 +234,34 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
         %199 = arith.addi %179, %c1_i32 : i32
         %200 = arith.cmpi slt, %199, %c1_i32 : i32
         %201 = arith.select %200, %199, %c0_i32 : i32
-        %202 = ttg.memdesc_subview %66[%201, %c0_i32, %c0_i32] : !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %188, %202 : tensor<4x256xi8, #blocked3> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
-        %203 = ttg.memdesc_subview %67[%201, %c0_i32, %c0_i32] : !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
-        ttg.local_store %190, %203 : tensor<8x256xi8, #blocked2> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
+
         %204 = ttg.memdesc_subview %64[%201, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x128xi8, #shared, #smem, mutable> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         ttg.local_store %194, %204 : tensor<128x128xi8, #blocked> -> !ttg.memdesc<128x128xi8, #shared, #smem, mutable>
         %205 = ttg.memdesc_subview %65[%201, %c0_i32, %c0_i32] : !ttg.memdesc<1x128x256xi8, #shared1, #smem, mutable> -> !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
         ttg.local_store %196, %205 : tensor<128x256xi8, #blocked1> -> !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
-        scf.yield %198, %186, %187, %184, %185, %201, %202, %203, %204, %205 : tensor<128x256xf32, #mma>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, i32, !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<128x128xi8, #shared, #smem, mutable>, !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
+        scf.yield %198, %186, %187, %184, %185, %201, %204, %205 : tensor<128x256xf32, #mma>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, i32, !ttg.memdesc<128x128xi8, #shared, #smem, mutable>, !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>
       }
       // insert load of scales for second loop
-      %77:10 = scf.for %arg14 = %c60_i32 to %c63_i32 step %c1_i32 iter_args(%arg15 = %76#0, %arg16 = %76#1, %arg17 = %76#2, %arg18 = %76#3, %arg19 = %76#4, %arg20 = %76#5, %arg21 = %76#6, %arg22 = %76#7, %arg23 = %76#8, %arg24 = %76#9) -> (tensor<128x256xf32, #mma>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, i32, !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<128x128xi8, #shared, #smem, mutable>, !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>)  : i32 {
+      %66 = ttg.local_alloc : () -> !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable>
+      %67 = ttg.local_alloc : () -> !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable>
+      %68 = amdgpu.buffer_load %arg3[%63] stride = %arg12 : tensor<4x256xi8, #blocked3>
+      %69 = amdgpu.buffer_load %arg4[%50] stride = %arg13 : tensor<8x256xi8, #blocked2>
+      %72 = ttg.memdesc_subview %66[%c0_i32, %c0_i32, %c0_i32] : !ttg.memdesc<1x4x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
+      ttg.local_store %68, %72 : tensor<4x256xi8, #blocked3> -> !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>
+      %73 = ttg.memdesc_subview %67[%c0_i32, %c0_i32, %c0_i32] : !ttg.memdesc<1x8x256xi8, #shared2, #smem, mutable> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
+      ttg.local_store %69, %73 : tensor<8x256xi8, #blocked2> -> !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>
+
+      %77:10 = scf.for %arg14 = %c60_i32 to %c63_i32 step %c1_i32 iter_args(
+          %arg15 = %76#0,
+          %arg16 = %76#1,
+          %arg17 = %76#2,
+          %arg18 = %76#3,
+          %arg19 = %76#4,
+          %arg20 = %76#5,
+          %arg21 = %72,
+          %arg22 = %73,
+          %arg23 = %76#6,
+          %arg24 = %76#7) -> (tensor<128x256xf32, #mma>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, !tt.ptr<i8>, i32, !ttg.memdesc<4x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<8x256xi8, #shared2, #smem, mutable>, !ttg.memdesc<128x128xi8, #shared, #smem, mutable>, !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>)  : i32 {
         %118 = tt.addptr %arg18, %c128_i32 : !tt.ptr<i8>, i32
         %119 = tt.addptr %arg19, %c128_i32 : !tt.ptr<i8>, i32
         %120 = tt.addptr %arg16, %c256_i32 : !tt.ptr<i8>, i32
