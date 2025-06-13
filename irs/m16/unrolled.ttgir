@@ -214,8 +214,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
         %base_offset_a = arith.muli %arg13, %c128_i32 : i32
         %base_offset_b = arith.muli %arg13, %c256_i32 : i32
-        %base_a = tt.addptr %82, %base_offset_a : !tt.ptr<i8>, i32
-        %base_b = tt.addptr %73, %base_offset_b : !tt.ptr<i8>, i32
+        %base_a = tt.addptr %arg3, %base_offset_a : !tt.ptr<i8>, i32
+        %base_b = tt.addptr %arg4, %base_offset_b : !tt.ptr<i8>, i32
         %aggregated_a_raw = amdgpu.buffer_load %base_a[%dup_83] : tensor<16x32xi8, #aggregated_a>
         %aggregated_b_raw = amdgpu.buffer_load %base_b[%dup_74] : tensor<4x1024xi8, #aggregated_b>
         %aggregated_a = ttg.convert_layout %aggregated_a_raw : tensor<16x32xi8, #aggregated_a> -> tensor<16x32xi8, #linear>
