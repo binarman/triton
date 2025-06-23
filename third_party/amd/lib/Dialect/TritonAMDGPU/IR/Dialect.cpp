@@ -461,31 +461,6 @@ mlir::LogicalResult foldConcatOpFromSingleSource(amdgpu::ConcatOp op,
   return failure();
 }
 
-struct CanonicalizeConcatOp : public mlir::OpRewritePattern<amdgpu::ConcatOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(amdgpu::ConcatOp op,
-                  PatternRewriter &rewriter) const override {
-
-    auto result = op.getResult();
-    auto sources = op.getSources();
-    if (sources.size() == 1) {
-      auto resultShape =
-          cast<RankedTensorType>(op.getResult().getType()).getShape();
-      auto sourceShape =
-          cast<RankedTensorType>(sources.front().getType()).getShape();
-      if (resultShape.equals(sourceShape)) {
-        auto source = sources.front();
-        result.replaceAllUsesWith(source);
-        return success();
-      }
-    }
-
-    return failure();
-  }
-};
-
 void ConcatOp::getCanonicalizationPatterns(mlir::RewritePatternSet &patterns,
                                            mlir::MLIRContext *context) {
   patterns.add(foldConcatOpFromSingleSource);
