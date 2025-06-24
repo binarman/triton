@@ -267,7 +267,6 @@ struct ConvertLayoutOpUsingLinearLayoutsConversion
     Value result =
         packLLElements(loc, getTypeConverter(), outVals, rewriter, dstTy);
     rewriter.replaceOp(op, result);
-    llvm::errs() << "swizzled convert layout\n";
     return success();
   }
 
