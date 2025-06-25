@@ -5,9 +5,9 @@
 
 namespace mlir::triton::AMD {
 
-int getCvtOpLDSUsage(RankedTensorType srcTy, RankedTensorType dstTy);
+unsigned getCvtOpLDSUsage(RankedTensorType srcTy, RankedTensorType dstTy);
 
-int getCvtOpLDSUsage(triton::gpu::ConvertLayoutOp op);
+unsigned getCvtOpLDSUsage(triton::gpu::ConvertLayoutOp op);
 
 std::vector<SmallVector<unsigned>> factorizePowerOf2(int n, int rank);
 

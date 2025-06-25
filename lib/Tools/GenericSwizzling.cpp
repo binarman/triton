@@ -24,6 +24,10 @@ static int __builtin_ctzll(unsigned long long x) {
 
 #endif
 
+void printL(const mlir::triton::LinearLayout &ll) {
+  llvm::errs() << ll << "\n";
+}
+
 void printBasis(const llvm::SmallVector<int32_t> &basis,
                 const std::string &name) {
   llvm::errs() << name << ": ";

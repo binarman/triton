@@ -7,20 +7,11 @@
 
 namespace mlir::triton::AMD {
 
-constexpr int kPtrBitWidth = 64;
-
-int getCvtOpLDSUsage(RankedTensorType srcTy, RankedTensorType dstTy) {
-  auto scratchConfig = getScratchConfigForCvt(srcTy, dstTy);
-  unsigned elems = getNumScratchElements(scratchConfig.paddedRepShape);
-  auto bytes =
-      isa<triton::PointerType>(srcTy.getElementType())
-          ? elems * kPtrBitWidth / 8
-          : elems * std::max<int>(8, srcTy.getElementTypeBitWidth()) / 8;
-
-  return bytes;
+unsigned getCvtOpLDSUsage(RankedTensorType srcTy, RankedTensorType dstTy) {
+  return getConvertLayoutScratchInBytes(srcTy, dstTy);
 }
 
-int getCvtOpLDSUsage(triton::gpu::ConvertLayoutOp op) {
+unsigned getCvtOpLDSUsage(triton::gpu::ConvertLayoutOp op) {
   return getCvtOpLDSUsage(op.getSrc().getType(), op.getType());
 }
 

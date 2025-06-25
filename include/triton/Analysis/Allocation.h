@@ -63,6 +63,9 @@ getScratchCvtInOutVecLengths(RankedTensorType srcTy, RankedTensorType dstTy);
 ScratchConfig getScratchConfigForCvt(RankedTensorType srcTy,
                                      RankedTensorType dstTy);
 
+unsigned getConvertLayoutScratchInBytes(RankedTensorType srcTy,
+                                        RankedTensorType dstTy);
+
 } // namespace triton
 
 /// Modified from llvm-15.0: llvm/ADT/AddressRanges.h
