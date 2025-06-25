@@ -1,4 +1,5 @@
 #include "OptimizeLDSUtility.h"
+#include "Analysis/AMDGPUAllocation.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
@@ -9,10 +10,6 @@ namespace mlir::triton::AMD {
 
 unsigned getCvtOpLDSUsage(RankedTensorType srcTy, RankedTensorType dstTy) {
   return getConvertLayoutScratchInBytes(srcTy, dstTy);
-}
-
-unsigned getCvtOpLDSUsage(triton::gpu::ConvertLayoutOp op) {
-  return getCvtOpLDSUsage(op.getSrc().getType(), op.getType());
 }
 
 static void stepFactorizationPow2(std::vector<SmallVector<unsigned>> &factors,

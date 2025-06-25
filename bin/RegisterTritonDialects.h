@@ -61,6 +61,7 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
   mlir::triton::registerConvertTritonToTritonGPUPass();
   mlir::triton::registerRelayoutTritonGPUPass();
   mlir::triton::gpu::registerAllocateSharedMemoryPass();
+
   mlir::triton::gpu::registerTritonGPUAllocateWarpGroups();
   mlir::triton::gpu::registerTritonGPUGlobalScratchAllocationPass();
   mlir::triton::registerConvertWarpSpecializeToLLVM();
@@ -69,6 +70,7 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
   mlir::registerLLVMDIScope();
 
   // TritonAMDGPUToLLVM passes
+  mlir::triton::registerAllocateAMDGPUSharedMemory();
   mlir::triton::registerConvertTritonAMDGPUToLLVM();
   mlir::triton::registerConvertBuiltinFuncToLLVM();
   mlir::triton::registerOptimizeAMDLDSUsage();

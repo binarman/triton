@@ -58,17 +58,6 @@ static unsigned getNumScratchElemsPaddedCvt(RankedTensorType srcTy,
   return getNumScratchElements(scratchConfig.paddedRepShape);
 }
 
-unsigned getConvertLayoutScratchInBytes(RankedTensorType srcTy,
-                                        RankedTensorType dstTy) {
-  if (!cvtNeedsSharedMemory(srcTy, dstTy))
-    return 0;
-  // Pesimistically take the max. We will revisit later
-  auto elems = std::max(getNumScratchElemsSwizzledCvt(srcTy, dstTy),
-                        getNumScratchElemsPaddedCvt(srcTy, dstTy));
-
-  return elems * getBitwidth(srcTy) / 8;
-}
-
 static SmallVector<unsigned> getRepShapeForCvt(RankedTensorType srcTy,
                                                RankedTensorType dstTy) {
   Attribute srcLayout = srcTy.getEncoding();
@@ -212,7 +201,13 @@ unsigned defaultAllocationAnalysisScratchSizeFn(Operation *op) {
   if (auto cvtLayout = dyn_cast<gpu::ConvertLayoutOp>(op)) {
     auto srcTy = cvtLayout.getSrc().getType();
     auto dstTy = cvtLayout.getType();
-    return getConvertLayoutScratchInBytes(srcTy, dstTy);
+    if (!cvtNeedsSharedMemory(srcTy, dstTy))
+      return 0;
+    // Pesimistically take the max. We will revisit later
+    auto elems = std::max(getNumScratchElemsSwizzledCvt(srcTy, dstTy),
+                          getNumScratchElemsPaddedCvt(srcTy, dstTy));
+
+    return elems * getBitwidth(srcTy) / 8;
   }
   if (isa<AtomicRMWOp, AtomicCASOp>(op)) {
     auto value = op->getOperand(0);

@@ -20,6 +20,7 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+#include "Analysis/AMDGPUAllocation.h"
 #include "OptimizeLDSUtility.h"
 #include "TargetInfo.h"
 #include "TritonAMDGPUToLLVM/Passes.h"
@@ -206,6 +207,16 @@ class OptimizeAMDLDSUsage
     auto funcAnalysis = allocAnalysis.getFuncData(func);
     auto liveBuffers = funcAnalysis->getLiveBuffers();
 
+    func.walk([&](mlir::Operation *op) -> void {
+      llvm::errs() << *op << "\n";
+      for (auto buf : liveBuffers[op]) {
+        auto size = funcAnalysis->getAllocatedSize(buf);
+        auto offset = funcAnalysis->getAllocatedInterval(buf).start();
+        llvm::errs() << "  " << buf << ": size" << size << " offset:" << offset
+                     << "\n";
+      }
+    });
+
     func.walk([&](triton::gpu::ConvertLayoutOp cvtOp) -> void {
       auto srcTy = cvtOp.getSrc().getType();
       auto dstTy = cvtOp.getResult().getType();
@@ -243,7 +254,8 @@ public:
       LDSLimit = targetInfo.getSharedMemorySize();
     }
 
-    ModuleAllocation allocAnalysis(mod);
+    ModuleAllocation allocAnalysis(
+        mod, mlir::triton::AMD::allocationAnalysisScratchSizeFn);
     if (allocAnalysis.getSharedMemorySize() <= LDSLimit)
       return;
 

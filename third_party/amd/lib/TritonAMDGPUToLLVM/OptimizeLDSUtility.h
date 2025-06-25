@@ -7,8 +7,6 @@ namespace mlir::triton::AMD {
 
 unsigned getCvtOpLDSUsage(RankedTensorType srcTy, RankedTensorType dstTy);
 
-unsigned getCvtOpLDSUsage(triton::gpu::ConvertLayoutOp op);
-
 std::vector<SmallVector<unsigned>> factorizePowerOf2(int n, int rank);
 
 /// Copy given layout with different warpsPerCTA parameter
