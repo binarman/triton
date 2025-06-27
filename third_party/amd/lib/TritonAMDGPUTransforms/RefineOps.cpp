@@ -1303,8 +1303,9 @@ struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
 
 struct TritonAMDGPURefineOps
     : public TritonAMDGPURefineOpsBase<TritonAMDGPURefineOps> {
-  explicit TritonAMDGPURefineOps(StringRef targetArch) {
+  explicit TritonAMDGPURefineOps(StringRef targetArch, StringRef granularity) {
     this->arch = targetArch.str();
+    this->granularity = granularity.str();
   }
 
   void runOnOperation() override {
@@ -1382,8 +1383,8 @@ struct TritonAMDGPURefineOps
 namespace mlir {
 
 std::unique_ptr<OperationPass<triton::FuncOp>>
-createTritonAMDGPURefineOpsPass(StringRef targetArch) {
-  return std::make_unique<TritonAMDGPURefineOps>(targetArch);
+createTritonAMDGPURefineOpsPass(StringRef targetArch, StringRef granularity) {
+  return std::make_unique<TritonAMDGPURefineOps>(targetArch, granularity);
 }
 
 } // namespace mlir
