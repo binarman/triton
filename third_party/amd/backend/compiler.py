@@ -307,7 +307,7 @@ class HIPBackend(BaseBackend):
         amd.passes.ttgpuir.add_membar_analysis(pm)
 
         import os
-        refinement_granularity = "cta_tile"
+        refinement_granularity = "small_tile"
         if "TRITON_HIP_REFINE_GRANULARITY" in os.environ:
             refinement_granularity = os.environ["TRITON_HIP_REFINE_GRANULARITY"]
         amd.passes.ttgpuir.add_refine_amdgpu_ops(pm, options.arch, refinement_granularity)

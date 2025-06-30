@@ -284,8 +284,8 @@ def TritonAMDGPURefineOps : Pass<"triton-amdgpu-refine-ops", "mlir::triton::Func
     let options = [
         Option<"arch", "arch", "std::string", /*default*/"\"\"",
                "gfx target device architecture, e.g., gfx942">,
-        Option<"granularity", "granularity", "std::string", /*default*/"\"cta_tile\"",
-               "granularity of refinement, supported values: 'cta_tile', 'semantic_tile'">
+        Option<"granularity", "granularity", "std::string", /*default*/"\"\"",
+               "granularity of refinement, supported values: 'small_tile', 'semantic_tile'">
     ];
 }
 
