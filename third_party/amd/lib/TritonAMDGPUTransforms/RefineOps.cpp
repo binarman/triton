@@ -39,7 +39,14 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &stream, SmallVector<T> vec) {
 
 namespace {
 
-enum class GranularityType { CTA, SEM };
+// SMALL granularity means refinement tries to tile as much as possible
+// SEM granularity stands for semantic, it do not tile smaller than semantics of
+// original layout permits. For example non transposed MFMA 32x32 layout has
+// thread+lane tile shape 8x32, but semantically this small tile does not make
+// sense and MFMA tensor with small shape will just broadcast values in
+// registers. SMALL granularity will use generic linear layout to overcome
+// broadcasting.
+enum class GranularityType { SMALL, SEM };
 
 SmallVector<Value> createOffset(llvm::ArrayRef<Value> valueOffset,
                                 llvm::ArrayRef<int64_t> intOffset,
@@ -96,7 +103,7 @@ getRefinedShapePerSemanticTile(RankedTensorType tensorType) {
 SmallVector<int64_t> getRefinedShape(Type type, GranularityType granularity) {
   auto tensorType = cast<mlir::RankedTensorType>(type);
   switch (granularity) {
-  case GranularityType::CTA:
+  case GranularityType::SMALL:
     return getRefinedShapePerCTATile(tensorType);
   case GranularityType::SEM:
     return getRefinedShapePerSemanticTile(tensorType);
@@ -967,7 +974,7 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
   GranularityType granularity;
 
   ElementWiseOpPattern(MLIRContext *context, PatternBenefit benefit = 1,
-                       GranularityType granularity = GranularityType::CTA)
+                       GranularityType granularity = GranularityType::SMALL)
       : RefineRewritePattern<OpTy>(context, benefit), granularity(granularity) {
   }
 
@@ -1375,10 +1382,15 @@ struct TritonAMDGPURefineOps
     patterns.add<BroadcastOpPattern>(context, /*benefit=*/1);
 
     GranularityType granType;
-    if (granularity == "cta_tile")
-      granType = GranularityType::CTA;
-    else if (granularity == "semantic_tile")
+    if (granularity == "small_tile") {
+      granType = GranularityType::SMALL;
+    } else if (granularity == "semantic_tile") {
       granType = GranularityType::SEM;
+    } else {
+      func.emitError("unsupported granularity: '")
+          << this->granularity.getValue() << "'";
+      return signalPassFailure();
+    }
 
     // Elementwise patterns
 #define REFINE_ELEMENTWISE_OP(OP_TYPE)                                         \
