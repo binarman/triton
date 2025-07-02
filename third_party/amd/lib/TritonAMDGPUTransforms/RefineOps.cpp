@@ -113,6 +113,18 @@ SmallVector<int64_t> getRefinedShape(Type type, GranularityType granularity) {
   return {};
 }
 
+static ttg::DistributedEncodingTrait
+getRefineEncoding(Attribute origEncoding, ArrayRef<int64_t> refinedShape) {
+  auto redundantLinearLayout = ttg::toLinearLayout(refinedShape, origEncoding);
+  auto ctx = origEncoding.getContext();
+  StringAttr kReg = StringAttr::get(ctx, "register");
+  auto leanLinearLayout = redundantLinearLayout.removeZeroBasesAlongDim(kReg);
+  if (leanLinearLayout == redundantLinearLayout)
+    return cast<ttg::DistributedEncodingTrait>(origEncoding);
+  else
+    return ttg::LinearEncodingAttr::get(ctx, leanLinearLayout);
+}
+
 struct RefinedBlock {
   RefinedBlock(ArrayRef<int64_t> shape, Type elemType,
                BlockedEncodingAttr encoding)
@@ -151,8 +163,9 @@ struct RefinedBlock {
 
 template <typename OpTy>
 struct RefineRewritePattern : public OpRewritePattern<OpTy> {
-  RefineRewritePattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern<OpTy>(context, benefit) {}
+  RefineRewritePattern(MLIRContext *context, PatternBenefit benefit = 1,
+                       GranularityType granularity = GranularityType::SMALL)
+      : OpRewritePattern<OpTy>(context, benefit), granularity(granularity) {}
 
   virtual LogicalResult apply(OpTy op, PatternRewriter &rewriter) const = 0;
 
@@ -163,7 +176,11 @@ struct RefineRewritePattern : public OpRewritePattern<OpTy> {
     return apply(op, rewriter);
   }
 
+  GranularityType getGranularity() const { return granularity; }
+
 private:
+  GranularityType granularity;
+
   bool isRefinable(Operation *op) const {
     mlir::Block *block = op->getBlock();
     while (block) {
@@ -974,26 +991,10 @@ struct ReduceOpPattern : public RefineRewritePattern<triton::ReduceOp> {
 
 template <typename OpTy>
 struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
-  GranularityType granularity;
 
   ElementWiseOpPattern(MLIRContext *context, PatternBenefit benefit = 1,
                        GranularityType granularity = GranularityType::SMALL)
-      : RefineRewritePattern<OpTy>(context, benefit), granularity(granularity) {
-  }
-
-  static ttg::DistributedEncodingTrait
-  refineElementwiseEncoding(Attribute origEncoding,
-                            ArrayRef<int64_t> refinedShape) {
-    auto redundantLinearLayout =
-        ttg::toLinearLayout(refinedShape, origEncoding);
-    auto ctx = origEncoding.getContext();
-    StringAttr kReg = StringAttr::get(ctx, "register");
-    auto leanLinearLayout = redundantLinearLayout.removeZeroBasesAlongDim(kReg);
-    if (leanLinearLayout == redundantLinearLayout)
-      return cast<ttg::DistributedEncodingTrait>(origEncoding);
-    else
-      return ttg::LinearEncodingAttr::get(ctx, leanLinearLayout);
-  }
+      : RefineRewritePattern<OpTy>(context, benefit, granularity) {}
 
   // Refine ops with distributed layouts.
   // Assumes same layout for operands.
@@ -1014,7 +1015,7 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
     auto srcShape = srcType.getShape();
     auto srcEncoding = srcType.getEncoding();
     auto srcLL = ttg::toLinearEncoding(srcType);
-    auto srcShapePerCtaTile = getRefinedShape(srcType, granularity);
+    auto srcShapePerCtaTile = getRefinedShape(srcType, this->getGranularity());
 
     // Verify subsequent operands match opd[0].
     for (int i = 1; i < numOperands; ++i) {
@@ -1022,8 +1023,8 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
         return failure();
       if (rankedTType(op->getOperand(i)).getRank() != rank)
         return failure();
-      if (getRefinedShape(op->getOperand(i).getType(), granularity) !=
-          srcShapePerCtaTile)
+      if (getRefinedShape(op->getOperand(i).getType(),
+                          this->getGranularity()) != srcShapePerCtaTile)
         return failure();
     }
 
@@ -1043,7 +1044,7 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
     auto llRes = leRes.getLinearLayout();
 
     auto resEncoding = resType.getEncoding();
-    auto resShapePerCtaTile = getRefinedShape(resType, granularity);
+    auto resShapePerCtaTile = getRefinedShape(resType, this->getGranularity());
 
     // Calculate refined shapes.
     SmallVector<int64_t> refinedShape;
@@ -1060,10 +1061,8 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
       return success();
 
     // Create refined ops.
-    auto refinedSrcEncoding =
-        refineElementwiseEncoding(srcEncoding, refinedShape);
-    auto refinedResEncoding =
-        refineElementwiseEncoding(resEncoding, refinedShape);
+    auto refinedSrcEncoding = getRefineEncoding(srcEncoding, refinedShape);
+    auto refinedResEncoding = getRefineEncoding(resEncoding, refinedShape);
 
     auto refinedTensorTypeSrc = RankedTensorType::get(
         refinedShape, srcType.getElementType(), refinedSrcEncoding);
@@ -1242,8 +1241,9 @@ struct ExpandDimsOpPattern : public RefineRewritePattern<triton::ExpandDimsOp> {
 };
 
 struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
-  BroadcastOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  BroadcastOpPattern(MLIRContext *context, PatternBenefit benefit = 1,
+                     GranularityType granularity = GranularityType::SMALL)
+      : RefineRewritePattern(context, benefit, granularity) {}
 
   // Refine Broadcast ops.
   // Since inputs are roughtly 1D and outputs are roughly 2D,
@@ -1277,7 +1277,7 @@ struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
       return failure();
     auto srcShape = srcType.getShape();
     auto srcEncoding = srcType.getEncoding();
-    auto srcShapePerCtaTile = getRefinedShapePerCTATile(srcType);
+    auto srcShapePerCtaTile = getRefinedShape(srcType, getGranularity());
 
     // Result tensor e.g. <128x64>.
     auto res = op->getResult(0);
@@ -1286,7 +1286,7 @@ struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
     auto resType = rankedTType(res);
     auto resShape = resType.getShape();
     auto resEncoding = resType.getEncoding();
-    auto resShapePerCtaTile = getRefinedShapePerCTATile(resType);
+    auto resShapePerCtaTile = getRefinedShape(resType, getGranularity());
 
     // numReps
     SmallVector<int64_t> refinedSrcShape;
@@ -1314,10 +1314,11 @@ struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
     unsigned numRepsRes = numReps[numRepsResIdx];
 
     // Refined src/result tensor types.
+    auto refinedEncoding = getRefineEncoding(srcEncoding, refinedResShape);
     auto refinedSrcTensorType = RankedTensorType::get(
-        refinedSrcShape, srcType.getElementType(), srcEncoding);
-    auto refinedResTensorType = RankedTensorType::get(
-        refinedResShape, srcType.getElementType(), srcEncoding);
+        refinedSrcShape, srcType.getElementType(), refinedEncoding);
+    auto sliceResTensorType = RankedTensorType::get(
+        refinedResShape, srcType.getElementType(), refinedEncoding);
 
     // Create refined ops.
     rewriter.setInsertionPointAfter(op);
@@ -1332,8 +1333,6 @@ struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
       auto sliceRes =
           ::llvm::cast<::mlir::TypedValue<::mlir::RankedTensorType>>(
               slicedOp->getResult(0));
-      auto sliceResTensorType = RankedTensorType::get(
-          refinedResShape, srcType.getElementType(), resEncoding);
       for (int j = 0; j < numRepsRes; ++j) {
         // Create broadcast.
         auto broadcastOp = rewriter.create<triton::BroadcastOp>(
@@ -1374,30 +1373,31 @@ struct TritonAMDGPURefineOps
     primaryPatterns.add<LocalAllocOpPattern>(context, /*benefit=*/1);
     walkAndApplyPatterns(func, std::move(primaryPatterns));
 
-    RewritePatternSet patterns(context);
-    patterns.add<LocalLoadOpPattern>(context, /*benefit=*/1);
-    patterns.add<DotOpPattern>(context, /*benefit=*/1);
-    patterns.add<LoadOpPattern>(context, /*benefit=*/1);
-    patterns.add<AMDGCNBufferLoadOp>(context, /*benefit=*/1);
-    patterns.add<LocalStoreOpPattern>(context, /*benefit=*/1);
-    patterns.add<ReduceOpPattern>(context, /*benefit=*/1);
-    patterns.add<ExpandDimsOpPattern>(context, /*benefit=*/1);
-    patterns.add<BroadcastOpPattern>(context, /*benefit=*/1);
-
-    GranularityType granType;
+    GranularityType granularityType;
     if (granularity == "small_tile") {
-      granType = GranularityType::SMALL;
+      granularityType = GranularityType::SMALL;
     } else if (granularity == "semantic_tile") {
-      granType = GranularityType::SEM;
+      granularityType = GranularityType::SEM;
     } else {
       func.emitError("unsupported granularity: '")
           << this->granularity.getValue() << "'";
       return signalPassFailure();
     }
 
+    RewritePatternSet patterns(context);
+    //    patterns.add<LocalLoadOpPattern>(context, /*benefit=*/1);
+    patterns.add<DotOpPattern>(context, /*benefit=*/1);
+    patterns.add<LoadOpPattern>(context, /*benefit=*/1);
+    patterns.add<AMDGCNBufferLoadOp>(context, /*benefit=*/1);
+    patterns.add<LocalStoreOpPattern>(context, /*benefit=*/1);
+    patterns.add<ReduceOpPattern>(context, /*benefit=*/1);
+    patterns.add<ExpandDimsOpPattern>(context, /*benefit=*/1);
+    patterns.add<BroadcastOpPattern>(context, /*benefit=*/1, granularityType);
+
     // Elementwise patterns
 #define REFINE_ELEMENTWISE_OP(OP_TYPE)                                         \
-  patterns.add<ElementWiseOpPattern<OP_TYPE>>(context, /*benefit=*/1, granType);
+  patterns.add<ElementWiseOpPattern<OP_TYPE>>(context, /*benefit=*/1,          \
+                                              granularityType);
 
     REFINE_ELEMENTWISE_OP(math::RsqrtOp)
     REFINE_ELEMENTWISE_OP(math::Exp2Op)
