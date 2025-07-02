@@ -224,7 +224,27 @@ struct DotOpMFMAConverter {
 
     const auto kDimOperandSize = aTensorTy.getShape().back();
 
-    int kWidth = encodeA.getKWidth();
+    auto mfmaVersion = mfmaLayout.getVersion();
+    bool allowXF32 =
+        dotOp.getInputPrecision() == InputPrecision::TF32 && mfmaVersion == 3;
+
+    FailureOr<MfmaIntrinsic> maybeMfmaInsn =
+        MfmaIntrinsic::selectFor(dotOp->getLoc(), mfmaVersion, mDim, nDim,
+                                 kDimOperandSize, elemTyA, elemTyB,
+                                 /*withScale=*/false, allowXF32);
+
+    unsigned kWidth = encodeA.getKWidth();
+
+    SmallVector<unsigned> mfmaShape = {16, 16, 16};
+    if (failed(maybeMfmaInsn)) {
+      llvm::errs() << "No match found in MFMA database\n";
+    } else {
+      mfmaShape[0] = maybeMfmaInsn->mDim;
+      mfmaShape[1] = maybeMfmaInsn->nDim;
+      mfmaShape[2] = maybeMfmaInsn->kDim;
+      kWidth = std::max(kWidth, maybeMfmaInsn->kBase);
+    }
+
     auto repA = mfmaLayout.getRepForOperand(aTensorTy.getShape(), kWidth, 0);
     auto repB = mfmaLayout.getRepForOperand(bTensorTy.getShape(), kWidth, 1);
     assert(repA[2] == repB[1]);
@@ -260,23 +280,6 @@ struct DotOpMFMAConverter {
         shapeC[1] / warpsPerCTA[1],
         shapeA[1],
     };
-    auto mfmaVersion = mfmaLayout.getVersion();
-    bool allowXF32 =
-        dotOp.getInputPrecision() == InputPrecision::TF32 && mfmaVersion == 3;
-
-    FailureOr<MfmaIntrinsic> maybeMfmaInsn =
-        MfmaIntrinsic::selectFor(dotOp->getLoc(), mfmaVersion, mDim, nDim,
-                                 kDimOperandSize, elemTyA, elemTyB,
-                                 /*withScale=*/false, allowXF32);
-
-    SmallVector<unsigned> mfmaShape = {16, 16, 16};
-    if (failed(maybeMfmaInsn)) {
-      llvm::errs() << "No match found in MFMA database\n";
-    } else {
-      mfmaShape[0] = maybeMfmaInsn->mDim;
-      mfmaShape[1] = maybeMfmaInsn->nDim;
-      mfmaShape[2] = maybeMfmaInsn->kDim;
-    }
 
     auto mfmasPerRep =
         getMfmasPerRep(ctaTile, warpsPerCTA, numRepShape, mfmaShape);
