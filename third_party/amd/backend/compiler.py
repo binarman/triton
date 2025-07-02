@@ -66,7 +66,7 @@ class HIPOptions:
     # attention: enables a bunch of optimizations for attention kernels, including:
     #            - iglp 2 and sched.barrier around it
     #            - sink-insts-to-avoid-spills flag to avoid register spills
-    schedule_hint: str = 'none'
+    schedule_hint: str = 'refine_ops'
 
     def __post_init__(self):
         gfx_major = int(self.arch[3:-2])  # Drop "gfx" prefix and minor/patch number
