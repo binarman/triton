@@ -69,34 +69,65 @@ struct ConcatOpConversion : public ConvertOpToLLVMPattern<amdgpu::ConcatOp> {
       unpackedSources.push_back(unpackLLElements(loc, currSrc, rewriter));
     }
 
-    // Traverse CTA tiles in the result tensor
-    for (int i = 0; i < numCTATiles; ++i) {
-      auto currTileIdx = mlir::LLVM::delinearize(i, dstCTAShape, dstCTAOrder);
+    // for all registers in src tensor, compute location in tensor
+    // for all elements in dst tensor
+    //   get location in tensor
+    //   get src operand
+    // minus offset of operand tile
+    // look for values in a tile
+    auto ctx = rewriter.getContext();
+    StringAttr kReg = StringAttr::get(ctx, "register");
+    auto srcRegBases = linearLayoutSrc.getBases().lookup(kReg);
+    auto dstRegBases = linearLayoutDst.getBases().lookup(kReg);
+
+    using ElemLocationKey = decltype(linearLayoutSrc.apply({}));
+    llvm::MapVector<ElemLocationKey, unsigned> srcElemToReg;
+    int srcRegNum = 1 << srcRegBases.size();
+    for (int regId = 0; regId < srcRegNum; ++regId) {
+      SmallVector<std::pair<StringAttr, int32_t>> hardwareLocation;
+      for (auto dimName : linearLayoutSrc.getInDimNames()) {
+        if (dimName == kReg)
+          hardwareLocation.push_back({dimName, regId});
+        else
+          hardwareLocation.push_back({dimName, 0});
+      }
+      auto elemCoords = linearLayoutSrc.apply(hardwareLocation);
+      srcElemToReg[elemCoords] = regId;
+    }
+    // for every output register get element coords,
+    // find corresponding operand and copy src register
+    int dstRegNum = 1 << dstRegBases.size();
+    for (int regId = 0; regId < dstRegNum; ++regId) {
+      SmallVector<std::pair<StringAttr, int32_t>> hardwareLocation;
+      for (auto dimName : linearLayoutSrc.getInDimNames()) {
+        if (dimName == kReg)
+          hardwareLocation.push_back({dimName, regId});
+        else
+          hardwareLocation.push_back({dimName, 0});
+      }
+      auto elemCoords = linearLayoutDst.apply(hardwareLocation);
+      auto elemCoordsArray =
+          llvm::to_vector(llvm::make_second_range(elemCoords));
       // The n-dim destination tensor is built by arranging n-dim source tensors
       // into a destination tensor shape. Determine which source tensor contains
       // the current CTA tile.
-      auto multiDimSrcIdx = LLVM::AMD::multiDimElementwise<unsigned, unsigned>(
-          currTileIdx, srcCTAShape, std::divides<unsigned>());
+      auto multiDimOperandIdx =
+          LLVM::AMD::multiDimElementwise<int32_t, int64_t>(
+              elemCoordsArray, srcShape, std::divides<unsigned>());
       // Compute linear index of the current source tensor.
       // Concat operands are laid out in the destination tensor
       // in fastest slowest varying dimension order.
-      auto linearSrcIdx =
-          mlir::LLVM::linearize(multiDimSrcIdx, srcToDstShape, defaultOrder);
+      auto linearOperandIdx = mlir::LLVM::linearize(
+          multiDimOperandIdx, srcToDstShape, defaultOrder);
 
-      // After determining which source tensor the current CTA tile belongs to,
-      // compute the index of this CTA tile within that source tensor,
-      // considering the source tensors may include CTA tiles.
-      auto multiDimSrcCTAIdx =
-          LLVM::AMD::multiDimElementwise<unsigned, unsigned>(
-              currTileIdx, srcCTAShape, std::modulus<unsigned>());
-      auto linearSrcCTAIdx =
-          mlir::LLVM::linearize(multiDimSrcCTAIdx, srcCTAShape, srcCTAOrder);
-      auto unpackedElements = unpackedSources[linearSrcIdx];
+      auto unpackedElements = unpackedSources[linearOperandIdx];
+      for (int dim = 0; dim < rank; ++dim)
+        elemCoords[dim].second -= multiDimOperandIdx[dim] * srcShape[dim];
 
-      auto startIt =
-          unpackedElements.begin() + linearSrcCTAIdx * elemsPerThreadPerCTA;
-      auto endIt = startIt + elemsPerThreadPerCTA;
-      llvm::append_range(resultVals, llvm::make_range(startIt, endIt));
+      assert(srcElemToReg.contains(elemCoords));
+      int srcRegIdx = srcElemToReg.lookup(elemCoords);
+
+      resultVals.push_back(unpackedSources[linearOperandIdx][srcRegIdx]);
     }
 
     Value packedResult = packLLElements(loc, this->getTypeConverter(),

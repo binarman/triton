@@ -63,25 +63,54 @@ struct ExtractSliceOpConversion
         std::accumulate(srcCTAShape.begin(), srcCTAShape.end(), 1,
                         std::multiplies<>());
 
-    // 1. Process CTA tiles in the destination tensor according to the
-    // destination's linear layout order of CTA tiles.
-    // 2. For each tile position in the destination tensor, compute its
-    // corresponding position in the source tensor.
-    // 3. Copy the values from the source tile to the destination slice.
-    SmallVector<Value> resultVals;
-    for (size_t i = 0; i < numCTATiles; i++) {
-      auto coordInDstTensor =
-          mlir::LLVM::delinearize(i, dstCTAShape, dstCTAOrder);
-      auto coordInSrcTensor =
-          LLVM::AMD::multiDimElementwise<unsigned, unsigned>(
-              coordInDstTensor, firstTileCoordinate, std::plus<unsigned>());
-      auto linearIdxInSrcTensor =
-          mlir::LLVM::linearize(coordInSrcTensor, srcCTAShape, srcCTAOrder);
+    // get number of output registers
+    // for every input register:
+    //   get element coords
+    //   map element coords -> src register no
+    // for every output register
+    //   get element coords
+    //   copy from corresponding src register
+    auto ctx = rewriter.getContext();
+    int rank = srcTy.getRank();
+    StringAttr kReg = StringAttr::get(ctx, "register");
+    auto srcRegBases = linearLayoutSrc.getBases().lookup(kReg);
+    auto dstRegBases = linearLayoutDst.getBases().lookup(kReg);
 
-      size_t startIdx = linearIdxInSrcTensor * elemsPerThreadPerCTA;
-      llvm::append_range(resultVals, llvm::ArrayRef(vals).slice(
-                                         startIdx, elemsPerThreadPerCTA));
+    // Mapping from tensors element location to src register id
+    using ElemLocationKey = decltype(linearLayoutSrc.apply({}));
+    llvm::MapVector<ElemLocationKey, unsigned> srcElemToReg;
+    int srcRegNum = 1 << srcRegBases.size();
+    for (int regId = 0; regId < srcRegNum; ++regId) {
+      SmallVector<std::pair<StringAttr, int32_t>> hardwareLocation;
+      for (auto dimName : linearLayoutSrc.getInDimNames()) {
+        if (dimName == kReg)
+          hardwareLocation.push_back({dimName, regId});
+        else
+          hardwareLocation.push_back({dimName, 0});
+      }
+      auto elemCoords = linearLayoutSrc.apply(hardwareLocation);
+      srcElemToReg[elemCoords] = regId;
     }
+    // for every output register get element coords, copy corresponding src
+    // register
+    int dstRegNum = 1 << dstRegBases.size();
+    SmallVector<Value> resultVals;
+    for (int regId = 0; regId < dstRegNum; ++regId) {
+      SmallVector<std::pair<StringAttr, int32_t>> hardwareLocation;
+      for (auto dimName : linearLayoutSrc.getInDimNames()) {
+        if (dimName == kReg)
+          hardwareLocation.push_back({dimName, regId});
+        else
+          hardwareLocation.push_back({dimName, 0});
+      }
+      auto elemCoords = linearLayoutDst.apply(hardwareLocation);
+      for (int i = 0; i < rank; ++i)
+        elemCoords[i].second += offsets[i];
+      assert(srcElemToReg.contains(elemCoords));
+      auto srcRegId = srcElemToReg.lookup(elemCoords);
+      resultVals.push_back(vals[srcRegId]);
+    }
+
     Value ret = packLLElements(loc, this->getTypeConverter(), resultVals,
                                rewriter, dstTy);
 
