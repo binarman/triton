@@ -151,8 +151,9 @@ struct RefinedBlock {
 
 template <typename OpTy>
 struct RefineRewritePattern : public OpRewritePattern<OpTy> {
-  RefineRewritePattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpRewritePattern<OpTy>(context, benefit) {}
+  RefineRewritePattern(MLIRContext *context, GranularityType granularity,
+                       PatternBenefit benefit = 1)
+      : OpRewritePattern<OpTy>(context, benefit), granularity(granularity) {}
 
   virtual LogicalResult apply(OpTy op, PatternRewriter &rewriter) const = 0;
 
@@ -162,6 +163,8 @@ struct RefineRewritePattern : public OpRewritePattern<OpTy> {
       return failure();
     return apply(op, rewriter);
   }
+
+  GranularityType getGranularity() const { return granularity; }
 
 private:
   bool isRefinable(Operation *op) const {
@@ -178,6 +181,8 @@ private:
     }
     return false;
   }
+
+  GranularityType granularity;
 };
 
 struct DotOpMFMAConverter {
@@ -492,8 +497,14 @@ LogicalResult rewriteMFMA(PatternRewriter &rewriter, triton::DotOp op) {
 }
 
 struct DotOpPattern : public RefineRewritePattern<triton::DotOp> {
-  DotOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  DotOpPattern(MLIRContext *context, GranularityType granularity,
+               PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {
+    // DotOp is not affected by granularity,
+    // because smallest tile size is equal to semantic for dot operations.
+    assert(granularity == GranularityType::SMALL ||
+           granularity == GranularityType::SEM);
+  }
 
   LogicalResult apply(triton::DotOp op,
                       PatternRewriter &rewriter) const override {
@@ -507,8 +518,9 @@ struct DotOpPattern : public RefineRewritePattern<triton::DotOp> {
 
 struct LocalLoadOpPattern
     : public RefineRewritePattern<triton::gpu::LocalLoadOp> {
-  LocalLoadOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  LocalLoadOpPattern(MLIRContext *context, GranularityType granularity,
+                     PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   LogicalResult apply(triton::gpu::LocalLoadOp op,
                       PatternRewriter &rewriter) const override {
@@ -601,8 +613,9 @@ struct LocalLoadOpPattern
 };
 
 struct LoadOpPattern : public RefineRewritePattern<triton::LoadOp> {
-  LoadOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  LoadOpPattern(MLIRContext *context, GranularityType granularity,
+                PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   LogicalResult apply(triton::LoadOp op,
                       PatternRewriter &rewriter) const override {
@@ -664,8 +677,9 @@ struct LoadOpPattern : public RefineRewritePattern<triton::LoadOp> {
 
 struct AMDGCNBufferLoadOp
     : public RefineRewritePattern<triton::amdgpu::BufferLoadOp> {
-  AMDGCNBufferLoadOp(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  AMDGCNBufferLoadOp(MLIRContext *context, GranularityType granularity,
+                     PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   LogicalResult apply(triton::amdgpu::BufferLoadOp op,
                       PatternRewriter &rewriter) const override {
@@ -757,8 +771,9 @@ struct AMDGCNBufferLoadOp
 
 struct LocalStoreOpPattern
     : public RefineRewritePattern<triton::gpu::LocalStoreOp> {
-  LocalStoreOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  LocalStoreOpPattern(MLIRContext *context, GranularityType granularity,
+                      PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   LogicalResult apply(triton::gpu::LocalStoreOp op,
                       PatternRewriter &rewriter) const override {
@@ -823,8 +838,9 @@ struct LocalStoreOpPattern
 
 struct LocalAllocOpPattern
     : public RefineRewritePattern<triton::gpu::LocalAllocOp> {
-  LocalAllocOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  LocalAllocOpPattern(MLIRContext *context, GranularityType granularity,
+                      PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   // Refines non-mutable memory `LocalAllocOp` ops. The non-mutable variant
   // is used as a not-pipelined version of the op. To be able to refine the op,
@@ -908,8 +924,9 @@ struct LocalAllocOpPattern
 };
 
 struct ReduceOpPattern : public RefineRewritePattern<triton::ReduceOp> {
-  ReduceOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  ReduceOpPattern(MLIRContext *context, GranularityType granularity,
+                  PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   // Reduce ops have different intput and output shapes and produce
   // sliced layouts.
@@ -971,12 +988,10 @@ struct ReduceOpPattern : public RefineRewritePattern<triton::ReduceOp> {
 
 template <typename OpTy>
 struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
-  GranularityType granularity;
 
-  ElementWiseOpPattern(MLIRContext *context, PatternBenefit benefit = 1,
-                       GranularityType granularity = GranularityType::SMALL)
-      : RefineRewritePattern<OpTy>(context, benefit), granularity(granularity) {
-  }
+  ElementWiseOpPattern(MLIRContext *context, GranularityType granularity,
+                       PatternBenefit benefit = 1)
+      : RefineRewritePattern<OpTy>(context, granularity, benefit) {}
 
   static ttg::DistributedEncodingTrait
   refineElementwiseEncoding(Attribute origEncoding,
@@ -1011,7 +1026,7 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
     auto srcShape = srcType.getShape();
     auto srcEncoding = srcType.getEncoding();
     auto srcLL = ttg::toLinearEncoding(srcType);
-    auto srcShapePerCtaTile = getRefinedShape(srcType, granularity);
+    auto srcShapePerCtaTile = getRefinedShape(srcType, this->getGranularity());
 
     // Verify subsequent operands match opd[0].
     for (int i = 1; i < numOperands; ++i) {
@@ -1019,8 +1034,8 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
         return failure();
       if (rankedTType(op->getOperand(i)).getRank() != rank)
         return failure();
-      if (getRefinedShape(op->getOperand(i).getType(), granularity) !=
-          srcShapePerCtaTile)
+      if (getRefinedShape(op->getOperand(i).getType(),
+                          this->getGranularity()) != srcShapePerCtaTile)
         return failure();
     }
 
@@ -1040,7 +1055,7 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
     auto llRes = leRes.getLinearLayout();
 
     auto resEncoding = resType.getEncoding();
-    auto resShapePerCtaTile = getRefinedShape(resType, granularity);
+    auto resShapePerCtaTile = getRefinedShape(resType, this->getGranularity());
 
     // Calculate refined shapes.
     SmallVector<int64_t> refinedShape;
@@ -1123,8 +1138,9 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
 };
 
 struct ExpandDimsOpPattern : public RefineRewritePattern<triton::ExpandDimsOp> {
-  ExpandDimsOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  ExpandDimsOpPattern(MLIRContext *context, GranularityType granularity,
+                      PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   // Refine ExpandDims ops.
   // Since expanding dims increases tensor rank,
@@ -1239,8 +1255,9 @@ struct ExpandDimsOpPattern : public RefineRewritePattern<triton::ExpandDimsOp> {
 };
 
 struct BroadcastOpPattern : public RefineRewritePattern<BroadcastOp> {
-  BroadcastOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : RefineRewritePattern(context, benefit) {}
+  BroadcastOpPattern(MLIRContext *context, GranularityType granularity,
+                     PatternBenefit benefit = 1)
+      : RefineRewritePattern(context, granularity, benefit) {}
 
   // Refine Broadcast ops.
   // Since inputs are roughtly 1D and outputs are roughly 2D,
@@ -1367,34 +1384,36 @@ struct TritonAMDGPURefineOps
       return signalPassFailure();
     }
 
-    RewritePatternSet primaryPatterns(context);
-    primaryPatterns.add<LocalAllocOpPattern>(context, /*benefit=*/1);
-    walkAndApplyPatterns(func, std::move(primaryPatterns));
-
-    RewritePatternSet patterns(context);
-    patterns.add<LocalLoadOpPattern>(context, /*benefit=*/1);
-    patterns.add<DotOpPattern>(context, /*benefit=*/1);
-    patterns.add<LoadOpPattern>(context, /*benefit=*/1);
-    patterns.add<AMDGCNBufferLoadOp>(context, /*benefit=*/1);
-    patterns.add<LocalStoreOpPattern>(context, /*benefit=*/1);
-    patterns.add<ReduceOpPattern>(context, /*benefit=*/1);
-    patterns.add<ExpandDimsOpPattern>(context, /*benefit=*/1);
-    patterns.add<BroadcastOpPattern>(context, /*benefit=*/1);
-
-    GranularityType granType;
+    GranularityType granularityType;
     if (granularity == "small_tile") {
-      granType = GranularityType::SMALL;
+      granularityType = GranularityType::SMALL;
     } else if (granularity == "semantic_tile") {
-      granType = GranularityType::SEM;
+      granularityType = GranularityType::SEM;
     } else {
       func.emitError("unsupported granularity: '")
           << this->granularity.getValue() << "'";
       return signalPassFailure();
     }
 
+    RewritePatternSet primaryPatterns(context);
+    primaryPatterns.add<LocalAllocOpPattern>(context, granularityType,
+                                             /*benefit=*/1);
+    walkAndApplyPatterns(func, std::move(primaryPatterns));
+
+    RewritePatternSet patterns(context);
+    patterns.add<LocalLoadOpPattern>(context, granularityType, /*benefit=*/1);
+    patterns.add<DotOpPattern>(context, granularityType, /*benefit=*/1);
+    patterns.add<LoadOpPattern>(context, granularityType, /*benefit=*/1);
+    patterns.add<AMDGCNBufferLoadOp>(context, granularityType, /*benefit=*/1);
+    patterns.add<LocalStoreOpPattern>(context, granularityType, /*benefit=*/1);
+    patterns.add<ReduceOpPattern>(context, granularityType, /*benefit=*/1);
+    patterns.add<ExpandDimsOpPattern>(context, granularityType, /*benefit=*/1);
+    patterns.add<BroadcastOpPattern>(context, granularityType, /*benefit=*/1);
+
     // Elementwise patterns
 #define REFINE_ELEMENTWISE_OP(OP_TYPE)                                         \
-  patterns.add<ElementWiseOpPattern<OP_TYPE>>(context, /*benefit=*/1, granType);
+  patterns.add<ElementWiseOpPattern<OP_TYPE>>(context, granularityType,        \
+                                              /*benefit=*/1);
 
     REFINE_ELEMENTWISE_OP(math::RsqrtOp)
     REFINE_ELEMENTWISE_OP(math::Exp2Op)
