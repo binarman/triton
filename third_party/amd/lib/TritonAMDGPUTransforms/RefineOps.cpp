@@ -978,9 +978,9 @@ struct ElementWiseOpPattern : public RefineRewritePattern<OpTy> {
       : RefineRewritePattern<OpTy>(context, benefit), granularity(granularity) {
   }
 
-  static ttg::DistributedEncodingTrait
+  ttg::DistributedEncodingTrait
   refineElementwiseEncoding(Attribute origEncoding,
-                            ArrayRef<int64_t> refinedShape) {
+                            ArrayRef<int64_t> refinedShape) const {
     auto redundantLinearLayout =
         ttg::toLinearLayout(refinedShape, origEncoding);
     auto ctx = origEncoding.getContext();
