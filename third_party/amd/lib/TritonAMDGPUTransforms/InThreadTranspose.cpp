@@ -118,9 +118,8 @@ Attribute createNewSharedEncoding(RankedTensorType operandType) {
 
   int rank = operandType.getRank();
 
-  auto intervals = llvm::to_vector_of<unsigned>(operandType.getShape());
-  SmallVector<unsigned> paddings(rank, 0);
-  paddings[order[0]] = bitWidth / 8;
+  SmallVector<unsigned> intervals{operandType.getShape()[order[0]]};
+  SmallVector<unsigned> paddings{bitWidth / 8};
 
   auto newSharedEnc = ttg::PaddedSharedEncodingAttr::get(
       ctx, intervals, paddings, order, ctaLayout);
