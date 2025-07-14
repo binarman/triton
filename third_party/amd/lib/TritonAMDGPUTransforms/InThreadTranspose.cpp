@@ -116,16 +116,14 @@ Attribute createNewSharedEncoding(RankedTensorType operandType) {
   if (dotOperandEnc.getOpIdx() == 1)
     std::swap(order[0], order[1]);
 
-  auto tempAttr = ttg::SwizzledSharedEncodingAttr::get(
-      ctx, dotOperandEnc, operandType.getShape(), order, ctaLayout, bitWidth,
-      /*needTrans=*/false);
+  int rank = operandType.getRank();
 
-  auto sharedVec = tempAttr.getVec();
-  auto perPhase = tempAttr.getPerPhase();
-  auto maxPhase = tempAttr.getMaxPhase();
+  auto intervals = llvm::to_vector_of<unsigned>(operandType.getShape());
+  SmallVector<unsigned> paddings(rank, 0);
+  paddings[order[0]] = bitWidth / 8;
 
-  auto newSharedEnc = ttg::AMDRotatingSharedEncodingAttr::get(
-      ctx, sharedVec, perPhase, maxPhase, order, ctaLayout);
+  auto newSharedEnc = ttg::PaddedSharedEncodingAttr::get(
+      ctx, intervals, paddings, order, ctaLayout);
 
   return newSharedEnc;
 }
