@@ -117,8 +117,10 @@ Attribute createNewSharedEncoding(RankedTensorType operandType) {
     std::swap(order[0], order[1]);
 
   int rank = operandType.getRank();
-  unsigned interval = operandType.getShape()[order[0]];
-  unsigned padding = bitWidth / 8;
+  // unsigned interval = operandType.getShape()[order[0]];
+  // unsigned padding = bitWidth / 8;
+  unsigned interval = 64;
+  unsigned padding = 4;
 
   auto newSharedEnc = ttg::PaddedSharedEncodingAttr::get(
       ctx, {interval}, {padding}, order, ctaLayout);
