@@ -48,23 +48,33 @@ def itt_padding():
             for output_layout in output_layouts:
                 input_lanes = [0, s[1] / spt[1]]
                 input_lanes[0] = 64 / input_lanes[1]
+
+                # generate global load layout
+                registers = gen_ll(spt, [1, 0], [1, 1])
+                lanes = gen_ll(input_lanes, [1, 0], spt)
+                warps = gen_ll([num_warps, 1], [1, 0], [spt[0] * lanes[0], spt[1] * lanes[1]])
+                gl_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(lanes) + ", warp = " + str(
+                    warps) + ", block = []}>"
+
+                # generate shared store layout
                 registers = gen_ll(spt, [0, 1], [1, 1])
                 lanes = gen_ll(input_lanes, [1, 0], spt)
-                warps = gen_ll([1, num_warps], [1, 0], [spt[0] * lanes[0], spt[1] * lanes[1]])
-                input_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(
-                    lanes) + ", warp = " + str(warps) + ", block = []}>"
+                warps = gen_ll([num_warps, 1], [1, 0], [spt[0] * lanes[0], spt[1] * lanes[1]])
+                ls_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(lanes) + ", warp = " + str(
+                    warps) + ", block = []}>"
+
                 row_intervals = [s[0], 4 // elem_width * num_banks]
                 for row_interval in row_intervals:
                     for row_pad in [2, 4, 8, 16]:
                         shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                             row_pad) + "] {order = [0, 1]}>"
-                        configs += [(config_id, s, input_layout, output_layout, shared_layout)]
+                        configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                         # try to add padding between groups of shifts
                         group_interval = row_intervals[1] / row_pad * row_interval
                         for group_pad in [2, 4, 8, 16]:
                             shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                                 row_pad) + ", " + str(group_interval) + ":+" + str(group_pad) + "] {order = [0, 1]}>"
-                            configs += [(config_id, s, input_layout, output_layout, shared_layout)]
+                            configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                 config_id += 1
 
     # config1 = {}
@@ -95,9 +105,10 @@ def itt_padding():
         w = config[1][0]
         h = config[1][1]
 
-        transposed = config[2]
-        mma = config[3]
-        shared = config[4]
+        global_load_layout = config[2]
+        transposed = config[3]
+        mma = config[4]
+        shared = config[5]
 
         shared_id = shared[shared.find('[') + 1:shared.find(']')].replace(':+', '_').replace(',', '_').replace(' ', '')
         kernel_name = "kernel_config_" + str(config_id) + "__" + shared_id
@@ -107,13 +118,13 @@ def itt_padding():
         #mma = {mma}
         #linear = {transposed}
         #shared = {shared}
-        #blocked = #ttg.blocked<{{sizePerThread = [2, 8], threadsPerWarp = [4, 16], warpsPerCTA = [8, 1], order = [1, 0]}}>
+        #blocked = {global_load_layout}
         #dotop = #ttg.dot_op<{{opIdx = 1, parent = #mma, kWidth = 4}}>
         #slice0_load = #ttg.slice<{{dim = 0, parent = #blocked}}>
         #slice1_load = #ttg.slice<{{dim = 1, parent = #blocked}}>
         #slice0_store = #ttg.slice<{{dim = 0, parent = #dotop}}>
         #slice1_store = #ttg.slice<{{dim = 1, parent = #dotop}}>
-        module attributes {{"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32}} {{
+        module attributes {{"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = {num_warps} : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32}} {{
             tt.func public @{kernel_name}(%x: !tt.ptr<f16> {{tt.divisibility = 16 : i32}}, %y: !tt.ptr<f16> {{tt.divisibility = 16 : i32}}) {{
                 %c{h}_i32 = arith.constant {h} : i32
                 %23 = tt.make_range {{end = {h} : i32, start = 0 : i32}} : tensor<{h}xi32, #slice0_load>
