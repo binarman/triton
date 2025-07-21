@@ -46,8 +46,8 @@ def itt_padding():
     for s in sizes:
         for spt in input_shape_per_thread:
             for output_layout in output_layouts:
-                input_lanes = [0, s[1] / spt[1]]
-                input_lanes[0] = 64 / input_lanes[1]
+                input_lanes = [0, s[1] // spt[1]]
+                input_lanes[0] = 64 // input_lanes[1]
 
                 # generate global load layout
                 gl_layout = "#ttg.blocked<{sizePerThread = " + str(spt) + ", threadsPerWarp = " + str(
