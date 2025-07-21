@@ -60,7 +60,10 @@ def itt_padding():
                 ls_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(lanes) + ", warp = " + str(
                     warps) + ", block = []}>"
 
-                row_intervals = [s[0], 4 // elem_width * num_banks]
+                # case 1: pad every row of a matrix
+                # case 2: pad every time we exhaust line of banks width
+                # case 3: pad between every adjacent lanes in different rows
+                row_intervals = [s[0], 4 // elem_width * num_banks, spt[1] * s[0]]
                 for row_interval in row_intervals:
                     for row_pad in [2, 4, 8, 16]:
                         shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
