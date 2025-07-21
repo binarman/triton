@@ -33,7 +33,7 @@ def itt_padding():
     # tensor sizes
     sizes = [(32, 256), (32, 128), (64, 128), (64, 256), (128, 128), (256, 64), (128, 64), (128, 32), (256, 32)]
     # global load shape per thread
-    input_shape_per_thread = [(2, 8), (4, 8), (8, 8)]
+    input_shape_per_thread = [[2, 8], [4, 8], [8, 8]]
     # paddings, try to pad after every tensor row/bank row, then try to add additional paddings after first rank of paddings exhaust exhaust row width.
     # output layouts:
     output_layouts = [
