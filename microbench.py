@@ -1,45 +1,106 @@
+#!/usr/bin/env python3
 import torch
 import triton
 import tempfile
+import numpy as np
 from numpy.random import RandomState
 import pathlib
-import numpy as np
 
 device = "cuda"
 
 
+def gen_ll(shape, order, multiplier):
+    tileshape = [1, 1]
+    num_elems = shape[0] * shape[1]
+    bases = []
+    while num_elems > 1:
+        for dim in order:
+            if tileshape[dim] < shape[dim]:
+                vector = [0, 0]
+                vector[dim] = tileshape[dim] * multiplier[dim]
+                tileshape[dim] *= 2
+                bases += [vector]
+                break
+        num_elems //= 2
+    return bases
+
+
 def itt_padding():
-    config1 = {}
-    config1["w"] = 64
-    config1["h"] = 128
-    config1["mma"] = "#ttg.amd_mfma<{version = 3, warpsPerCTA = [8, 1], instrShape = [32, 32], isTransposed = true}>"
-    config1[
-        "transposed"] = "#ttg.linear<{register = [[1, 0], [0, 1], [0, 2], [0, 4]], lane = [[0, 8], [0, 16], [0, 32], [0, 64], [2, 0], [4, 0]], warp = [[8, 0], [16, 0], [32, 0]], block = []}>"
-    config1["shared"] = "#ttg.padded_shared<[64:+4] {order = [0, 1]}>"
-    config1["kernel_name"] = "kernel_64_128_64p4"
+    num_warps = 1
+    # size of one element in bytes
+    elem_width = 2
+    num_banks = 32
+    # tensor sizes
+    sizes = [(32, 256), (32, 128), (64, 128), (64, 256), (128, 128), (256, 64), (128, 64), (128, 32), (256, 32)]
+    # global load shape per thread
+    input_shape_per_thread = [(2, 8), (4, 8), (8, 8)]
+    # paddings, try to pad after every tensor row/bank row, then try to add additional paddings after first rank of paddings exhaust exhaust row width.
+    # output layouts:
+    output_layouts = [
+        "#ttg.amd_mfma<{version = 3, warpsPerCTA = [1, " + str(num_warps) +
+        "], instrShape = [32, 32], isTransposed = true}>", "#ttg.amd_mfma<{version = 3, warpsPerCTA = [1, " +
+        str(num_warps) + "], instrShape = [16, 16], isTransposed = true}>"
+    ]
+    configs = []
+    config_id = 0
+    for s in sizes:
+        for spt in input_shape_per_thread:
+            for output_layout in output_layouts:
+                input_lanes = [0, s[1] / spt[1]]
+                input_lanes[0] = 64 / input_lanes[1]
+                registers = gen_ll(spt, [0, 1], [1, 1])
+                lanes = gen_ll(input_lanes, [1, 0], spt)
+                warps = gen_ll([1, num_warps], [1, 0], [spt[0] * lanes[0], spt[1] * lanes[1]])
+                input_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(
+                    lanes) + ", warp = " + str(warps) + ", block = []}>"
+                row_intervals = [s[0], 4 // elem_width * num_banks]
+                for row_interval in row_intervals:
+                    for row_pad in [2, 4, 8, 16]:
+                        shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
+                            row_pad) + "] {order = [0, 1]}>"
+                        configs += [(config_id, s, input_layout, output_layout, shared_layout)]
+                        # try to add padding between groups of shifts
+                        group_interval = row_intervals[1] / row_pad * row_interval
+                        for group_pad in [2, 4, 8, 16]:
+                            shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
+                                row_pad) + ", " + str(group_interval) + ":+" + str(group_pad) + "] {order = [0, 1]}>"
+                            configs += [(config_id, s, input_layout, output_layout, shared_layout)]
+                config_id += 1
 
-    config2 = {}
-    config2["w"] = 64
-    config2["h"] = 128
-    config2["mma"] = "#ttg.amd_mfma<{version = 3, warpsPerCTA = [8, 1], instrShape = [32, 32], isTransposed = true}>"
-    config2[
-        "transposed"] = "#ttg.linear<{register = [[1, 0], [0, 1], [0, 2], [0, 4]], lane = [[0, 8], [0, 16], [0, 32], [0, 64], [2, 0], [4, 0]], warp = [[8, 0], [16, 0], [32, 0]], block = []}>"
-    config2["shared"] = "#ttg.padded_shared<[64:+4] {order = [0, 1]}>"
-    config2["kernel_name"] = "kernel_64_128_64p4"
+    # config1 = {}
+    # config1["w"] = 64
+    # config1["h"] = 128
+    # config1["mma"] = "#ttg.amd_mfma<{version = 3, warpsPerCTA = [8, 1], instrShape = [32, 32], isTransposed = true}>"
+    # config1[
+    #     "transposed"] = "#ttg.linear<{register = [[1, 0], [0, 1], [0, 2], [0, 4]], lane = [[0, 8], [0, 16], [0, 32], [0, 64], [2, 0], [4, 0]], warp = [[8, 0], [16, 0], [32, 0]], block = []}>"
+    # config1["shared"] = "#ttg.padded_shared<[64:+4] {order = [0, 1]}>"
+    # config1["kernel_name"] = "kernel_64_128_64p4"
 
-    configs = [config1, config2]
+    # config2 = {}
+    # config2["w"] = 64
+    # config2["h"] = 128
+    # config2["mma"] = "#ttg.amd_mfma<{version = 3, warpsPerCTA = [8, 1], instrShape = [32, 32], isTransposed = true}>"
+    # config2[
+    #     "transposed"] = "#ttg.linear<{register = [[1, 0], [0, 1], [0, 2], [0, 4]], lane = [[0, 8], [0, 16], [0, 32], [0, 64], [2, 0], [4, 0]], warp = [[8, 0], [16, 0], [32, 0]], block = []}>"
+    # config2["shared"] = "#ttg.padded_shared<[64:+4] {order = [0, 1]}>"
+    # config2["kernel_name"] = "kernel_64_128_64p4"
+
+    # configs = [config1, config2]
     #        K   N
     # global order = [1, 0]
     # local order = [0, 1]
 
     for config in configs:
-        w = config1["w"]
-        h = config1["h"]
+        config_id = config[0]
+        w = config[1][0]
+        h = config[1][1]
 
-        mma = config1["mma"]
-        transposed = config1["transposed"]
-        shared = config1["shared"]
-        kernel_name = config1["kernel_name"]
+        transposed = config[2]
+        mma = config[3]
+        shared = config[4]
+
+        shared_id = shared[shared.find('[') + 1:shared.find(']')].replace(':+', '_').replace(',', '_').replace(' ', '')
+        kernel_name = "kernel_config_" + str(config_id) + "__" + shared_id
 
         ir = f"""
         #smem = #ttg.shared_memory
