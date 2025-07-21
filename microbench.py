@@ -75,6 +75,8 @@ def itt_padding():
                             shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                                 row_pad) + ", " + str(group_interval) + ":+" + str(group_pad) + "] {order = [0, 1]}>"
                             configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
+                mfma = "32" if "32" in output_layout else "16"
+                print(",".join([str(config_id), str(s[0]), str(s[1]), str(spt[0]), str(spt[1]), mfma]))
                 config_id += 1
 
     # config1 = {}
