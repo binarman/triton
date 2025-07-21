@@ -50,7 +50,8 @@ def itt_padding():
                 input_lanes[0] = 64 / input_lanes[1]
 
                 # generate global load layout
-                gl_layout = "#ttg.blocked<{sizePerThread = " + spt + ", threadsPerWarp = " + input_lanes + ", warpsPerCTA = [" + num_warps + ", 1], order = [1, 0]}>"
+                gl_layout = "#ttg.blocked<{sizePerThread = " + str(spt) + ", threadsPerWarp = " + str(
+                    input_lanes) + ", warpsPerCTA = [" + str(num_warps) + ", 1], order = [1, 0]}>"
 
                 # generate shared store layout
                 registers = gen_ll(spt, [0, 1], [1, 1])
@@ -96,6 +97,7 @@ def itt_padding():
     # global order = [1, 0]
     # local order = [0, 1]
 
+    print("run total", len(configs), "configs")
     for config in configs:
         config_id = config[0]
         w = config[1][0]
