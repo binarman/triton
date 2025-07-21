@@ -67,7 +67,7 @@ def itt_padding():
                             row_pad) + "] {order = [0, 1]}>"
                         configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                         # try to add padding between groups of shifts
-                        group_interval = row_intervals[1] / row_pad * row_interval
+                        group_interval = row_intervals[1] // row_pad * row_interval
                         for group_pad in [2, 4, 8, 16]:
                             shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                                 row_pad) + ", " + str(group_interval) + ":+" + str(group_pad) + "] {order = [0, 1]}>"
