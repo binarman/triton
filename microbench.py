@@ -50,11 +50,7 @@ def itt_padding():
                 input_lanes[0] = 64 / input_lanes[1]
 
                 # generate global load layout
-                registers = gen_ll(spt, [1, 0], [1, 1])
-                lanes = gen_ll(input_lanes, [1, 0], spt)
-                warps = gen_ll([num_warps, 1], [1, 0], [spt[0] * lanes[0], spt[1] * lanes[1]])
-                gl_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(lanes) + ", warp = " + str(
-                    warps) + ", block = []}>"
+                gl_layout = "#ttg.blocked<{sizePerThread = " + spt + ", threadsPerWarp = " + input_lanes + ", warpsPerCTA = [" + num_warps + ", 1], order = [1, 0]}>"
 
                 # generate shared store layout
                 registers = gen_ll(spt, [0, 1], [1, 1])
