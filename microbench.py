@@ -29,7 +29,10 @@ def itt_padding():
     num_warps = 1
     # size of one element in bytes
     elem_width = 2
+    dtype = "f16"
+    bank_width = 4
     num_banks = 32
+    kWidth = 4
     # tensor sizes
     sizes = [(32, 256), (32, 128), (64, 128), (64, 256), (128, 128), (256, 64), (128, 64), (128, 32), (256, 32)]
     # global load shape per thread
@@ -46,6 +49,11 @@ def itt_padding():
     for s in sizes:
         for spt in input_shape_per_thread:
             for output_layout in output_layouts:
+                num_banks_per_write = spt[0] * elem_width // bank_width
+                num_banks_per_read = kWidth * elem_width // bank_width
+                max_banks_per_access = max(num_banks_per_write, num_banks_per_read)
+                paddings = [pad for pad in [2, 4, 8, 16] if pad >= (max_banks_per_access * bank_width // elem_width)]
+
                 input_lanes = [0, s[1] // spt[1]]
                 input_lanes[0] = 64 // input_lanes[1]
 
@@ -65,13 +73,13 @@ def itt_padding():
                 # case 3: pad between every adjacent lanes in different rows
                 row_intervals = [s[0], 4 // elem_width * num_banks, spt[1] * s[0]]
                 for row_interval in row_intervals:
-                    for row_pad in [2, 4, 8, 16]:
+                    for row_pad in paddings:
                         shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                             row_pad) + "] {order = [0, 1]}>"
                         configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                         # try to add padding between groups of shifts
                         group_interval = row_intervals[1] // row_pad * row_interval
-                        for group_pad in [2, 4, 8, 16]:
+                        for group_pad in paddings:
                             shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                                 row_pad) + ", " + str(group_interval) + ":+" + str(group_pad) + "] {order = [0, 1]}>"
                             configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
@@ -122,13 +130,13 @@ def itt_padding():
         #linear = {transposed}
         #shared = {shared}
         #blocked = {global_load_layout}
-        #dotop = #ttg.dot_op<{{opIdx = 1, parent = #mma, kWidth = 4}}>
+        #dotop = #ttg.dot_op<{{opIdx = 1, parent = #mma, kWidth = {kWidth}}}>
         #slice0_load = #ttg.slice<{{dim = 0, parent = #blocked}}>
         #slice1_load = #ttg.slice<{{dim = 1, parent = #blocked}}>
         #slice0_store = #ttg.slice<{{dim = 0, parent = #dotop}}>
         #slice1_store = #ttg.slice<{{dim = 1, parent = #dotop}}>
         module attributes {{"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = {num_warps} : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32}} {{
-            tt.func public @{kernel_name}(%x: !tt.ptr<f16> {{tt.divisibility = 16 : i32}}, %y: !tt.ptr<f16> {{tt.divisibility = 16 : i32}}) {{
+            tt.func public @{kernel_name}(%x: !tt.ptr<{dtype}> {{tt.divisibility = 16 : i32}}, %y: !tt.ptr<{dtype}> {{tt.divisibility = 16 : i32}}) {{
                 %c{h}_i32 = arith.constant {h} : i32
                 %23 = tt.make_range {{end = {h} : i32, start = 0 : i32}} : tensor<{h}xi32, #slice0_load>
                 %46 = tt.make_range {{end = {w} : i32, start = 0 : i32}} : tensor<{w}xi32, #slice1_load>
@@ -140,10 +148,10 @@ def itt_padding():
                 %52 = tt.broadcast %51 : tensor<1x{h}xi32, #blocked> -> tensor<{w}x{h}xi32, #blocked>
                 %53 = arith.addi %52, %50 : tensor<{w}x{h}xi32, #blocked>
 
-                %111 = amdgpu.buffer_load %x[%53]: tensor<{w}x{h}xf16, #blocked>
-                %116 = amdgpu.in_thread_transpose %111 : tensor<{w}x{h}xf16, #blocked> -> tensor<{w}x{h}xf16, #linear>
-                %117 = ttg.local_alloc %116 : (tensor<{w}x{h}xf16, #linear>) -> !ttg.memdesc<{w}x{h}xf16, #shared, #smem>
-                %118 = ttg.local_load %117 : !ttg.memdesc<{w}x{h}xf16, #shared, #smem> -> tensor<{w}x{h}xf16, #dotop>
+                %111 = amdgpu.buffer_load %x[%53]: tensor<{w}x{h}x{dtype}, #blocked>
+                %116 = amdgpu.in_thread_transpose %111 : tensor<{w}x{h}x{dtype}, #blocked> -> tensor<{w}x{h}x{dtype}, #linear>
+                %117 = ttg.local_alloc %116 : (tensor<{w}x{h}x{dtype}, #linear>) -> !ttg.memdesc<{w}x{h}x{dtype}, #shared, #smem>
+                %118 = ttg.local_load %117 : !ttg.memdesc<{w}x{h}x{dtype}, #shared, #smem> -> tensor<{w}x{h}x{dtype}, #dotop>
 
                 %s_c{h}_i32 = arith.constant {h} : i32
                 %s_23 = tt.make_range {{end = {h} : i32, start = 0 : i32}} : tensor<{h}xi32, #slice0_store>
@@ -156,7 +164,7 @@ def itt_padding():
                 %s_52 = tt.broadcast %s_51 : tensor<1x{h}xi32, #dotop> -> tensor<{w}x{h}xi32, #dotop>
                 %s_53 = arith.addi %s_52, %s_50 : tensor<{w}x{h}xi32, #dotop>
 
-                amdgpu.buffer_store %118, %y[%s_53]: tensor<{w}x{h}xf16, #dotop>
+                amdgpu.buffer_store %118, %y[%s_53]: tensor<{w}x{h}x{dtype}, #dotop>
                 tt.return
             }}
         }}
