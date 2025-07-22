@@ -71,7 +71,8 @@ def itt_padding():
                 # case 1: pad every row of a matrix
                 # case 2: pad every time we exhaust line of banks width
                 # case 3: pad between every adjacent lanes in different rows
-                row_intervals = [s[0], 4 // elem_width * num_banks, spt[1] * s[0]]
+                row_intervals = list(
+                    set([s[0], bank_width // elem_width * num_banks, spt[1] * s[0], s[0] * 2, s[0] * 4]))
                 for row_interval in row_intervals:
                     for row_pad in paddings:
                         shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
