@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 import csv
+import sys
+
+if len(sys.argv) < 2:
+    bench_results_file = "bench_results.csv"
+else:
+    bench_results_file = sys.argv[1]
 
 config_info = []
 with open("configs") as configs_files:
@@ -13,7 +19,7 @@ counters = {}
 configs = []
 # dict of config id -> [best bank conflict config, best align stalls, best config with sum of conflicts and stalls]
 best_configs = {}
-with open('mi300_bench.csv') as csvfile:
+with open(bench_results_file) as csvfile:
     reader = csv.reader(csvfile, delimiter=',', quotechar='"')
     # table contents:
     # "Kernel_Name", "VGPR_Count", "SGPR_Count", "Counter_Name", "Counter_Value"
