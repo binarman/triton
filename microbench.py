@@ -68,18 +68,18 @@ def itt_padding():
                 ls_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(lanes) + ", warp = " + str(
                     warps) + ", block = []}>"
 
+                elems_in_bank_row = bank_width // elem_width * num_banks
                 # case 1: pad every row of a matrix
                 # case 2: pad every time we exhaust line of banks width
                 # case 3: pad between every adjacent lanes in different rows
-                row_intervals = list(
-                    set([s[0], bank_width // elem_width * num_banks, spt[1] * s[0], s[0] * 2, s[0] * 4]))
+                row_intervals = list(set([s[0], elems_in_bank_row, spt[1] * s[0], s[0] * 2, s[0] * 4]))
                 for row_interval in row_intervals:
                     for row_pad in paddings:
                         shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                             row_pad) + "] {order = [0, 1]}>"
                         configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                         # try to add padding between groups of shifts
-                        group_interval = row_intervals[1] // row_pad * row_interval
+                        group_interval = elems_in_bank_row // row_pad * row_interval
                         for group_pad in paddings:
                             shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
                                 row_pad) + ", " + str(group_interval) + ":+" + str(group_pad) + "] {order = [0, 1]}>"
