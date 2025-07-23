@@ -29,7 +29,6 @@ def itt_padding():
     num_warps = 1
     # size of one element in bytes
     elem_width = 2
-    dtype = "f16"
     bank_width = 4
     num_banks = 32
     kWidth = 4
@@ -44,6 +43,9 @@ def itt_padding():
         "], instrShape = [32, 32], isTransposed = true}>", "#ttg.amd_mfma<{version = 3, warpsPerCTA = [1, " +
         str(num_warps) + "], instrShape = [16, 16], isTransposed = true}>"
     ]
+
+    dtype = "f16" if elem_width == 2 else "i8"
+
     configs = []
     config_id = 0
     for s in sizes:
@@ -175,8 +177,9 @@ def itt_padding():
             f.write(ir)
         kernel = triton.compile(tmp_file)
 
-        x = torch.randn((w, h), dtype=torch.float16, device=device)
-        y = torch.zeros((w, h), dtype=torch.float16, device=device)
+        torch_dtype = torch.float16 if elem_width == 2 else torch.int8
+        x = (torch.randn((w, h), dtype=torch.float32, device=device) * 10).to(torch_dtype)
+        y = torch.zeros((w, h), dtype=torch_dtype, device=device)
         pgm = kernel[(1, 1, 1)](x, y)
         np.testing.assert_allclose(x.cpu().numpy(), y.cpu().numpy())
         print("successfully run {}".format(kernel_name))
