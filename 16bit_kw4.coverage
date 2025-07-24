@@ -1,0 +1,66 @@
+if (elemBitWidth == 16 && kWidth == 4) {
+    if (write_width < 8) {    // 1/2 banks per access
+      pad1 = k:+4
+      pad2_interval = k * 16
+      pad2_padding = max(512 / nonk, 4)
+    } else {                  // 4 banks per access
+      pad1 = k:+8
+      pad2_interval = k * 8
+      pad2_padding = max(512 / nonk, 8)
+    }
+}
+
+32x256 LDS write 2 mfma32 total cycles: [['32:+4,512:+4 vgprs:68', '32:+8,256:+4 vgprs:68', '64:+4,1024:+4 vgprs:76'], 128.0]
+32x256 LDS write 2 mfma16 total cycles: [['32:+4,512:+4 vgprs:76', '32:+8,256:+4 vgprs:68', '64:+4,1024:+4 vgprs:72'], 128.0]
+32x256 LDS write 4 mfma32 total cycles: [['32:+4,512:+4 vgprs:80', '32:+8,256:+4 vgprs:80', '64:+4,1024:+4 vgprs:80'], 0.0]
+32x256 LDS write 4 mfma16 total cycles: [['32:+4,512:+4 vgprs:76', '32:+8,256:+4 vgprs:68', '64:+4,1024:+4 vgprs:72'], 0.0]
+32x256 LDS write 8 mfma32 total cycles: [['32:+8,256:+8 vgprs:68', '64:+8,512:+8 vgprs:68', '64:+16,256:+8 vgprs:68', '128:+8,1024:+8 vgprs:72'], 128.0]
+32x256 LDS write 8 mfma16 total cycles: [['32:+8,256:+8 vgprs:68', '64:+8,512:+8 vgprs:72', '64:+16,256:+8 vgprs:68', '128:+8,1024:+8 vgprs:72'], 128.0]
+32x128 LDS write 2 mfma32 total cycles: [['32:+4,512:+4 vgprs:68', '32:+8,256:+4 vgprs:68', '64:+4,1024:+4 vgprs:72'], 0.0]
+32x128 LDS write 2 mfma16 total cycles: [['32:+4,512:+4 vgprs:76', '32:+8,256:+4 vgprs:68', '64:+4,1024:+4 vgprs:72'], 0.0]
+32x128 LDS write 4 mfma32 total cycles: [['32:+4,512:+4 vgprs:72', '32:+8,256:+4 vgprs:72', '64:+4,1024:+4 vgprs:72'], 0.0]
+32x128 LDS write 4 mfma16 total cycles: [['32:+4,512:+4 vgprs:76', '32:+8,256:+4 vgprs:68', '64:+4,1024:+4 vgprs:72'], 0.0]
+32x128 LDS write 8 mfma32 total cycles: [['32:+8,256:+8 vgprs:68', '64:+8,512:+8 vgprs:68', '64:+16,256:+8 vgprs:68', '128:+8,1024:+8 vgprs:72'], 64.0]
+32x128 LDS write 8 mfma16 total cycles: [['32:+8,256:+8 vgprs:68', '64:+8,512:+8 vgprs:72', '64:+16,256:+8 vgprs:68', '128:+8,1024:+8 vgprs:72'], 64.0]
+64x128 LDS write 2 mfma32 total cycles: [['64:+4,1024:+4 vgprs:72', '64:+8,512:+4 vgprs:72'], 0.0]
+64x128 LDS write 2 mfma16 total cycles: [['64:+4,1024:+4 vgprs:76', '64:+8,512:+4 vgprs:68'], 0.0]
+64x128 LDS write 4 mfma32 total cycles: [['64:+4,1024:+4 vgprs:68', '64:+8,512:+4 vgprs:68'], 0.0]
+64x128 LDS write 4 mfma16 total cycles: [['64:+4,1024:+4 vgprs:80', '64:+8,512:+4 vgprs:80'], 0.0]
+64x128 LDS write 8 mfma32 total cycles: [['64:+8,512:+8 vgprs:68', '128:+8,1024:+8 vgprs:68', '128:+16,512:+8 vgprs:68'], 128.0]
+64x128 LDS write 8 mfma16 total cycles: [['64:+8,512:+8 vgprs:68', '128:+8,1024:+8 vgprs:72', '128:+16,512:+8 vgprs:68'], 128.0]
+64x256 LDS write 2 mfma32 total cycles: [['64:+4,1024:+4 vgprs:96', '64:+8,512:+4 vgprs:96'], 256.0]
+64x256 LDS write 2 mfma16 total cycles: [['64:+4,1024:+4 vgprs:80', '64:+8,512:+4 vgprs:84'], 256.0]
+64x256 LDS write 4 mfma32 total cycles: [['64:+4,1024:+4 vgprs:44', '64:+8,512:+4 vgprs:44'], 0.0]
+64x256 LDS write 4 mfma16 total cycles: [['64:+4,1024:+4 vgprs:80', '64:+8,512:+4 vgprs:92'], 0.0]
+64x256 LDS write 8 mfma32 total cycles: [['64:+8,512:+8 vgprs:96', '128:+8,1024:+8 vgprs:100', '128:+16,512:+8 vgprs:96'], 256.0]
+64x256 LDS write 8 mfma16 total cycles: [['64:+8,512:+8 vgprs:88', '128:+8,1024:+8 vgprs:76', '128:+16,512:+8 vgprs:88'], 256.0]
+128x32 LDS write 2 mfma32 total cycles: [['128:+4,2048:+16 vgprs:44', '64:+16,256:+4 vgprs:64'], 0.0]
+128x32 LDS write 2 mfma16 total cycles: [['128:+4,2048:+16 vgprs:76', '64:+16,256:+4 vgprs:68'], 0.0]
+128x32 LDS write 4 mfma32 total cycles: [['128:+4,2048:+16 vgprs:44', '64:+16,256:+4 vgprs:52'], 0.0]
+128x32 LDS write 4 mfma16 total cycles: [['128:+4,2048:+16 vgprs:80', '64:+16,256:+4 vgprs:68'], 0.0]
+128x32 LDS write 8 mfma32 total cycles: [['128:+8,1024:+16 vgprs:60', '128:+16,512:+8 vgprs:60', '64:+8,512:+8 vgprs:60', '256:+8,2048:+16 vgprs:60'], 64.0]
+128x32 LDS write 8 mfma16 total cycles: [['128:+8,1024:+16 vgprs:68', '128:+16,512:+8 vgprs:68', '64:+8,512:+8 vgprs:68', '256:+8,2048:+16 vgprs:76'], 64.0]
+128x64 LDS write 2 mfma32 total cycles: [['128:+4,2048:+8 vgprs:88', '128:+16,512:+4 vgprs:88', '64:+8,512:+4 vgprs:88'], 0.0]
+128x64 LDS write 2 mfma16 total cycles: [['128:+4,2048:+8 vgprs:80', '128:+16,512:+4 vgprs:68', '64:+8,512:+4 vgprs:68'], 0.0]
+128x64 LDS write 4 mfma32 total cycles: [['128:+4,2048:+8 vgprs:88', '128:+16,512:+4 vgprs:88', '64:+8,512:+4 vgprs:88'], 0.0]
+128x64 LDS write 4 mfma16 total cycles: [['128:+4,2048:+8 vgprs:80', '128:+16,512:+4 vgprs:68', '64:+8,512:+4 vgprs:68'], 0.0]
+128x64 LDS write 8 mfma32 total cycles: [['128:+8,1024:+8 vgprs:92', '256:+8,2048:+8 vgprs:92', '256:+16,1024:+8 vgprs:92'], 128.0]
+128x64 LDS write 8 mfma16 total cycles: [['128:+8,1024:+8 vgprs:68', '256:+8,2048:+8 vgprs:76', '256:+16,1024:+8 vgprs:68'], 128.0]
+128x128 LDS write 2 mfma32 total cycles: [['128:+4,2048:+4 vgprs:120', '128:+8,1024:+4 vgprs:120', '64:+4,1024:+4 vgprs:120'], 0.0]
+128x128 LDS write 2 mfma16 total cycles: [['128:+4,2048:+4 vgprs:80', '128:+8,1024:+4 vgprs:96', '64:+4,1024:+4 vgprs:96'], 0.0]
+128x128 LDS write 4 mfma32 total cycles: [['128:+4,2048:+4 vgprs:120', '128:+8,1024:+4 vgprs:120', '64:+4,1024:+4 vgprs:120'], 0.0]
+128x128 LDS write 4 mfma16 total cycles: [['128:+4,2048:+4 vgprs:44', '128:+8,1024:+4 vgprs:44', '64:+4,1024:+4 vgprs:44'], 0.0]
+128x128 LDS write 8 mfma32 total cycles: [['128:+8,1024:+8 vgprs:124', '256:+8,2048:+8 vgprs:120', '256:+16,1024:+8 vgprs:124'], 256.0]
+128x128 LDS write 8 mfma16 total cycles: [['128:+8,1024:+8 vgprs:96', '256:+8,2048:+8 vgprs:80', '256:+16,1024:+8 vgprs:96'], 256.0]
+256x32 LDS write 2 mfma32 total cycles: [['256:+4,4096:+16 vgprs:64', '64:+8,512:+4 vgprs:76'], 0.0]
+256x32 LDS write 2 mfma16 total cycles: [['256:+4,4096:+16 vgprs:72', '64:+8,512:+4 vgprs:100'], 0.0]
+256x32 LDS write 4 mfma32 total cycles: [['256:+4,4096:+16 vgprs:76', '64:+8,512:+4 vgprs:68'], 0.0]
+256x32 LDS write 4 mfma16 total cycles: [['256:+4,4096:+16 vgprs:76', '64:+8,512:+4 vgprs:88'], 0.0]
+256x32 LDS write 8 mfma32 total cycles: [['256:+8,2048:+16 vgprs:64', '256:+16,1024:+8 vgprs:64', '512:+8,4096:+16 vgprs:64'], 128.0]
+256x32 LDS write 8 mfma16 total cycles: [['256:+8,2048:+16 vgprs:92', '256:+16,1024:+8 vgprs:88', '512:+8,4096:+16 vgprs:72'], 128.0]
+256x64 LDS write 2 mfma32 total cycles: [['256:+4,4096:+8 vgprs:40', '256:+16,1024:+4 vgprs:40', '64:+4,1024:+4 vgprs:40'], 0.0]
+256x64 LDS write 2 mfma16 total cycles: [['256:+4,4096:+8 vgprs:84', '256:+16,1024:+4 vgprs:128', '64:+4,1024:+4 vgprs:128'], 0.0]
+256x64 LDS write 4 mfma32 total cycles: [['256:+4,4096:+8 vgprs:40', '256:+16,1024:+4 vgprs:40', '64:+4,1024:+4 vgprs:40'], 0.0]
+256x64 LDS write 4 mfma16 total cycles: [['256:+4,4096:+8 vgprs:88', '256:+16,1024:+4 vgprs:120', '64:+4,1024:+4 vgprs:120'], 0.0]
+256x64 LDS write 8 mfma32 total cycles: [['256:+8,2048:+8 vgprs:40', '512:+8,4096:+8 vgprs:40', '512:+16,2048:+8 vgprs:40'], 256.0]
+256x64 LDS write 8 mfma16 total cycles: [['256:+8,2048:+8 vgprs:124', '512:+8,4096:+8 vgprs:80', '512:+16,2048:+8 vgprs:124'], 256.0]
