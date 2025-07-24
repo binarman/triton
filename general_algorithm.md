@@ -48,8 +48,8 @@ if (elem_width == 1 && read_width == 8) {
 ->
 
 if (write_width < 16) {
-  pad1 = k*elem_width:+8
-  pad2_interval = k * 16 * elem_width
+  pad1 = k * elem_width:+8
+  pad2_interval = k * elem_width * 16
   pad2_padding = max(min(1028 / nonk, 16), 8)
 } else {
   pad1 = k*elem_width:+16
