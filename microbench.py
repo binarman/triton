@@ -94,29 +94,6 @@ def itt_padding():
                 print(",".join([str(config_id), str(s[0]), str(s[1]), str(spt[0]), str(spt[1]), mfma]))
                 config_id += 1
 
-    # config1 = {}
-    # config1["w"] = 64
-    # config1["h"] = 128
-    # config1["mma"] = "#ttg.amd_mfma<{version = 3, warpsPerCTA = [8, 1], instrShape = [32, 32], isTransposed = true}>"
-    # config1[
-    #     "transposed"] = "#ttg.linear<{register = [[1, 0], [0, 1], [0, 2], [0, 4]], lane = [[0, 8], [0, 16], [0, 32], [0, 64], [2, 0], [4, 0]], warp = [[8, 0], [16, 0], [32, 0]], block = []}>"
-    # config1["shared"] = "#ttg.padded_shared<[64:+4] {order = [0, 1]}>"
-    # config1["kernel_name"] = "kernel_64_128_64p4"
-
-    # config2 = {}
-    # config2["w"] = 64
-    # config2["h"] = 128
-    # config2["mma"] = "#ttg.amd_mfma<{version = 3, warpsPerCTA = [8, 1], instrShape = [32, 32], isTransposed = true}>"
-    # config2[
-    #     "transposed"] = "#ttg.linear<{register = [[1, 0], [0, 1], [0, 2], [0, 4]], lane = [[0, 8], [0, 16], [0, 32], [0, 64], [2, 0], [4, 0]], warp = [[8, 0], [16, 0], [32, 0]], block = []}>"
-    # config2["shared"] = "#ttg.padded_shared<[64:+4] {order = [0, 1]}>"
-    # config2["kernel_name"] = "kernel_64_128_64p4"
-
-    # configs = [config1, config2]
-    #        K   N
-    # global order = [1, 0]
-    # local order = [0, 1]
-
     print("run total", len(configs), "configs")
     for config in configs:
         config_id = config[0]
