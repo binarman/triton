@@ -33,7 +33,8 @@ def itt_padding():
     num_banks = 32
     kWidth = 4
     # tensor sizes
-    sizes = [(32, 256), (32, 128), (64, 128), (64, 256), (128, 128), (256, 64), (128, 64), (128, 32), (256, 32)]
+    sizes = [(32, 128), (32, 256), (32, 512), (64, 64), (64, 128), (64, 256), (128, 32), (128, 64), (128, 128),
+             (256, 32), (256, 64)]
     # global load shape per thread
     input_shape_per_thread = [[2, 8], [4, 8], [8, 8]]
     # paddings, try to pad after every tensor row/bank row, then try to add additional paddings after first rank of paddings exhaust exhaust row width.
@@ -74,18 +75,21 @@ def itt_padding():
                 # case 1: pad every row of a matrix
                 # case 2: pad every time we exhaust line of banks width
                 # case 3: pad between every adjacent lanes in different rows
-                row_intervals = list(set([s[0], elems_in_bank_row, spt[1] * s[0], s[0] * 2, s[0] * 4]))
-                for row_interval in row_intervals:
-                    for row_pad in paddings:
-                        shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
-                            row_pad) + "] {order = [0, 1]}>"
+                #intervals1 = list(set([s[0], elems_in_bank_row, spt[1] * s[0], s[0] * 2, s[0] * 4]))
+                intervals1 = [32, 64, 128, 256, 512]
+                for interval1 in intervals1:
+                    for pad1 in paddings:
+                        shared_layout = "#ttg.padded_shared<[" + str(interval1) + ":+" + str(
+                            pad1) + "] {order = [0, 1]}>"
                         configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                         # try to add padding between groups of shifts
-                        group_interval = elems_in_bank_row // row_pad * row_interval
-                        for group_pad in paddings:
-                            shared_layout = "#ttg.padded_shared<[" + str(row_interval) + ":+" + str(
-                                row_pad) + ", " + str(group_interval) + ":+" + str(group_pad) + "] {order = [0, 1]}>"
-                            configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
+                        # intervals2 = elems_in_bank_row // pad1 * interval1
+                        intervals2 = [i for i in [256, 512, 1024, 2048, 4096, 8192] if i > interval1]
+                        for interval2 in intervals2:
+                            for pad2 in paddings:
+                                shared_layout = "#ttg.padded_shared<[" + str(interval1) + ":+" + str(pad1) + ", " + str(
+                                    interval2) + ":+" + str(pad2) + "] {order = [0, 1]}>"
+                                configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                 mfma = "32" if "32" in output_layout else "16"
                 print(",".join([str(config_id), str(s[0]), str(s[1]), str(spt[0]), str(spt[1]), mfma]))
                 config_id += 1
