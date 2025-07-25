@@ -5,6 +5,7 @@ import tempfile
 import numpy as np
 from numpy.random import RandomState
 import pathlib
+import concurrent.futures
 
 device = "cuda"
 
@@ -30,7 +31,7 @@ def itt_padding():
     # size of one element in bytes
     elem_width = 2
     bank_width = 4
-    num_banks = 32
+    #num_banks = 32
     kWidth = 4
     # tensor sizes
     sizes = [(32, 128), (32, 256), (32, 512), (64, 64), (64, 128), (64, 256), (128, 32), (128, 64), (128, 128),
@@ -71,7 +72,7 @@ def itt_padding():
                 ls_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(lanes) + ", warp = " + str(
                     warps) + ", block = []}>"
 
-                elems_in_bank_row = bank_width // elem_width * num_banks
+                # elems_in_bank_row = bank_width // elem_width * num_banks
                 # case 1: pad every row of a matrix
                 # case 2: pad every time we exhaust line of banks width
                 # case 3: pad between every adjacent lanes in different rows
@@ -94,8 +95,77 @@ def itt_padding():
                 print(",".join([str(config_id), str(s[0]), str(s[1]), str(spt[0]), str(spt[1]), mfma]))
                 config_id += 1
 
-    print("run total", len(configs), "configs")
-    for config in configs:
+    print("compiling total", len(configs), "configs")
+
+    kernel_futures = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=64) as executor:
+        for idx, config in enumerate(configs):
+            config_id = config[0]
+            w = config[1][0]
+            h = config[1][1]
+
+            global_load_layout = config[2]
+            transposed = config[3]
+            mma = config[4]
+            shared = config[5]
+
+            shared_id = shared[shared.find('[') + 1:shared.find(']')].replace(':+', '_').replace(',',
+                                                                                                 '_').replace(' ', '')
+            kernel_name = "kernel_config_" + str(config_id) + "__" + shared_id
+
+            ir = f"""
+            #smem = #ttg.shared_memory
+            #mma = {mma}
+            #linear = {transposed}
+            #shared = {shared}
+            #blocked = {global_load_layout}
+            #dotop = #ttg.dot_op<{{opIdx = 1, parent = #mma, kWidth = {kWidth}}}>
+            #slice0_load = #ttg.slice<{{dim = 0, parent = #blocked}}>
+            #slice1_load = #ttg.slice<{{dim = 1, parent = #blocked}}>
+            #slice0_store = #ttg.slice<{{dim = 0, parent = #dotop}}>
+            #slice1_store = #ttg.slice<{{dim = 1, parent = #dotop}}>
+            module attributes {{"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = {num_warps} : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32}} {{
+                tt.func public @{kernel_name}(%x: !tt.ptr<{dtype}> {{tt.divisibility = 16 : i32}}, %y: !tt.ptr<{dtype}> {{tt.divisibility = 16 : i32}}) {{
+                    %c{h}_i32 = arith.constant {h} : i32
+                    %23 = tt.make_range {{end = {h} : i32, start = 0 : i32}} : tensor<{h}xi32, #slice0_load>
+                    %46 = tt.make_range {{end = {w} : i32, start = 0 : i32}} : tensor<{w}xi32, #slice1_load>
+                    %47 = tt.expand_dims %46 {{axis = 1 : i32}} : tensor<{w}xi32, #slice1_load> -> tensor<{w}x1xi32, #blocked>
+                    %48 = tt.splat %c{h}_i32 : i32 -> tensor<{w}x1xi32, #blocked>
+                    %49 = arith.muli %47, %48 : tensor<{w}x1xi32, #blocked>
+                    %50 = tt.broadcast %49 : tensor<{w}x1xi32, #blocked> -> tensor<{w}x{h}xi32, #blocked>
+                    %51 = tt.expand_dims %23 {{axis = 0 : i32}} : tensor<{h}xi32, #slice0_load> -> tensor<1x{h}xi32, #blocked>
+                    %52 = tt.broadcast %51 : tensor<1x{h}xi32, #blocked> -> tensor<{w}x{h}xi32, #blocked>
+                    %53 = arith.addi %52, %50 : tensor<{w}x{h}xi32, #blocked>
+
+                    %111 = amdgpu.buffer_load %x[%53]: tensor<{w}x{h}x{dtype}, #blocked>
+                    %116 = amdgpu.in_thread_transpose %111 : tensor<{w}x{h}x{dtype}, #blocked> -> tensor<{w}x{h}x{dtype}, #linear>
+                    %117 = ttg.local_alloc %116 : (tensor<{w}x{h}x{dtype}, #linear>) -> !ttg.memdesc<{w}x{h}x{dtype}, #shared, #smem>
+                    %118 = ttg.local_load %117 : !ttg.memdesc<{w}x{h}x{dtype}, #shared, #smem> -> tensor<{w}x{h}x{dtype}, #dotop>
+
+                    %s_c{h}_i32 = arith.constant {h} : i32
+                    %s_23 = tt.make_range {{end = {h} : i32, start = 0 : i32}} : tensor<{h}xi32, #slice0_store>
+                    %s_46 = tt.make_range {{end = {w} : i32, start = 0 : i32}} : tensor<{w}xi32, #slice1_store>
+                    %s_47 = tt.expand_dims %s_46 {{axis = 1 : i32}} : tensor<{w}xi32, #slice1_store> -> tensor<{w}x1xi32, #dotop>
+                    %s_48 = tt.splat %s_c{h}_i32 : i32 -> tensor<{w}x1xi32, #dotop>
+                    %s_49 = arith.muli %s_47, %s_48 : tensor<{w}x1xi32, #dotop>
+                    %s_50 = tt.broadcast %s_49 : tensor<{w}x1xi32, #dotop> -> tensor<{w}x{h}xi32, #dotop>
+                    %s_51 = tt.expand_dims %s_23 {{axis = 0 : i32}} : tensor<{h}xi32, #slice0_store> -> tensor<1x{h}xi32, #dotop>
+                    %s_52 = tt.broadcast %s_51 : tensor<1x{h}xi32, #dotop> -> tensor<{w}x{h}xi32, #dotop>
+                    %s_53 = arith.addi %s_52, %s_50 : tensor<{w}x{h}xi32, #dotop>
+
+                    amdgpu.buffer_store %118, %y[%s_53]: tensor<{w}x{h}x{dtype}, #dotop>
+                    tt.return
+                }}
+            }}
+            """
+            tmp_file = "tmp/kernel_" + str(idx) + ".ttgir"
+            with open(tmp_file, "w") as f:
+                f.write(ir)
+            kernel_futures += [executor.submit(triton.compile, tmp_file)]
+
+    print("compilation is done, benchmarking")
+
+    for idx, config in enumerate(configs):
         config_id = config[0]
         w = config[1][0]
         h = config[1][1]
@@ -108,60 +178,10 @@ def itt_padding():
         shared_id = shared[shared.find('[') + 1:shared.find(']')].replace(':+', '_').replace(',', '_').replace(' ', '')
         kernel_name = "kernel_config_" + str(config_id) + "__" + shared_id
 
-        ir = f"""
-        #smem = #ttg.shared_memory
-        #mma = {mma}
-        #linear = {transposed}
-        #shared = {shared}
-        #blocked = {global_load_layout}
-        #dotop = #ttg.dot_op<{{opIdx = 1, parent = #mma, kWidth = {kWidth}}}>
-        #slice0_load = #ttg.slice<{{dim = 0, parent = #blocked}}>
-        #slice1_load = #ttg.slice<{{dim = 1, parent = #blocked}}>
-        #slice0_store = #ttg.slice<{{dim = 0, parent = #dotop}}>
-        #slice1_store = #ttg.slice<{{dim = 1, parent = #dotop}}>
-        module attributes {{"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = {num_warps} : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32}} {{
-            tt.func public @{kernel_name}(%x: !tt.ptr<{dtype}> {{tt.divisibility = 16 : i32}}, %y: !tt.ptr<{dtype}> {{tt.divisibility = 16 : i32}}) {{
-                %c{h}_i32 = arith.constant {h} : i32
-                %23 = tt.make_range {{end = {h} : i32, start = 0 : i32}} : tensor<{h}xi32, #slice0_load>
-                %46 = tt.make_range {{end = {w} : i32, start = 0 : i32}} : tensor<{w}xi32, #slice1_load>
-                %47 = tt.expand_dims %46 {{axis = 1 : i32}} : tensor<{w}xi32, #slice1_load> -> tensor<{w}x1xi32, #blocked>
-                %48 = tt.splat %c{h}_i32 : i32 -> tensor<{w}x1xi32, #blocked>
-                %49 = arith.muli %47, %48 : tensor<{w}x1xi32, #blocked>
-                %50 = tt.broadcast %49 : tensor<{w}x1xi32, #blocked> -> tensor<{w}x{h}xi32, #blocked>
-                %51 = tt.expand_dims %23 {{axis = 0 : i32}} : tensor<{h}xi32, #slice0_load> -> tensor<1x{h}xi32, #blocked>
-                %52 = tt.broadcast %51 : tensor<1x{h}xi32, #blocked> -> tensor<{w}x{h}xi32, #blocked>
-                %53 = arith.addi %52, %50 : tensor<{w}x{h}xi32, #blocked>
-
-                %111 = amdgpu.buffer_load %x[%53]: tensor<{w}x{h}x{dtype}, #blocked>
-                %116 = amdgpu.in_thread_transpose %111 : tensor<{w}x{h}x{dtype}, #blocked> -> tensor<{w}x{h}x{dtype}, #linear>
-                %117 = ttg.local_alloc %116 : (tensor<{w}x{h}x{dtype}, #linear>) -> !ttg.memdesc<{w}x{h}x{dtype}, #shared, #smem>
-                %118 = ttg.local_load %117 : !ttg.memdesc<{w}x{h}x{dtype}, #shared, #smem> -> tensor<{w}x{h}x{dtype}, #dotop>
-
-                %s_c{h}_i32 = arith.constant {h} : i32
-                %s_23 = tt.make_range {{end = {h} : i32, start = 0 : i32}} : tensor<{h}xi32, #slice0_store>
-                %s_46 = tt.make_range {{end = {w} : i32, start = 0 : i32}} : tensor<{w}xi32, #slice1_store>
-                %s_47 = tt.expand_dims %s_46 {{axis = 1 : i32}} : tensor<{w}xi32, #slice1_store> -> tensor<{w}x1xi32, #dotop>
-                %s_48 = tt.splat %s_c{h}_i32 : i32 -> tensor<{w}x1xi32, #dotop>
-                %s_49 = arith.muli %s_47, %s_48 : tensor<{w}x1xi32, #dotop>
-                %s_50 = tt.broadcast %s_49 : tensor<{w}x1xi32, #dotop> -> tensor<{w}x{h}xi32, #dotop>
-                %s_51 = tt.expand_dims %s_23 {{axis = 0 : i32}} : tensor<{h}xi32, #slice0_store> -> tensor<1x{h}xi32, #dotop>
-                %s_52 = tt.broadcast %s_51 : tensor<1x{h}xi32, #dotop> -> tensor<{w}x{h}xi32, #dotop>
-                %s_53 = arith.addi %s_52, %s_50 : tensor<{w}x{h}xi32, #dotop>
-
-                amdgpu.buffer_store %118, %y[%s_53]: tensor<{w}x{h}x{dtype}, #dotop>
-                tt.return
-            }}
-        }}
-        """
-        tmp_file = "tmp.ttgir"
-        with open(tmp_file, "w") as f:
-            f.write(ir)
-        kernel = triton.compile(tmp_file)
-
         torch_dtype = torch.float16 if elem_width == 2 else torch.int8
         x = (torch.randn((w, h), dtype=torch.float32, device=device) * 10).to(torch_dtype)
         y = torch.zeros((w, h), dtype=torch_dtype, device=device)
-        pgm = kernel[(1, 1, 1)](x, y)
+        pgm = kernel_futures[config_id].result()[(1, 1, 1)](x, y)
         np.testing.assert_allclose(x.cpu().numpy(), y.cpu().numpy())
         print("successfully run {}".format(kernel_name))
 
