@@ -26,6 +26,12 @@ def gen_ll(shape, order, multiplier):
     return bases
 
 
+def compile_and_report(file_name, kernel_id):
+    kernel = triton.compile(file_name)
+    print("{} ".format(kernel_id), end="")
+    return kernel
+
+
 def itt_padding():
     num_warps = 1
     # size of one element in bytes
@@ -161,9 +167,9 @@ def itt_padding():
             tmp_file = "tmp/kernel_" + str(idx) + ".ttgir"
             with open(tmp_file, "w") as f:
                 f.write(ir)
-            kernel_futures += [executor.submit(triton.compile, tmp_file)]
+            kernel_futures += [executor.submit(compile_and_report, tmp_file, config_id)]
 
-    print("compilation is done, benchmarking")
+    print("\ncompilation is done, benchmarking")
 
     for idx, config in enumerate(configs):
         config_id = config[0]
