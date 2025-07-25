@@ -26,8 +26,8 @@ def test():
             %0 = ttg.local_alloc : () -> !ttg.memdesc<{b}x{w}x{h}xi16, #shared, #smem, mutable>
             %c0_i32 = arith.constant 0 : i32
             %c1_i32 = arith.constant 1 : i32
-            %c2_i32 = arith.constant 1 : i32
-            %c3_i32 = arith.constant 1 : i32
+            %c2_i32 = arith.constant 2 : i32
+            %c3_i32 = arith.constant 3 : i32
             %buf_0 = ttg.memdesc_subview %0[%c0_i32, %c0_i32, %c0_i32] : !ttg.memdesc<{b}x{w}x{h}xi16, #shared, #smem, mutable> -> !ttg.memdesc<{w}x{h}xi16, #shared, #smem, mutable>
             %buf_1 = ttg.memdesc_subview %0[%c1_i32, %c0_i32, %c0_i32] : !ttg.memdesc<{b}x{w}x{h}xi16, #shared, #smem, mutable> -> !ttg.memdesc<{w}x{h}xi16, #shared, #smem, mutable>
             %buf_2 = ttg.memdesc_subview %0[%c2_i32, %c0_i32, %c0_i32] : !ttg.memdesc<{b}x{w}x{h}xi16, #shared, #smem, mutable> -> !ttg.memdesc<{w}x{h}xi16, #shared, #smem, mutable>
@@ -35,8 +35,8 @@ def test():
 
             %c0_i16 = arith.constant 0 : i16
             %c1_i16 = arith.constant 1 : i16
-            %c2_i16 = arith.constant 1 : i16
-            %c3_i16 = arith.constant 1 : i16
+            %c2_i16 = arith.constant 2 : i16
+            %c3_i16 = arith.constant 3 : i16
 
             %c0_splat = tt.splat %c0_i16 : i16 -> tensor<{w}x{h}xi16, #blocked>
             %c1_splat = tt.splat %c1_i16 : i16 -> tensor<{w}x{h}xi16, #blocked>
