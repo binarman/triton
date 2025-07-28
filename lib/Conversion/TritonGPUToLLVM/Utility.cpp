@@ -531,7 +531,6 @@ SmallVector<Value> lowerLdSt(
 
   auto [elemsPerVec, permutation] =
       largestVectorisation(ctx, cvt, bitwidth, maybeMaxVecElems);
-  elemsPerVec = 1;
 
   cvt = permutation.apply(cvt);
   if (isStore) {
@@ -582,9 +581,8 @@ SmallVector<Value> lowerLdSt(
       auto vecAddr =
           b.gep(smemPtrTy, i8_ty, smemBase, calcPaddedOffset(innerOffset),
                 LLVM::GEPNoWrapFlags::inbounds);
-      // llvm::append_range(outVals,
-      //  lowerInst(rewriter, loc, vals, vecAddr, i + j, vecTy));
-      outVals.push_back(calcPaddedOffset(innerOffset));
+      llvm::append_range(outVals,
+                         lowerInst(rewriter, loc, vals, vecAddr, i + j, vecTy));
     }
   }
 
