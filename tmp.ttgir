@@ -1,0 +1,54 @@
+
+    #smem = #ttg.shared_memory
+    #shared = #ttg.padded_shared<[128:+2] {order = [1, 0]}>
+    // #shared = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0, 1]}>
+    #blocked = #ttg.blocked<{sizePerThread = [1, 8], threadsPerWarp = [4, 16], warpsPerCTA = [1, 1], order = [1, 0]}>
+    #blocked1 = #ttg.blocked<{sizePerThread = [1,1,8], threadsPerWarp = [1,4,16], warpsPerCTA = [1,1,1], order = [2,1,0]}>
+    #blocked2 = #ttg.blocked<{sizePerThread = [8], threadsPerWarp = [64], warpsPerCTA = [1], order = [0]}>
+
+    module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.target = "hip:gfx942", "ttg.threads-per-warp" = 64 : i32} {
+        tt.func public @kernel(%x: !tt.ptr<i32> {tt.divisibility = 16 : i32}) {
+            %c128_i32 = arith.constant 128 : i32
+            %buf = ttg.local_alloc : () -> !ttg.memdesc<4x16x128xi32, #shared, #smem, mutable>
+            %c0_i32 = arith.constant 0 : i32
+            %c1_i32 = arith.constant 1 : i32
+            %c2_i32 = arith.constant 2 : i32
+            %c3_i32 = arith.constant 3 : i32
+            %buf_0 = ttg.memdesc_index %buf, %c0_i32 : !ttg.memdesc<4x16x128xi32, #shared, #smem, mutable> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+            %buf_1 = ttg.memdesc_index %buf, %c1_i32 : !ttg.memdesc<4x16x128xi32, #shared, #smem, mutable> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+            %buf_2 = ttg.memdesc_index %buf, %c2_i32 : !ttg.memdesc<4x16x128xi32, #shared, #smem, mutable> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+            %buf_3 = ttg.memdesc_index %buf, %c3_i32 : !ttg.memdesc<4x16x128xi32, #shared, #smem, mutable> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+
+            %cm1_i32 = arith.constant -1 : i32
+            // %c0_i32 = arith.constant 0 : i32
+            // %c1_i32 = arith.constant 1 : i32
+            // %c2_i32 = arith.constant 2 : i32
+            // %c3_i32 = arith.constant 3 : i32
+
+            %cm1_splat = tt.splat %cm1_i32 : i32 -> tensor<4x16x128xi32, #blocked1>
+            %c0_splat = tt.splat %c0_i32 : i32 -> tensor<16x128xi32, #blocked>
+            %c1_splat = tt.splat %c1_i32 : i32 -> tensor<16x128xi32, #blocked>
+            %c2_splat = tt.splat %c2_i32 : i32 -> tensor<16x128xi32, #blocked>
+            %c3_splat = tt.splat %c3_i32 : i32 -> tensor<16x128xi32, #blocked>
+
+            // ttg.local_store %cm1_splat, %buf : tensor<4x16x128xi32, #blocked1> -> !ttg.memdesc<4x16x128xi32, #shared, #smem, mutable>
+            %c1_data_range_i32 = tt.make_range {end = 128 : i32, start = 0 : i32} : tensor<128xi32, #ttg.slice<{dim = 0, parent = #blocked}>>
+            // %c1_data_range = arith.trunci %c1_data_range_i32 : tensor<128xi32, #ttg.slice<{dim = 0, parent = #blocked}>> to tensor<128xi32, #ttg.slice<{dim = 0, parent = #blocked}>>
+            %c1_data_expand = tt.expand_dims %c1_data_range_i32 {axis = 0 : i32} : tensor<128xi32, #ttg.slice<{dim = 0, parent = #blocked}>> -> tensor<1x128xi32, #blocked>
+            %c1_data_full = tt.broadcast %c1_data_expand : tensor<1x128xi32, #blocked> -> tensor<16x128xi32, #blocked>
+
+            // ttg.local_store %c0_splat, %buf_0 : tensor<16x128xi32, #blocked> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+            // ttg.local_store %c1_data_full, %buf_1 : tensor<16x128xi32, #blocked> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+            // ttg.local_store %c2_splat, %buf_2 : tensor<16x128xi32, #blocked> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+            // ttg.local_store %c3_splat, %buf_3 : tensor<16x128xi32, #blocked> -> !ttg.memdesc<16x128xi32, #shared, #smem, mutable>
+
+            %buf1_data = ttg.local_load %buf_1 : !ttg.memdesc<16x128xi32, #shared, #smem, mutable> -> tensor<16x128xi32, #blocked>
+
+            // %buf_data = ttg.local_load %buf : !ttg.memdesc<4x16x128xi32, #shared, #smem, mutable> -> tensor<4x16x128xi32, #blocked1>
+            %buf1_lin_data = tt.reshape %buf1_data : tensor<16x128xi32, #blocked> -> tensor<2048xi32, #blocked2>
+
+            %offset = tt.make_range {end = 2048 : i32, start = 0 : i32} : tensor<2048xi32, #blocked2>
+            amdgpu.buffer_store %buf1_lin_data, %x[%offset]: tensor<2048xi32, #blocked2>
+            tt.return
+        }
+    }
