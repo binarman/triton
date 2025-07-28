@@ -168,6 +168,8 @@ public:
     LinearLayout cvt = LinearLayout::empty();
     if (paddedLayout) {
       cvt = regLayout.reshapeOuts({{kOffset, regLayout.getTotalOutDimSize()}});
+      llvm::errs() << "reg layout: " << regLayout << "\n";
+      llvm::errs() << "padded layout cvt: " << cvt << "\n";
     } else {
       auto sharedLayout = toLinearLayout(memDescTy);
       cvt = regLayout.invertAndCompose(sharedLayout);
