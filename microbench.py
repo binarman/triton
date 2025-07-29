@@ -188,7 +188,7 @@ def itt_padding():
         x = (torch.randn((w, h), dtype=torch.float32, device=device) * 10).to(torch_dtype)
         y = torch.zeros((w, h), dtype=torch_dtype, device=device)
         print("running {}".format(kernel_name), end="")
-        pgm = kernel_futures[config_id].result()[(1, 1, 1)](x, y)
+        pgm = kernel_futures[idx].result()[(1, 1, 1)](x, y)
         np.testing.assert_allclose(x.cpu().numpy(), y.cpu().numpy())
         print("successfully")
 
