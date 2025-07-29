@@ -584,7 +584,8 @@ SmallVector<Value> lowerLdSt(
                 LLVM::GEPNoWrapFlags::inbounds);
       // llvm::append_range(outVals,
       //  lowerInst(rewriter, loc, vals, vecAddr, i + j, vecTy));
-      outVals.push_back(calcPaddedOffset(innerOffset));
+      auto ptrInt = b.ptrtoint(i32_ty, vecAddr);
+      outVals.push_back(ptrInt);
     }
   }
 
