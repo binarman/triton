@@ -28,7 +28,7 @@ def gen_ll(shape, order, multiplier):
 
 def compile_and_report(file_name, kernel_id):
     kernel = triton.compile(file_name)
-    print("{} ".format(kernel_id), end="")
+    print("{} ".format(kernel_id), end="", flush=True)
     return kernel
 
 
