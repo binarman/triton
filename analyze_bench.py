@@ -11,6 +11,9 @@ config_info = []
 with open("configs") as configs_files:
     reader = csv.reader(configs_files, delimiter=',', quotechar='"')
     for row in reader:
+        if len(row) < 6:
+            # next goes unrelated data
+            break
         config_info += [row[1] + "x" + row[2] + " LDS write " + row[3] + " mfma" + row[5]]
 
 # mapping from (config id, padding_config, counter name) to coutner value
