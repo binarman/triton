@@ -41,7 +41,7 @@ def itt_padding():
     kWidth = 4
     # tensor sizes
     sizes = [(32, 128), (32, 256), (32, 512), (64, 64), (64, 128), (64, 256), (128, 32), (128, 64), (128, 128),
-             (256, 32), (256, 64)]
+             (256, 32), (256, 64), (512, 32)]
     shared_mem_order = [1, 0]
     global_mem_order = [0, 1]
     # global load shape per thread
@@ -61,7 +61,7 @@ def itt_padding():
     for s in sizes:
         for spt in input_shape_per_thread:
             for output_layout in output_layouts:
-                num_banks_per_write = spt[0] * elem_width // bank_width
+                num_banks_per_write = spt[1] * elem_width // bank_width
                 num_banks_per_read = kWidth * elem_width // bank_width
                 max_banks_per_access = max(num_banks_per_write, num_banks_per_read)
                 paddings = [pad for pad in [2, 4, 8, 16] if pad >= (max_banks_per_access * bank_width // elem_width)]
