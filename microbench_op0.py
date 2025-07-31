@@ -42,6 +42,8 @@ def itt_padding():
     # tensor sizes
     sizes = [(32, 128), (32, 256), (32, 512), (64, 64), (64, 128), (64, 256), (128, 32), (128, 64), (128, 128),
              (256, 32), (256, 64)]
+    shared_mem_order = [1, 0]
+    global_mem_order = [0, 1]
     # global load shape per thread
     input_shape_per_thread = [[8, 2], [8, 4], [8, 8]]
     # paddings, try to pad after every tensor row/bank row, then try to add additional paddings after first rank of paddings exhaust exhaust row width.
@@ -69,12 +71,13 @@ def itt_padding():
 
                 # generate global load layout
                 gl_layout = "#ttg.blocked<{sizePerThread = " + str(spt) + ", threadsPerWarp = " + str(
-                    input_lanes) + ", warpsPerCTA = [" + str(num_warps) + ", 1], order = [0, 1]}>"
+                    input_lanes) + ", warpsPerCTA = [" + str(num_warps) + ", 1], order = " + str(
+                        global_mem_order) + "}>"
 
                 # generate shared store layout
-                registers = gen_ll(spt, [1, 0], [1, 1])
-                lanes = gen_ll(input_lanes, [0, 1], spt)
-                warps = gen_ll([num_warps, 1], [0, 1], [spt[0] * input_lanes[0], spt[1] * input_lanes[1]])
+                registers = gen_ll(spt, shared_mem_order, [1, 1])
+                lanes = gen_ll(input_lanes, global_mem_order, spt)
+                warps = gen_ll([num_warps, 1], global_mem_order, [spt[0] * input_lanes[0], spt[1] * input_lanes[1]])
                 ls_layout = "#ttg.linear<{register = " + str(registers) + ", lane = " + str(lanes) + ", warp = " + str(
                     warps) + ", block = []}>"
 
@@ -87,7 +90,7 @@ def itt_padding():
                 for interval1 in intervals1:
                     for pad1 in paddings:
                         shared_layout = "#ttg.padded_shared<[" + str(interval1) + ":+" + str(
-                            pad1) + "] {order = [0, 1]}>"
+                            pad1) + "] {order = " + str(shared_mem_order) + "}>"
                         configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                         # try to add padding between groups of shifts
                         # intervals2 = elems_in_bank_row // pad1 * interval1
@@ -95,7 +98,7 @@ def itt_padding():
                         for interval2 in intervals2:
                             for pad2 in paddings:
                                 shared_layout = "#ttg.padded_shared<[" + str(interval1) + ":+" + str(pad1) + ", " + str(
-                                    interval2) + ":+" + str(pad2) + "] {order = [0, 1]}>"
+                                    interval2) + ":+" + str(pad2) + "] {order = " + str(shared_mem_order) + "}>"
                                 configs += [(config_id, s, gl_layout, ls_layout, output_layout, shared_layout)]
                 mfma = "32" if "32" in output_layout else "16"
                 print(",".join([str(config_id), str(s[0]), str(s[1]), str(spt[0]), str(spt[1]), mfma]))

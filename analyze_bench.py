@@ -14,7 +14,7 @@ with open("configs") as configs_files:
         if len(row) < 6:
             # next goes unrelated data
             break
-        config_info += [row[1] + "x" + row[2] + " LDS write " + row[3] + " mfma" + row[5]]
+        config_info += [row[1] + "x" + row[2] + " sizePerThread: " + row[3] + "x" + row[4] + " mfma" + row[5]]
 
 # mapping from (config id, padding_config, counter name) to coutner value
 counters = {}
