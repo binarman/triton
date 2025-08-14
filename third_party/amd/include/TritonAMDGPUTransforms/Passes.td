@@ -273,5 +273,21 @@ def TritonAMDPeepholeOptimize: Pass<"tritonamdgpu-peephole-optimize", "mlir::Mod
   ];
 }
 
+def TritonAMDGPUOptimizeDotOperands : Pass<"tritonamdgpu-optimize-dot-operands", "mlir::ModuleOp"> {
+  let summary = "Optimize shared memory use for dot operands";
+
+  let description = [{
+    Perform transformations to promote shared memory reuse between matrix multiplication operands.
+  }];
+
+  let dependentDialects = ["mlir::triton::gpu::TritonGPUDialect",
+                           "mlir::triton::amdgpu::TritonAMDGPUDialect",
+                           "mlir::triton::TritonDialect"];
+  let options = [
+    Option<"archGenerationName", "arch-generation-name",
+           "std::string", /*default=*/"std::string{}",
+           "GFX generation name of target device.">
+  ];
+}
 
 #endif
