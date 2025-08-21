@@ -108,7 +108,7 @@ def make_default_opt_flags_amd(
     num_warps = 2 if (m is not None and m <= 16) else 8
     num_stages = 2
     # AMD-specific
-    target_kernel_kwargs = {"waves_per_eu": 0, "matrix_instr_nonkdim": 16, "kpack": 1}
+    target_kernel_kwargs = {"waves_per_eu": 3, "matrix_instr_nonkdim": 16, "kpack": 1}
     block_n=128
 
     use_scale_preshuffling = os.environ.get("TRITON_HIP_PRESHUFFLE_SCALES", "0") == "1"
@@ -119,6 +119,7 @@ def make_default_opt_flags_amd(
         split_k = 1
     elif use_scale_preshuffling and precision_config.weight_scale is not None and bitwidth(lhs_dtype) == 16 and bitwidth(rhs_dtype) == 4:
         # for scale preshuffling
+        target_kernel_kwargs["waves_per_eu"] = 0
         block_m = 64
         block_n = 512
         block_k = 256
