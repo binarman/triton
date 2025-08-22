@@ -810,7 +810,29 @@ LogicalResult MemDescSubsliceOp::verify() {
   auto ctx = getContext();
   LinearLayout ll;
   if (auto paddedEncoding = dyn_cast<PaddedSharedEncodingAttr>(srcEnc)) {
+    // TODO use builtin LL when it is merged
     ll = getElemIndexToSharedLayout(paddedEncoding, srcTy.getShape());
+    auto maxInterval = paddedEncoding.getMaxInterval();
+    // All intervals are power of 2, so padding pattern repeats every
+    // maxInterval elements If slice offset is a multipls of maxIntervals,
+    // padding computation of given offset will be identical with offset = 0
+    auto llInv = ll.invert();
+    llvm::SmallVector<std::pair<mlir::StringAttr, int32_t>> namedOffsets;
+    for (auto d : standardOutDimNames(ctx, srcTy.getRank())) {
+      namedOffsets.push_back({d, 0});
+    }
+    for (auto dim : splitDims) {
+      auto kDim = mlir::StringAttr::get(ctx, "dim" + llvm::Twine(dim));
+      namedOffsets[dim] = {kDim, offsets[dim]};
+    }
+    SmallVector<std::pair<StringAttr, int32_t>> outputs =
+        llInv.apply(namedOffsets);
+    auto kOffset = mlir::StringAttr::get(ctx, "offset");
+    auto offsetVal = *llvm::find_if(
+        outputs, [&](const auto &dim) { return dim.first == kOffset; });
+    if (offsetVal.second % maxInterval != 0) {
+      return emitError("We do not support splitting padded pattern");
+    }
   } else {
     ll = triton::gpu::toLinearLayout(srcTy);
   }
