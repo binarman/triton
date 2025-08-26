@@ -6416,6 +6416,50 @@ def test_split_subview(M, N, M_tile_size, N_tile_size, device, tmp_path: pathlib
     assert test_result
 
 
+@pytest.mark.parametrize("M, N", [[4, 32]])
+def test_split_subview_duplicating_layout(M, N, device, tmp_path: pathlib.Path):
+    num_rows_per_warp = THREADS_PER_WARP // 4
+
+    ir = """
+        #linear = #ttg.linear<{register = [[2]], lane = [[1], [2], [4], [8], [16], [32]], warp = [], block = []}>
+        #blocked = #ttg.blocked<{sizePerThread=[1], threadsPerWarp=[64], warpsPerCTA=[1], order=[0], CTAsPerCGA=[1], CTASplitNum=[1], CTAOrder=[0]}>
+        #shared = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
+        #smem = #ttg.shared_memory
+        module attributes {"ttg.num-ctas" = 1, "ttg.num-warps" = 1 : i32, "ttg.threads-per-warp" = 64 : i32} {
+        tt.func public @kernel(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
+            %load_offset = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32, #linear>
+            %load_base = tt.splat %arg0 : !tt.ptr<f32> -> tensor<64x!tt.ptr<f32>, #linear>
+            %load_ptrs = tt.addptr %load_base, %load_offset : tensor<64x!tt.ptr<f32>, #linear>, tensor<64xi32, #linear>
+            %load_data = tt.load %load_ptrs : tensor<64x!tt.ptr<f32>, #linear>
+
+            %shared_data = ttg.local_alloc %load_data : (tensor<64xf32, #linear>) -> !ttg.memdesc<64xf32, #shared, #smem, mutable>
+            %store_data = ttg.local_load %shared_data : !ttg.memdesc<64xf32, #shared, #smem, mutable, 64> -> tensor<64xf32, #blocked>
+
+            %store_offset = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32, #blocked>
+            %store_base = tt.splat %arg0 : !tt.ptr<f32> -> tensor<64x!tt.ptr<f32>, #blocked>
+            %store_ptrs = tt.addptr %store_base, %store_offset : tensor<64x!tt.ptr<f32>, #blocked>, tensor<64xi32, #blocked>
+
+            tt.store %store_ptrs, %store_data : tensor<64x!tt.ptr<f32>, #blocked>
+            tt.return
+        }
+        }
+    """
+
+    temp_file = tmp_path / "test_split_subview_duplicate.ttgir"
+    temp_file.write_text(ir)
+    kernel = triton.compile(str(temp_file))
+
+    test_buffer = torch.zeros((64), device=device, dtype=torch.float32)
+    ref_data = torch.zeros((64), device=device, dtype=torch.float32)
+    for i in range(64):
+        test_buffer[i] = i + 1
+        ref_data[i] = i + 1
+    kernel[(1, 1, 1)](test_buffer.data_ptr())
+
+    test_result = torch.equal(test_buffer, ref_buffer)
+    assert test_result
+
+
 @pytest.mark.parametrize("M, N", [[16, 32]])
 @pytest.mark.parametrize("dtype", ['float16', 'float8e5', 'float32'])
 @pytest.mark.parametrize("shared_layout", shared_layouts)
