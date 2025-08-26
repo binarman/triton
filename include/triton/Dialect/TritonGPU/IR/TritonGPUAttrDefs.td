@@ -434,6 +434,11 @@ attributes too, for example,
       return *llvm::min_element(getIntervals());
     }
 
+    unsigned getMaxInterval() const {
+      return *llvm::max_element(getIntervals());
+    }
+
+
     // Returns the total number of elements including padding given the input
     // tensor shape.
     int64_t getPaddedSize(ArrayRef<int64_t> shape) const;
