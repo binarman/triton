@@ -6450,10 +6450,10 @@ def test_split_subview_duplicating_layout(M, N, device, tmp_path: pathlib.Path):
     kernel = triton.compile(str(temp_file))
 
     test_buffer = torch.zeros((64), device=device, dtype=torch.float32)
-    ref_data = torch.zeros((64), device=device, dtype=torch.float32)
+    ref_buffer = torch.zeros((64), device=device, dtype=torch.float32)
     for i in range(64):
         test_buffer[i] = i + 1
-        ref_data[i] = i + 1
+        ref_buffer[i] = i + 1
     kernel[(1, 1, 1)](test_buffer.data_ptr())
 
     test_result = torch.equal(test_buffer, ref_buffer)
