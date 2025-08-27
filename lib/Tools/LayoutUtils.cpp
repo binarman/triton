@@ -295,6 +295,10 @@ actionAdditiveStrides(const LinearLayout &layout, const LinearLayout addrLayout,
   // registers within `layout`
   assert(layout.getNumInDims() != 0);
   auto kReg = *layout.getInDimNames().begin();
+
+  for (auto basis : layout.getBases().lookup(kReg))
+    assert(basis[0] == 0 || (basis[0] & maskSpanOffsets) == 0);
+
   assert(kReg.str() == "register");
   auto kLane = StringAttr::get(kReg.getContext(), "lane");
   auto kWarp = StringAttr::get(kReg.getContext(), "warp");

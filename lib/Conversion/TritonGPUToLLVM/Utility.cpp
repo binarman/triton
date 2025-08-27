@@ -17,6 +17,10 @@
 
 #include <functional>
 
+void dumpLL(const mlir::triton::LinearLayout &ll) {
+  llvm::errs() << ll << "\n";
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 // from https://gist.github.com/pps83/3210a2f980fd02bb2ba2e5a1fc4a2ef0
 #include <intrin.h>
@@ -628,15 +632,30 @@ SmallVector<Value> lowerLdSt(
   auto tile = LinearLayout::identity1D(elemsPerVec, kReg, kOffset);
   auto quot = divideLeft(cvt, tile);
   assert(quot.has_value() && "cvt must be divisible by tile");
+
   LinearLayout reps = zerosLike(tile) * *quot;
 
   LinearLayout addrLayout =
       LinearLayout({{kLane, reps.getBases().lookup(kLane)},
                     {kWarp, reps.getBases().lookup(kWarp)}},
                    reps.getOutDims(), false);
+// #define PRINTS
+#ifdef PRINTS
+  llvm::errs() << "lowerLdSt\n";
+  llvm::errs() << "cvt:\n" << cvt << "\n";
+  llvm::errs() << "tile:\n" << tile << "\n";
+  llvm::errs() << "quot:\n" << quot << "\n";
+  llvm::errs() << "reps:\n" << reps << "\n";
+  llvm::errs() << "addrLayout:\n" << addrLayout << "\n";
+#endif
+
   auto [nAdditive, permStrides] =
       actionAdditiveStrides(reps, addrLayout, maskSpanAffineOffset);
   reps = permStrides.apply(reps);
+
+#ifdef PRINTS
+  llvm::errs() << "reps permuted:\n" << reps << "\n";
+#endif
   if (isStore) {
     vals = permStrides.apply(vals);
   }
