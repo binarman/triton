@@ -6459,14 +6459,13 @@ def test_shared_store_load_duplicating_layout(device, tmp_path: pathlib.Path):
     assert test_result
 
 
-@pytest.mark.parametrize("M, N", [[4, 32]])
-def test_padded_shared_layout(M, N, device, tmp_path: pathlib.Path):
+def test_padded_shared_layout(device, tmp_path: pathlib.Path):
     num_rows_per_warp = THREADS_PER_WARP // 4
 
     ir = """
         #linear = #ttg.linear<{register = [[1, 16]], lane = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [2, 0]], warp = [], block = []}>
         #blocked = #ttg.blocked<{sizePerThread=[1, 1], threadsPerWarp=[4, 16], warpsPerCTA=[1, 1], order=[1, 0], CTAsPerCGA=[1, 1], CTASplitNum=[1, 1], CTAOrder=[1, 0]}>
-        #shared = #ttg.padded_shared<[256:+8] {order = [0]}>
+        #shared = #ttg.padded_shared<[16:+2] {order = [1, 0]}>
         #smem = #ttg.shared_memory
         module attributes {"ttg.num-ctas" = 1, "ttg.num-warps" = 1 : i32, "ttg.threads-per-warp" = 64 : i32} {
         tt.func public @kernel(%arg0: !tt.ptr<i32> {tt.divisibility = 16 : i32}) {
@@ -6483,11 +6482,12 @@ def test_padded_shared_layout(M, N, device, tmp_path: pathlib.Path):
             %offset_dim1 = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32, #ttg.slice<{dim = 0, parent=#blocked}>>
             %offset_expand_dim0 = tt.expand_dims %offset_dim0 {axis = 1 : i32} : tensor<4xi32, #ttg.slice<{dim = 1, parent = #blocked}>> -> tensor<4x1xi32, #blocked>
             %offset_expand_dim1 = tt.expand_dims %offset_dim1 {axis = 0 : i32} : tensor<16xi32, #ttg.slice<{dim = 0, parent = #blocked}>> -> tensor<1x16xi32, #blocked>
-            %offset_bcst_dim0 = tt.broadcast %offset_expand_dim0 : tensor<4x1xi32, #bocked> -> tensor<4x16xi32, #blocked>
-            %offset_bcst_dim1 = tt.broadcast %offset_expand_dim1 : tensor<1x16xi32, #bocked> -> tensor<4x16xi32, #blocked>
+            %offset_bcst_dim0 = tt.broadcast %offset_expand_dim0 : tensor<4x1xi32, #blocked> -> tensor<4x16xi32, #blocked>
+            %offset_bcst_dim1 = tt.broadcast %offset_expand_dim1 : tensor<1x16xi32, #blocked> -> tensor<4x16xi32, #blocked>
 
             %store_offset = arith.addi %offset_bcst_dim0, %offset_bcst_dim1 : tensor<4x16xi32, #blocked>
-            %ptrs = tt.addptr %store_base, %store_offset : tensor<4x16x!tt.ptr<i32>, #blocked>, tensor<4x16xi32, #blocked>
+            %store_base = tt.splat %arg0 : !tt.ptr<i32> -> tensor<4x16x!tt.ptr<i32>, #blocked>
+            %store_ptrs = tt.addptr %store_base, %store_offset : tensor<4x16x!tt.ptr<i32>, #blocked>, tensor<4x16xi32, #blocked>
 
             tt.store %store_ptrs, %store_data : tensor<4x16x!tt.ptr<i32>, #blocked>
             tt.return
