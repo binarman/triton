@@ -6416,8 +6416,7 @@ def test_split_subview(M, N, M_tile_size, N_tile_size, device, tmp_path: pathlib
     assert test_result
 
 
-@pytest.mark.parametrize("M, N", [[4, 32]])
-def test_split_subview_duplicating_layout(M, N, device, tmp_path: pathlib.Path):
+def test_shared_store_load_duplicating_layout(device, tmp_path: pathlib.Path):
     num_rows_per_warp = THREADS_PER_WARP // 4
 
     ir = """
@@ -6458,6 +6457,52 @@ def test_split_subview_duplicating_layout(M, N, device, tmp_path: pathlib.Path):
 
     test_result = torch.equal(test_buffer, ref_buffer)
     assert test_result
+
+
+@pytest.mark.parametrize("M, N", [[4, 32]])
+def test_padded_shared_layout(M, N, device, tmp_path: pathlib.Path):
+    num_rows_per_warp = THREADS_PER_WARP // 4
+
+    ir = """
+        #linear = #ttg.linear<{register = [[1, 16]], lane = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [2, 0]], warp = [], block = []}>
+        #blocked = #ttg.blocked<{sizePerThread=[1, 1], threadsPerWarp=[4, 16], warpsPerCTA=[1, 1], order=[1, 0], CTAsPerCGA=[1, 1], CTASplitNum=[1, 1], CTAOrder=[1, 0]}>
+        #shared = #ttg.padded_shared<[256:+8] {order = [0]}>
+        #smem = #ttg.shared_memory
+        module attributes {"ttg.num-ctas" = 1, "ttg.num-warps" = 1 : i32, "ttg.threads-per-warp" = 64 : i32} {
+        tt.func public @kernel(%arg0: !tt.ptr<i32> {tt.divisibility = 16 : i32}) {
+            %data0 = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32, #ttg.slice<{dim = 0, parent=#linear}>>
+            %data1 = tt.expand_dims %data0 {axis = 0 : i32} : tensor<32xi32, #ttg.slice<{dim = 0, parent = #linear}>> -> tensor<1x32xi32, #linear>
+            %test_data = tt.broadcast %data1 : tensor<1x32xi32, #linear> -> tensor<4x32xi32, #linear>
+
+            %shared_data = ttg.local_alloc %test_data : (tensor<4x32xi32, #linear>) -> !ttg.memdesc<4x32xi32, #shared, #smem, mutable>
+            %view = ttg.memdesc_subslice %shared_data[0, 16] : !ttg.memdesc<4x32xi32, #shared, #smem, mutable> -> !ttg.memdesc<4x16xi32, #shared, #smem, mutable, 4x32>
+
+            %store_data = ttg.local_load %view : !ttg.memdesc<4x16xi32, #shared, #smem, mutable, 4x32> -> tensor<4x16xi32, #blocked>
+
+            %offset_dim0 = tt.make_range {end = 4 : i32, start = 0 : i32} : tensor<4xi32, #ttg.slice<{dim = 1, parent=#blocked}>>
+            %offset_dim1 = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32, #ttg.slice<{dim = 0, parent=#blocked}>>
+            %offset_expand_dim0 = tt.expand_dims %offset_dim0 {axis = 1 : i32} : tensor<4xi32, #ttg.slice<{dim = 1, parent = #blocked}>> -> tensor<4x1xi32, #blocked>
+            %offset_expand_dim1 = tt.expand_dims %offset_dim1 {axis = 0 : i32} : tensor<16xi32, #ttg.slice<{dim = 0, parent = #blocked}>> -> tensor<1x16xi32, #blocked>
+            %offset_bcst_dim0 = tt.broadcast %offset_expand_dim0 : tensor<4x1xi32, #bocked> -> tensor<4x16xi32, #blocked>
+            %offset_bcst_dim1 = tt.broadcast %offset_expand_dim1 : tensor<1x16xi32, #bocked> -> tensor<4x16xi32, #blocked>
+
+            %store_offset = arith.addi %offset_bcst_dim0, %offset_bcst_dim1 : tensor<4x16xi32, #blocked>
+            %ptrs = tt.addptr %store_base, %store_offset : tensor<4x16x!tt.ptr<i32>, #blocked>, tensor<4x16xi32, #blocked>
+
+            tt.store %store_ptrs, %store_data : tensor<4x16x!tt.ptr<i32>, #blocked>
+            tt.return
+        }
+        }
+    """
+
+    temp_file = tmp_path / "test_split_subview_duplicate.ttgir"
+    temp_file.write_text(ir)
+    kernel = triton.compile(str(temp_file))
+
+    test_buffer = torch.zeros((4, 16), device=device, dtype=torch.int32)
+    kernel[(1, 1, 1)](test_buffer.data_ptr())
+
+    print(test_buffer)
 
 
 @pytest.mark.parametrize("M, N", [[16, 32]])
