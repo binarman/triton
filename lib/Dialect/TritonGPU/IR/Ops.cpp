@@ -830,35 +830,36 @@ LogicalResult MemDescSubsliceOp::verify() {
     auto kOffset = mlir::StringAttr::get(ctx, "offset");
     auto offsetVal = *llvm::find_if(
         outputs, [&](const auto &dim) { return dim.first == kOffset; });
-    if (offsetVal.second % maxInterval != 0) {
-      return emitError("We do not support splitting padded pattern");
-    }
-  } else {
-    ll = triton::gpu::toLinearLayout(srcTy);
+    // if (offsetVal.second % maxInterval != 0) {
+    //   return emitError("We do not support splitting padded pattern");
   }
-  // NYI: We don't support non-trivial block dimension for now.
-  auto kBlock = mlir::StringAttr::get(getContext(), "block");
-  if (ll.getInDimSize(kBlock) != 1) {
-    return emitError("non-trivial block dimension not supported");
-  }
+}
+else {
+  ll = triton::gpu::toLinearLayout(srcTy);
+}
+// NYI: We don't support non-trivial block dimension for now.
+auto kBlock = mlir::StringAttr::get(getContext(), "block");
+if (ll.getInDimSize(kBlock) != 1) {
+  return emitError("non-trivial block dimension not supported");
+}
 
-  auto llInv = ll.invert();
-  for (auto dim : splitDims) {
-    auto kDim = mlir::StringAttr::get(ctx, "dim" + llvm::Twine(dim));
-    llvm::SmallVector<std::pair<mlir::StringAttr, int32_t>> namedOffsets;
-    for (auto d : standardOutDimNames(ctx, srcTy.getRank())) {
-      namedOffsets.push_back({d, 0});
-    }
-    for (int dimSize = dstTy.getDimSize(dim); dimSize < srcTy.getDimSize(dim);
-         dimSize *= 2) {
-      namedOffsets[dim] = {kDim, dimSize};
-      if (!llvm::isPowerOf2_32(llInv.apply(namedOffsets)[0].second)) {
-        return emitError(
-            "We don't support splitting along the swizzling pattern");
-      }
+auto llInv = ll.invert();
+for (auto dim : splitDims) {
+  auto kDim = mlir::StringAttr::get(ctx, "dim" + llvm::Twine(dim));
+  llvm::SmallVector<std::pair<mlir::StringAttr, int32_t>> namedOffsets;
+  for (auto d : standardOutDimNames(ctx, srcTy.getRank())) {
+    namedOffsets.push_back({d, 0});
+  }
+  for (int dimSize = dstTy.getDimSize(dim); dimSize < srcTy.getDimSize(dim);
+       dimSize *= 2) {
+    namedOffsets[dim] = {kDim, dimSize};
+    if (!llvm::isPowerOf2_32(llInv.apply(namedOffsets)[0].second)) {
+      return emitError(
+          "We don't support splitting along the swizzling pattern");
     }
   }
-  return success();
+}
+return success();
 }
 
 // -- WarpSpecializeOp --

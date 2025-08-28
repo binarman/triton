@@ -6489,10 +6489,10 @@ def test_padded_shared_layout(device, tmp_path: pathlib.Path):
             %offset_bcst_dim1 = tt.broadcast %offset_expand_dim1 : tensor<1x{slice_n}xi32, #blocked> -> tensor<{slice_m}x{slice_n}xi32, #blocked>
 
             %store_offset = arith.addi %offset_bcst_dim0, %offset_bcst_dim1 : tensor<{slice_m}x{slice_n}xi32, #blocked>
-            %store_base = tt.splat %arg0 : !tt.ptr<i32> -> tensor<{slice_m}x{slice_n}!tt.ptr<i32>, #blocked>
-            %store_ptrs = tt.addptr %store_base, %store_offset : tensor<{slice_m}x{slice_n}!tt.ptr<i32>, #blocked>, tensor<{slice_m}x{slice_n}xi32, #blocked>
+            %store_base = tt.splat %arg0 : !tt.ptr<i32> -> tensor<{slice_m}x{slice_n}x!tt.ptr<i32>, #blocked>
+            %store_ptrs = tt.addptr %store_base, %store_offset : tensor<{slice_m}x{slice_n}x!tt.ptr<i32>, #blocked>, tensor<{slice_m}x{slice_n}xi32, #blocked>
 
-            tt.store %store_ptrs, %store_data : tensor<{slice_m}x{slice_n}!tt.ptr<i32>, #blocked>
+            tt.store %store_ptrs, %store_data : tensor<{slice_m}x{slice_n}x!tt.ptr<i32>, #blocked>
             tt.return
         }}
         }}
