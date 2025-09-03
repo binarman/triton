@@ -703,9 +703,9 @@ bool emitTransferBetweenRegistersAndShared(
   auto paddedLayout =
       dyn_cast<triton::gpu::PaddedSharedEncodingAttr>(sharedTy.getEncoding());
   LinearLayout regToSharedLayout = LinearLayout::empty();
-  if (paddedLayout) {
-    regToSharedLayout =
-        regLayout.reshapeOuts({{kOffset, regLayout.getTotalOutDimSize()}});
+  if (paddedEnc) {
+    const auto &sharedLL = paddedEnc.getLinearComponent();
+    regToSharedLayout = regLayout.invertAndCompose(sharedLL);
   } else {
     auto sharedLL = triton::gpu::toLinearLayout(sharedTy);
     regToSharedLayout = regLayout.invertAndCompose(sharedLL);
