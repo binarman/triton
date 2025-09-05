@@ -844,9 +844,9 @@ def test_padded_shared_layout_subslice():
 
         out_data = smem_slice1.load(blocked)
 
-        offs_m_store = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
-        offs_n_store = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
-        out_offs = offs_m_store[:, None] * N + offs_n_store[None, :]
+        offs_m_store = ttgl.arange(0, SLICE_M, ttgl.SliceLayout(1, blocked))
+        offs_n_store = ttgl.arange(0, SLICE_N, ttgl.SliceLayout(0, blocked))
+        out_offs = offs_m_store[:, None] * SLICE_N + offs_n_store[None, :]
         ttgl.store(out_ptr + out_offs, out_data)
 
     input = torch.arange(m * n, device="cuda").reshape(m, n).to(torch.int32)
