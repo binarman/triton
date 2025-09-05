@@ -813,16 +813,15 @@ def test_2d_tensor_early_return():
     assert compiled_kernel.asm["llir"].count("define") == 1
 
 
-def test_padded_shared_layout_subslice():
+@pytest.mark.parametrize("interval_pairs", [[32, 1]])
+@pytest.mark.parametrize("slice_m_offset, slice_n_offset, slice_m, slice_n", [(48, 16, 16, 16), (32, 48, 32, 16)])
+def test_padded_shared_layout_subslice(interval_pairs, slice_m_offset, slice_n_offset, slice_m, slice_n):
     m = 64
     n = 64
-    slice_m = 32
-    slice_n = 32
-    slice_m_offset = 32
-    slice_n_offset = 32
     num_warps = 1
     num_warps_cst = ttgl.constexpr(num_warps)
     warp_size_cst = ttgl.constexpr(THREADS_PER_WARP)
+    interval_pairs_cst = ttgl.constexpr(interval_pairs)
 
     @gluon.jit
     def kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, SLICE_M_OFFSET: ttgl.constexpr,
@@ -834,8 +833,8 @@ def test_padded_shared_layout_subslice():
 
         in_data = ttgl.load(in_ptr + in_offs)
 
-        smem_layout: ttgl.constexpr = ttgl.PaddedSharedLayout.with_identity_for(interval_padding_pairs=[[32, 1]],
-                                                                                shape=[M, N], order=[1, 0])
+        smem_layout: ttgl.constexpr = ttgl.PaddedSharedLayout.with_identity_for(
+            interval_padding_pairs=interval_pairs_cst, shape=[M, N], order=[1, 0])
         smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], smem_layout)
         smem_slice0 = smem.slice(SLICE_M_OFFSET, SLICE_M, dim=0)
         smem_slice1 = smem_slice0.slice(SLICE_N_OFFSET, SLICE_N, dim=1)
@@ -851,7 +850,8 @@ def test_padded_shared_layout_subslice():
 
     input = torch.arange(m * n, device="cuda").reshape(m, n).to(torch.int32)
     output = torch.zeros((slice_m, slice_n), dtype=torch.int32, device="cuda")
+    ref_output = input[slice_m_offset:slice_m_offset + slice_m, slice_n_offset:slice_n_offset + slice_n]
 
     kernel[(1, )](input, output, m, n, slice_m_offset, slice_n_offset, slice_m, slice_n, num_warps=num_warps)
 
-    print(output)
+    assert (output == ref_output).all()
