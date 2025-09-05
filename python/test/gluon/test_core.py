@@ -811,3 +811,46 @@ def test_2d_tensor_early_return():
     out = torch.empty(1, dtype=torch.int32, device="cuda")
     compiled_kernel = kernel.warmup(N=100, out=out, grid=(1, ))
     assert compiled_kernel.asm["llir"].count("define") == 1
+
+
+def test_padded_shared_layout_subslice():
+    m = 64
+    n = 64
+    slice_m = 32
+    slice_n = 32
+    slice_m_offset = 32
+    slice_n_offset = 32
+    num_warps = 1
+    num_warps_cst = ttgl.constexpr(num_warps)
+    warp_size = ttgl.constexpr(THREADS_PER_WARP)
+
+    @gluon.jit
+    def kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, SLICE_M_OFFSET: ttgl.constexpr,
+               SLICE_N_OFFSET: ttgl.constexpr, SLICE_M: ttgl.constexpr, SLICE_N: ttgl.constexpr):
+        blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [warp_size, 1], [1, num_warps_cst], [1, 0])
+        offs_m_load = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+        offs_n_load = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+        in_offs = offs_m_load[:, None] * N + offs_n_load[None, :]
+
+        in_data = ttgl.load(in_ptr + in_offs)
+
+        smem_layout: ttgl.constexpr = ttgl.PaddedSharedLayout(vec=1, per_phase=1, max_phase=1, order=[0])
+        smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], smem_layout)
+        smem_slice0 = smem.slice(SLICE_M_OFFSET, SLICE_M, dim=0)
+        smem_slice1 = smem_slice0.slice(SLICE_N_OFFSET, SLICE_N, dim=1)
+
+        smem.store(in_data)
+
+        out_data = smem_slice1.load(blocked)
+
+        offs_m_store = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+        offs_n_store = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+        out_offs = offs_m_store[:, None] * N + offs_n_store[None, :]
+        ttgl.store(out_ptr + out_offs, out_data)
+
+    input = torch.arange(m * n, device="cuda").reshape(m, n).to(torch.int32)
+    output = torch.zeros((slice_m, slice_n), dtype=torch.int32, device="cuda")
+
+    kernel[(1, )](input, output, m, n, slice_m_offset, slice_n_offset, slice_m, slice_n, num_warps=num_warps)
+
+    print(output)
