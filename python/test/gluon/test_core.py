@@ -834,7 +834,8 @@ def test_padded_shared_layout_subslice():
 
         in_data = ttgl.load(in_ptr + in_offs)
 
-        smem_layout: ttgl.constexpr = ttgl.PaddedSharedLayout(vec=1, per_phase=1, max_phase=1, order=[0])
+        smem_layout: ttgl.constexpr = ttgl.PaddedSharedLayout.with_identity_for(interval_padding_pairs=[[32, 1]],
+                                                                                shape=[m, n], order=[1, 0])
         smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], smem_layout)
         smem_slice0 = smem.slice(SLICE_M_OFFSET, SLICE_M, dim=0)
         smem_slice1 = smem_slice0.slice(SLICE_N_OFFSET, SLICE_N, dim=1)
