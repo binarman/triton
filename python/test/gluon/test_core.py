@@ -822,12 +822,12 @@ def test_padded_shared_layout_subslice():
     slice_n_offset = 32
     num_warps = 1
     num_warps_cst = ttgl.constexpr(num_warps)
-    warp_size = ttgl.constexpr(THREADS_PER_WARP)
+    warp_size_cst = ttgl.constexpr(THREADS_PER_WARP)
 
     @gluon.jit
     def kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, SLICE_M_OFFSET: ttgl.constexpr,
                SLICE_N_OFFSET: ttgl.constexpr, SLICE_M: ttgl.constexpr, SLICE_N: ttgl.constexpr):
-        blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [warp_size, 1], [1, num_warps_cst], [1, 0])
+        blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [warp_size_cst, 1], [1, num_warps_cst], [1, 0])
         offs_m_load = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
         offs_n_load = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
         in_offs = offs_m_load[:, None] * N + offs_n_load[None, :]
@@ -835,7 +835,7 @@ def test_padded_shared_layout_subslice():
         in_data = ttgl.load(in_ptr + in_offs)
 
         smem_layout: ttgl.constexpr = ttgl.PaddedSharedLayout.with_identity_for(interval_padding_pairs=[[32, 1]],
-                                                                                shape=[m, n], order=[1, 0])
+                                                                                shape=[M, N], order=[1, 0])
         smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], smem_layout)
         smem_slice0 = smem.slice(SLICE_M_OFFSET, SLICE_M, dim=0)
         smem_slice1 = smem_slice0.slice(SLICE_N_OFFSET, SLICE_N, dim=1)
