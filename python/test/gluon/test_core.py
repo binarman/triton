@@ -813,7 +813,7 @@ def test_2d_tensor_early_return():
     assert compiled_kernel.asm["llir"].count("define") == 1
 
 
-@pytest.mark.parametrize("interval_pairs", [[[32, 1]], [[16, 1]], [[16, 1], [64, 2]]])
+@pytest.mark.parametrize("interval_pairs", [[[32, 4]], [[16, 4]], [[16, 4], [64, 8]]])
 @pytest.mark.parametrize("shared_order", [[0, 1], [1, 0]])
 @pytest.mark.parametrize("slice_m_offset, slice_n_offset, slice_m, slice_n", [(48, 16, 16, 16), (32, 48, 32, 16),
                                                                               (48, 32, 16, 32)])
