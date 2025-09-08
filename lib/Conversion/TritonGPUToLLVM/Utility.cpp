@@ -1221,9 +1221,6 @@ Value SharedMemoryObject::getShmemOffset(Location loc, RewriterBase &rewriter,
           dyn_cast<triton::gpu::PaddedSharedEncodingAttr>(
               srcTy.getEncoding())) {
     auto linearComponent = paddedSharedEncoding.getLinearComponent();
-    assert(linearComponent.getNumInDims() == 1 &&
-           linearComponent.getInDimNames().begin()->str() == "offset");
-
     return generateShmemOffset(loc, rewriter, offsets, linearComponent);
   }
 
