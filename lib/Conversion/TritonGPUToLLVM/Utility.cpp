@@ -1161,7 +1161,8 @@ SharedMemoryObject::getMaskSpanOffsets(triton::gpu::MemDescType srcTy) {
   LinearLayout totalLl;
   if (auto paddedEncoding = dyn_cast<triton::gpu::PaddedSharedEncodingAttr>(
           srcTy.getEncoding())) {
-    totalLl = paddedEncoding.getLinearComponent();
+    return 0;
+    // totalLl = paddedEncoding.getLinearComponent();
   } else {
     totalLl = triton::gpu::toLinearLayout(allocShape, srcTy.getEncoding());
   }
