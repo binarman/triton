@@ -817,7 +817,7 @@ def test_2d_tensor_early_return():
 @pytest.mark.parametrize(
     "shared_layout",
     [{"order": [0, 1]}, {"order": [1, 0]},
-     {"offsets": [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [1, 4], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]]}])
+     {"offsets": [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]]}])
 @pytest.mark.parametrize("slice_m_offset, slice_n_offset, slice_m, slice_n", [(48, 16, 16, 16), (32, 48, 32, 16),
                                                                               (48, 32, 16, 32)])
 def test_padded_shared_layout_subslice(interval_pairs, shared_layout, slice_m_offset, slice_n_offset, slice_m, slice_n):
