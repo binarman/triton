@@ -814,21 +814,27 @@ def test_2d_tensor_early_return():
 
 
 @pytest.mark.parametrize("interval_pairs", [[[32, 4]], [[16, 4]], [[16, 4], [64, 8]]])
-@pytest.mark.parametrize("shared_order", [[0, 1], [1, 0]])
+@pytest.mark.parametrize(
+    "shared_layout",
+    [{"order": [0, 1]}, {"order": [1, 0]},
+     {"offsets": [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [1, 4], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]]}])
 @pytest.mark.parametrize("slice_m_offset, slice_n_offset, slice_m, slice_n", [(48, 16, 16, 16), (32, 48, 32, 16),
                                                                               (48, 32, 16, 32)])
-def test_padded_shared_layout_subslice(interval_pairs, shared_order, slice_m_offset, slice_n_offset, slice_m, slice_n):
+def test_padded_shared_layout_subslice(interval_pairs, shared_layout, slice_m_offset, slice_n_offset, slice_m, slice_n):
     m = 64
     n = 64
     num_warps = 1
     num_warps_cst = ttgl.constexpr(num_warps)
     warp_size_cst = ttgl.constexpr(THREADS_PER_WARP)
-    interval_pairs_cst = ttgl.constexpr(interval_pairs)
-    shared_order_cst = ttgl.constexpr(shared_order)
 
-    smem_layout = ttgl.constexpr(
-        ttgl.PaddedSharedLayout.with_identity_for(interval_padding_pairs=interval_pairs_cst, shape=[m, n],
-                                                  order=shared_order_cst))
+    shape = [m, n]
+    if "order" in shared_layout:
+        order = shared_layout["order"]
+        smem_layout = ttgl.constexpr(ttgl.PaddedSharedLayout.with_identity_for(interval_pairs, shape, order))
+    elif "offsets" in shared_layout:
+        offsets = shared_layout["offsets"]
+        blocks = []
+        smem_layout = ttgl.constexpr(ttgl.PaddedSharedLayout(interval_pairs, offsets, blocks, shape))
 
     @gluon.jit
     def kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, SLICE_M_OFFSET: ttgl.constexpr,
