@@ -826,6 +826,10 @@ def test_padded_shared_layout_subslice(interval_pairs, shared_order, slice_m_off
     interval_pairs_cst = ttgl.constexpr(interval_pairs)
     shared_order_cst = ttgl.constexpr(shared_order)
 
+    smem_layout = ttgl.constexpr(
+        ttgl.PaddedSharedLayout.with_identity_for(interval_padding_pairs=interval_pairs_cst, shape=[m, n],
+                                                  order=shared_order_cst))
+
     @gluon.jit
     def kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, SLICE_M_OFFSET: ttgl.constexpr,
                SLICE_N_OFFSET: ttgl.constexpr, SLICE_M: ttgl.constexpr, SLICE_N: ttgl.constexpr):
@@ -836,8 +840,6 @@ def test_padded_shared_layout_subslice(interval_pairs, shared_order, slice_m_off
 
         in_data = ttgl.load(in_ptr + in_offs)
 
-        smem_layout: ttgl.constexpr = ttgl.PaddedSharedLayout.with_identity_for(
-            interval_padding_pairs=interval_pairs_cst, shape=[M, N], order=shared_order_cst)
         smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], smem_layout)
         smem_slice0 = smem.slice(SLICE_M_OFFSET, SLICE_M, dim=0)
         smem_slice1 = smem_slice0.slice(SLICE_N_OFFSET, SLICE_N, dim=1)
