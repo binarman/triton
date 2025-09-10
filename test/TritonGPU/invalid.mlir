@@ -463,6 +463,12 @@ tt.func @async_copy_invalid_other_type(%input: tensor<64x64x!tt.ptr<f16>, #block
 
 // -----
 
+#shared = #ttg.padded_shared<[4:+4] {shape=[1, 2, 4], order=[1, 0]}>
+// expected-error @below {{Mismatch in shape and order rank of padded layout}}
+!out_dim_too_large = !ttg.memdesc<1x2x4xf32, #shared, #ttg.shared_memory>
+
+// -----
+
 #shared = #ttg.padded_shared<[4:+4] {shape=[32, 32], order=[1, 0]}>
 #smem = #ttg.shared_memory
 tt.func public @padded_subview_unsupported_size(%arg0: !ttg.memdesc<2x32x32xf32, #shared, #smem>) {

@@ -1630,6 +1630,12 @@ Attribute PaddedSharedEncodingAttr::parse(AsmParser &parser, Type type) {
       }
     }
 
+    if (order.size() != shape.size()) {
+      parser.emitError(parser.getCurrentLocation(),
+                       "Mismatch in shape and order rank of padded layout");
+      return {};
+    }
+
     // Create identity mapping based on shape and order
     auto kOffset = StringAttr::get(parser.getContext(), "offset");
     maybeLL = identityStandardND(kOffset, shape, order);
