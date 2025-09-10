@@ -1742,8 +1742,8 @@ LogicalResult PaddedSharedEncodingAttr::verify(
     if (!llvm::all_of(dimBases, [&](const auto &basis) {
           return llvm::count_if(basis, nonZero) <= 1;
         })) {
-      // return emitError()
-      //        << "Each offset basis must move in at most one dimension.";
+      return emitError()
+             << "Each offset basis must move in at most one dimension.";
     }
     // Ensure all non zero elements are a power of 2. Combined with the
     // broadcast check above this prevents per element swizzling. The intent of
