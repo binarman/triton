@@ -988,4 +988,5 @@ def test_shared_store_load_duplicating_layout():
 
     kernel[(1, )](in_buffer, out_buffer, n, num_warps=num_warps)
 
+    print(out_buffer)
     assert (out_buffer == ref_output).all()
