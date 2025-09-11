@@ -952,3 +952,36 @@ def test_padded_shared_layout_subslice(interval_pairs, shared_layout, slice_m_of
     kernel[(1, )](input, output, m, n, slice_m_offset, slice_n_offset, slice_m, slice_n, num_warps=num_warps)
 
     assert (output == ref_output).all()
+
+
+def test_shared_store_load_duplicating_layout():
+    n = 64
+    num_warps = 1
+    num_warps_cst = ttgl.constexpr(num_warps)
+    warp_size_cst = ttgl.constexpr(THREADS_PER_WARP)
+    lane_bases = [[1 << i] for i in range(THREADS_PER_WARP) if 1 << i < THREADS_PER_WARP]
+    warp_bases = [[THREADS_PER_WARP << i] for i in range(num_warps) if 1 << i < num_warps]
+    linear: ttgl.constexpr = ttgl.DistributedLinearLayout(reg_bases=[2], lane_bases=lane_bases, warp_bases=warp_bases,
+                                                          block_bases=[], shape=[n])
+
+    @gluon.jit
+    def kernel(data_ptr, N: ttgl.constexpr):
+        blocked: ttgl.constexpr = ttgl.BlockedLayout([1], [warp_size_cst], [num_warps_cst], [0])
+        shared: ttgl.constexpr = ttgl.SwizzledSharedLayout(1, 1, 1, order=[0])
+
+        offs_load = ttgl.arange(0, N, linear)
+        in_data = ttgl.load(data_ptr + offs_load)
+
+        smem = ttgl.allocate_shared_memory(ttgl.int32, [N], shared, in_data)
+
+        out_data = smem.load(blocked)
+
+        offs_store = ttgl.arange(0, N, blocked)
+        ttgl.store(data_ptr + offs_store, out_data)
+
+    buffer = torch.arange(n, device="cuda").to(torch.int32)
+    ref_output = torch.arange(n, device="cuda").to(torch.int32)
+
+    kernel[(1, )](buffer, n, num_warps=num_warps)
+
+    assert (buffer == ref_output).all()
