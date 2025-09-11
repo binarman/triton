@@ -955,14 +955,17 @@ def test_padded_shared_layout_subslice(interval_pairs, shared_layout, slice_m_of
 
 
 def test_shared_store_load_duplicating_layout():
-    n = 64
     num_warps = 1
+    n = num_warps * THREADS_PER_WARP
     num_warps_cst = ttgl.constexpr(num_warps)
     warp_size_cst = ttgl.constexpr(THREADS_PER_WARP)
+
+    reg_bases = [[4]]
     lane_bases = [[1 << i] for i in range(THREADS_PER_WARP) if 1 << i < THREADS_PER_WARP]
     warp_bases = [[THREADS_PER_WARP << i] for i in range(num_warps) if 1 << i < num_warps]
-    linear: ttgl.constexpr = ttgl.DistributedLinearLayout(reg_bases=[[2]], lane_bases=lane_bases, warp_bases=warp_bases,
-                                                          block_bases=[], shape=[THREADS_PER_WARP * num_warps])
+    linear: ttgl.constexpr = ttgl.DistributedLinearLayout(reg_bases=reg_bases, lane_bases=lane_bases,
+                                                          warp_bases=warp_bases, block_bases=[],
+                                                          shape=[THREADS_PER_WARP * num_warps])
 
     @gluon.jit
     def kernel(data_ptr, N: ttgl.constexpr):
