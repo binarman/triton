@@ -961,7 +961,7 @@ def test_shared_store_load_duplicating_layout():
     warp_size_cst = ttgl.constexpr(THREADS_PER_WARP)
     lane_bases = [[1 << i] for i in range(THREADS_PER_WARP) if 1 << i < THREADS_PER_WARP]
     warp_bases = [[THREADS_PER_WARP << i] for i in range(num_warps) if 1 << i < num_warps]
-    linear: ttgl.constexpr = ttgl.DistributedLinearLayout(reg_bases=[2], lane_bases=lane_bases, warp_bases=warp_bases,
+    linear: ttgl.constexpr = ttgl.DistributedLinearLayout(reg_bases=[[2]], lane_bases=lane_bases, warp_bases=warp_bases,
                                                           block_bases=[], shape=[n])
 
     @gluon.jit
