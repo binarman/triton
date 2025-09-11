@@ -968,23 +968,24 @@ def test_shared_store_load_duplicating_layout():
                                                           shape=[THREADS_PER_WARP * num_warps])
 
     @gluon.jit
-    def kernel(data_ptr, N: ttgl.constexpr):
+    def kernel(in_ptr, out_ptr, N: ttgl.constexpr):
         blocked: ttgl.constexpr = ttgl.BlockedLayout([1], [warp_size_cst], [num_warps_cst], [0])
         shared: ttgl.constexpr = ttgl.SwizzledSharedLayout(1, 1, 1, order=[0])
 
         offs_load = ttgl.arange(0, N, linear)
-        in_data = ttgl.load(data_ptr + offs_load)
+        in_data = ttgl.load(in_ptr + offs_load)
 
         smem = ttgl.allocate_shared_memory(ttgl.int32, [N], shared, in_data)
 
         out_data = smem.load(blocked)
 
         offs_store = ttgl.arange(0, N, blocked)
-        ttgl.store(data_ptr + offs_store, out_data)
+        ttgl.store(out_ptr + offs_store, out_data)
 
-    buffer = torch.arange(n, device="cuda").to(torch.int32)
+    in_buffer = torch.arange(n, device="cuda").to(torch.int32)
+    out_buffer = torch.zeros((n), dtype=torch.int32, device="cuda")
     ref_output = torch.arange(n, device="cuda").to(torch.int32)
 
-    kernel[(1, )](buffer, n, num_warps=num_warps)
+    kernel[(1, )](in_buffer, out_buffer, n, num_warps=num_warps)
 
-    assert (buffer == ref_output).all()
+    assert (out_buffer == ref_output).all()
