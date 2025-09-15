@@ -1439,47 +1439,49 @@ def test_tensor_atomic_rmw(shape, axis, num_ctas, dtype_x_str, check_return_val,
             if RETURN_VAL:
                 tl.store(OLD + off1, old)
 
-    rs = RandomState(17)
-    x = numpy_random((shape0, shape1), dtype_str=dtype_x_str, rs=rs)
-    z_shape = (shape0, ) if axis == 1 else (shape1, )
-    z = numpy_random(z_shape, dtype_str=dtype_x_str, rs=rs)
-    old = np.zeros(z_shape, dtype=z.dtype)
-    # reference results
-    if x.dtype == np.float16:
-        # do the sum in float32 to reduce numerical variation
-        z_ref = z + np.sum(x.astype(np.float32), axis=axis, keepdims=False).astype(x.dtype)
-    else:
-        z_ref = z + np.sum(x, axis=axis, keepdims=False)
-    old_ref = np.copy(z)
-    # triton result
-    x_tri = to_triton(x, device=device, dst_type=dtype_x_str)
-    z_tri = to_triton(z, device=device, dst_type=dtype_x_str)
-    old_tri = to_triton(old, device=device, dst_type=dtype_x_str)
-
-    def torch_to_triton_dtype(t):
-        if t == torch.bfloat16:
-            return tl.bfloat16
-        if t == torch.float16:
-            return tl.float16
-        return None
-
-    kernel[(1, )](z_tri, x_tri, old_tri, axis, shape0, shape1, torch_to_triton_dtype(x_tri.dtype), check_return_val,
-                  num_ctas=num_ctas)
-
-    if dtype_x_str == 'bfloat16':
-        # trunc mantissa for a fair comparison of accuracy
-        z_ref = (z_ref.view('uint32') & np.uint32(0xffff0000)).view('float32')
-        old_ref = (old_ref.view('uint32') & np.uint32(0xffff0000)).view('float32')
-        # mantissa trunc is not enough, bump up the relative tolerance as well
-        np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=0.5)
-        # check return vals, but use assert_allclose for bf16
+    #rs = RandomState(17)
+    for i in range(10000):
+        print(i)
+        x = numpy_random((shape0, shape1), dtype_str=dtype_x_str)
+        z_shape = (shape0, ) if axis == 1 else (shape1, )
+        z = numpy_random(z_shape, dtype_str=dtype_x_str)
+        old = np.zeros(z_shape, dtype=z.dtype)
+        # reference results
+        if x.dtype == np.float16:
+            # do the sum in float32 to reduce numerical variation
+            z_ref = z + np.sum(x.astype(np.float32), axis=axis, keepdims=False).astype(x.dtype)
+        else:
+            z_ref = z + np.sum(x, axis=axis, keepdims=False)
+        old_ref = np.copy(z)
+        # triton result
+        x_tri = to_triton(x, device=device, dst_type=dtype_x_str)
+        z_tri = to_triton(z, device=device, dst_type=dtype_x_str)
+        old_tri = to_triton(old, device=device, dst_type=dtype_x_str)
+  
+        def torch_to_triton_dtype(t):
+            if t == torch.bfloat16:
+                return tl.bfloat16
+            if t == torch.float16:
+                return tl.float16
+            return None
+  
+        kernel[(1, )](z_tri, x_tri, old_tri, axis, shape0, shape1, torch_to_triton_dtype(x_tri.dtype), check_return_val,
+                      num_ctas=num_ctas)
+  
+        if dtype_x_str == 'bfloat16':
+            # trunc mantissa for a fair comparison of accuracy
+            z_ref = (z_ref.view('uint32') & np.uint32(0xffff0000)).view('float32')
+            old_ref = (old_ref.view('uint32') & np.uint32(0xffff0000)).view('float32')
+            # mantissa trunc is not enough, bump up the relative tolerance as well
+            np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=0.5)
+            # check return vals, but use assert_allclose for bf16
+            if check_return_val:
+                np.testing.assert_allclose(old_ref, to_numpy(old_tri), rtol=0.5)
+            return
+    
+        np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=1e-4)
         if check_return_val:
-            np.testing.assert_allclose(old_ref, to_numpy(old_tri), rtol=0.5)
-        return
-
-    np.testing.assert_allclose(z_ref, to_numpy(z_tri), rtol=1e-4)
-    if check_return_val:
-        np.testing.assert_equal(old_ref, to_numpy(old_tri))
+            np.testing.assert_equal(old_ref, to_numpy(old_tri))
 
 
 @pytest.mark.interpreter
