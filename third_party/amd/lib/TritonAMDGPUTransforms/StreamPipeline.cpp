@@ -282,6 +282,21 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
                << tempAttr);
           sharedEncs.push_back(tempAttr);
         }
+      } else {
+        auto loadEncoding = dyn_cast<ttg::BlockedEncodingAttr>(
+            dyn_cast<RankedTensorType>(loadedValue.getType()).getEncoding());
+        auto sizePerThread = loadEncoding.getSizePerThread();
+        auto threadsShape = loadEncoding.getThreadsPerWarp();
+        auto order = loadEncoding.getOrder();
+
+        int vecSize = sizePerThread[order[0]];
+        int maxPhase = threadsShape[order[1]];
+        tempAttr = ttg::SwizzledSharedEncodingAttr::get(
+            loadedValue.getContext(), vecSize, 1, maxPhase, order,
+            loadEncoding.getCTALayout());
+        LDBG("Deduced shared encoding candidate from blocked layout: "
+             << tempAttr);
+        sharedEncs.push_back(tempAttr);
       }
     }
   }
