@@ -10,6 +10,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 #include "triton/Dialect/TritonGPU/Transforms/Schedule.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
+#include "triton/Tools/GenericSwizzling.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include <variant>
@@ -105,7 +106,7 @@ Operation *streamPredication(RewriterBase &rewriter, Operation *op,
 
 struct LoadInfo {
   // Shared layout is used for loads feeding into dot ops.
-  ttg::SwizzledSharedEncodingAttr sharedEncoding = nullptr;
+  ttg::SharedEncodingTrait sharedEncoding = nullptr;
   // The distance of this load's stage to its use' stage.
   int distToUse = 0;
   Operation *use = nullptr;
@@ -216,21 +217,21 @@ ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx,
 // If all the transitive uses of the given value have are used by a convert to
 // the same dot operand encoding, return true and get the shared encoding that
 // needs to be used to be compatible with users' layouts.
-std::optional<ttg::SwizzledSharedEncodingAttr>
+std::optional<ttg::SharedEncodingTrait>
 getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
-  llvm::SmallVector<ttg::SwizzledSharedEncodingAttr> sharedEncs;
+  llvm::SmallVector<ttg::SharedEncodingTrait> sharedEncs;
   for (Operation *user : loadedValue.getUsers()) {
     LDBG(" getSharedEncIfAllUsersAreDotEnc current user: " << *user);
     if (user->getNumResults() != 1)
       return std::nullopt;
 
-    ttg::SwizzledSharedEncodingAttr tempAttr;
+    ttg::SharedEncodingTrait tempAttr;
     Value userResult = user->getResult(0);
     Type userResType = userResult.getType();
     if (auto memDesc = dyn_cast<ttg::MemDescType>(userResType)) {
       // First time we find a shared encoding in the chain, save it and try to
       // use it if it is compatible with the other users.
-      tempAttr = cast<ttg::SwizzledSharedEncodingAttr>(memDesc.getEncoding());
+      tempAttr = cast<ttg::SharedEncodingTrait>(memDesc.getEncoding());
       LDBG("Deduced shared encoding candidate from memDesc: " << tempAttr);
       if (!getSharedEncIfAllUsersAreDotEnc(userResult).has_value()) {
         return std::nullopt;
@@ -283,6 +284,13 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
           sharedEncs.push_back(tempAttr);
         }
       } else {
+#if 0
+        auto srcLL = triton::gpu::toLinearLayout(srcTy);
+        auto dstLL = triton::gpu::toLinearLayout(cast<ttg::TensorOrMemDesc>(userResType));
+        triton::LinearLayout swizzling = triton::gpu::optimalSwizzlingLdSt(srcLL, dstLL, bitWidth);
+        llvm::errs () << swizzling << "\n";
+        tempAttr = ttg::SharedLinearEncodingAttr::get(loadedValue.getContext(), swizzling, bitWidth/8);
+#else
         auto loadEncoding = dyn_cast<ttg::BlockedEncodingAttr>(
             dyn_cast<RankedTensorType>(loadedValue.getType()).getEncoding());
         auto sizePerThread = loadEncoding.getSizePerThread();
@@ -300,6 +308,7 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
         tempAttr = ttg::SwizzledSharedEncodingAttr::get(
             loadedValue.getContext(), vecSize, perPhase, maxPhase, order,
             loadEncoding.getCTALayout());
+#endif
         LDBG("Deduced shared encoding candidate from blocked layout: "
              << tempAttr);
         sharedEncs.push_back(tempAttr);
@@ -320,15 +329,15 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
     return std::nullopt;
   auto maxVecSharedEnc = sharedEncs.front();
 
-  for (auto sharedEnc : sharedEncs) {
-    if (!equalSharedEncIgnoreVec(sharedEnc, maxVecSharedEnc)) {
-      LDBG("Incompatible shared encodings");
-      return std::nullopt;
-    }
-    if (sharedEnc.getVec() > maxVecSharedEnc.getVec()) {
-      maxVecSharedEnc = sharedEnc;
-    }
-  }
+  // for (auto sharedEnc : sharedEncs) {
+  //   if (!equalSharedEncIgnoreVec(sharedEnc, maxVecSharedEnc)) {
+  //     LDBG("Incompatible shared encodings");
+  //     return std::nullopt;
+  //   }
+  //   if (sharedEnc.getVec() > maxVecSharedEnc.getVec()) {
+  //     maxVecSharedEnc = sharedEnc;
+  //   }
+  // }
 
   LDBG("Deduced shared encoding: " << maxVecSharedEnc);
 
