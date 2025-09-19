@@ -290,9 +290,15 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
         auto order = loadEncoding.getOrder();
 
         int vecSize = sizePerThread[order[0]];
-        int maxPhase = threadsShape[order[1]];
+        int numBanks = 64;
+        int perPhase =
+            (32 * numBanks) / (srcTy.getShape()[order[0]] * bitWidth);
+        if (perPhase == 0)
+          perPhase = 1;
+        int maxPhase = threadsShape[order[1]] / perPhase;
+        vecSize = sizePerThread[order[0]];
         tempAttr = ttg::SwizzledSharedEncodingAttr::get(
-            loadedValue.getContext(), vecSize, 1, maxPhase, order,
+            loadedValue.getContext(), vecSize, perPhase, maxPhase, order,
             loadEncoding.getCTALayout());
         LDBG("Deduced shared encoding candidate from blocked layout: "
              << tempAttr);
