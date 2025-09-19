@@ -284,12 +284,18 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
           sharedEncs.push_back(tempAttr);
         }
       } else {
-#if 0
+#if 1
+        auto ctx = loadedValue.getContext();
         auto srcLL = triton::gpu::toLinearLayout(srcTy);
-        auto dstLL = triton::gpu::toLinearLayout(cast<ttg::TensorOrMemDesc>(userResType));
-        triton::LinearLayout swizzling = triton::gpu::optimalSwizzlingLdSt(srcLL, dstLL, bitWidth);
-        llvm::errs () << swizzling << "\n";
-        tempAttr = ttg::SharedLinearEncodingAttr::get(loadedValue.getContext(), swizzling, bitWidth/8);
+        auto dstLL = triton::gpu::toLinearLayout(
+            cast<ttg::TensorOrMemDesc>(userResType));
+        triton::LinearLayout smem =
+            triton::gpu::optimalSwizzlingLdSt(srcLL, dstLL, bitWidth);
+        llvm::errs() << smem << "\n";
+        auto kOffset = mlir::StringAttr::get(ctx, "offset");
+        smem = smem.reshapeIns({{kOffset, smem.getTotalInDimSize()}});
+
+        tempAttr = ttg::SharedLinearEncodingAttr::get(ctx, smem, bitWidth / 8);
 #else
         auto loadEncoding = dyn_cast<ttg::BlockedEncodingAttr>(
             dyn_cast<RankedTensorType>(loadedValue.getType()).getEncoding());
