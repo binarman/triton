@@ -291,9 +291,10 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
             cast<ttg::TensorOrMemDesc>(userResType));
         triton::LinearLayout smem =
             triton::gpu::optimalSwizzlingLdSt(srcLL, dstLL, bitWidth);
-        llvm::errs() << smem << "\n";
         auto kOffset = mlir::StringAttr::get(ctx, "offset");
-        smem = smem.reshapeIns({{kOffset, smem.getTotalInDimSize()}});
+        auto kBlock = mlir::StringAttr::get(ctx, "block");
+        smem =
+            smem.reshapeIns({{kOffset, smem.getTotalInDimSize()}, {kBlock, 1}});
 
         tempAttr = ttg::SharedLinearEncodingAttr::get(ctx, smem, bitWidth / 8);
 #else
