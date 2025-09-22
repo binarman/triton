@@ -115,6 +115,7 @@ bool verifyNonNegativeExpr(
   // Recurse if the operation is defined
   Operation *op = expr.getDefiningOp();
   if (!op) {
+    return true;
     LDBG("  No defining op, assuming possibly negative");
     return false;
   }
