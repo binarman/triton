@@ -284,7 +284,7 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
           sharedEncs.push_back(tempAttr);
         }
       } else {
-#if 1
+#if 0
         auto ctx = loadedValue.getContext();
         auto srcLL = triton::gpu::toLinearLayout(srcTy);
         auto dstLL = triton::gpu::toLinearLayout(
