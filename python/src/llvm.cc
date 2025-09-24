@@ -81,6 +81,11 @@ std::string translateLLVMIRToASM(llvm::Module &module,
     assert(shortPtr);
     shortPtr->setValue(true);
   }
+
+  auto *customSchedStrategy = static_cast<llvm::cl::opt<std::string> *>(
+      options["amdgpu-sched-strategy"]);
+  customSchedStrategy->setValue("iterative-ilp");
+
   if (triton::tools::getBoolEnv("LLVM_IR_ENABLE_DUMP")) {
     auto optIt = options.find("print-after-all");
     if (optIt != options.end()) {
