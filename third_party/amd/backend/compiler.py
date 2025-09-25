@@ -72,6 +72,9 @@ class HIPOptions:
     # schedule_hint="attention,iterative-ilp-scheduler"
     schedule_hint: str = 'none'
 
+    # This flag is to force to lower all global memory access ops to buffer ops
+    force_buffer_ops: bool = False
+
     def __post_init__(self):
         gfx_major = int(self.arch[3:-2])  # Drop "gfx" prefix and minor/patch number
         warp_size = 32 if gfx_major >= 10 else 64
@@ -245,10 +248,11 @@ class HIPBackend(BaseBackend):
         if use_block_pingpong and options.num_stages > 1:
             amd.passes.ttgpuir.add_block_pingpong(pm, options.num_stages)
 
-        if knobs.amd.use_buffer_ops:
+        if knobs.amd.use_buffer_ops or options.force_buffer_ops:
             amd.passes.ttgpuir.add_canonicalize_pointers(pm)
             passes.common.add_canonicalizer(pm)
-            amd.passes.ttgpuir.add_convert_to_buffer_ops(pm, options.arch, knobs.amd.use_buffer_atomics)
+            amd.passes.ttgpuir.add_convert_to_buffer_ops(pm, options.arch, knobs.amd.use_buffer_atomics,
+                                                         options.force_buffer_ops)
 
         amd.passes.ttgpuir.add_fold_true_cmpi(pm)
         passes.common.add_canonicalizer(pm)
