@@ -2,6 +2,7 @@
 #include "pybind11/pybind11.h"
 #include <pybind11/stl.h>
 
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
@@ -23,6 +24,7 @@ namespace ttg = triton::gpu;
 namespace ttng = triton::nvidia_gpu;
 namespace gluon = mlir::triton::gluon;
 namespace ttag = mlir::triton::amdgpu;
+namespace rocdl = mlir::ROCDL;
 
 // Helper to check if an MLIR type or attribute has a verifier method.
 template <typename AttrOrType>
@@ -798,6 +800,14 @@ void init_gluon_ir(py::module &&m) {
       .def("create_async_tdm_wait", [](GluonOpBuilder &self, int num) {
         ValueRange tokens;
         self.create<ttag::AsyncTDMWait>(tokens, num);
+           })
+      .def("create_sched_barrier",
+           [](GluonOpBuilder &self, unsigned mask) {
+             self.create<rocdl::SchedBarrier>(mask);
+           })
+      .def("create_sched_group_barrier", [](GluonOpBuilder &self, unsigned mask,
+                                            unsigned size, unsigned groupId) {
+        self.create<rocdl::SchedGroupBarrier>(mask, size, groupId);
       });
 
   py::class_<ttg::WarpSpecializeOp, OpState>(m, "WarpSpecializeOp",
