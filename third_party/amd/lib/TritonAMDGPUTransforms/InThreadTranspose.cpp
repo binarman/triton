@@ -807,6 +807,7 @@ createSharedLayoutCandidates(const GlobalToSharedMemoryOpChain &pattern,
                                  [](tt::LoadOp l) { return l.getMask(); });
 
   if (maskedLoad) {
+    llvm::errs() << "creating padded layout";
     auto paddedCandidate =
         createPaddedSharedEncoding(newBlockedEnc, localLoad.getType());
     candidates.push_back(paddedCandidate);
