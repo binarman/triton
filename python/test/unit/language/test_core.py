@@ -8118,3 +8118,32 @@ def test_tensor_member(device):
         tl.device_assert(tl.sum(x) == x.sum())
 
     kernel[(1, )]()
+
+
+def test_schedule_hint(device):
+
+    @triton.jit
+    def kernel(X, Y, Z, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):
+        off_m = tl.arange(0, BLOCK_M)
+        off_n = tl.arange(0, BLOCK_N)
+        off_k = tl.arange(0, BLOCK_K)
+        Xs = X + off_m[:, None] * BLOCK_K + off_k[None, :] * 1
+        Ys = Y + off_k[:, None] * 1 + off_n[None, :] * BLOCK_K
+        Zs = Z + off_m[:, None] * BLOCK_N + off_n[None, :] * 1
+        x = tl.load(Xs)
+        y = tl.load(Ys)
+        z = tl.dot(x, y)
+        tl.store(Zs, z)
+
+    # input
+    rs = RandomState(17)
+    M = 128
+    N = 128
+    K = 128
+    x = torch.rand((M, K), dtype=torch.flaot32)
+    y = torch.rand((N, K), dtype=torch.flaot32)
+    z = torch.zeros((M, N), dtype=torch.flaot32)
+
+    pgm = kernel[(1, 1)](x, y, z, M, N, K)
+
+    print(dir(pgm))
