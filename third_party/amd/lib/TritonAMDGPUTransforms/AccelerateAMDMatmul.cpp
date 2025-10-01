@@ -628,7 +628,7 @@ public:
     // TODO (lixun): relax the condition for 8-bit elementTy.
     auto is16BitElemTy = (aElemTy.isF16() || aElemTy.isBF16());
     if (is16BitElemTy && isDotChainTail) {
-      kWidth = 4;
+      kWidth = 8;
     }
 
     Value newDot;
