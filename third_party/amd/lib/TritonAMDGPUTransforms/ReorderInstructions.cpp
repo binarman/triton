@@ -134,6 +134,20 @@ static void sinkDotConversion(triton::FuncOp funcOp) {
     kv.first->moveBefore(kv.second);
 }
 
+// float dealloc to the top of block, but below any local operation in this
+// block This helps to decouples layout conversions in moveDownConversion
+static void moveUpDealloc(triton::FuncOp funcOp) {
+  funcOp.walk([&](triton::gpu::LocalDeallocOp op) {
+    auto curr = mlir::Block::reverse_iterator(op);
+    auto begin = op->getBlock()->rend();
+    for (; curr != begin; curr++)
+      if (isa<triton::gpu::LocalLoadOp, triton::gpu::LocalAllocOp,
+              triton::gpu::LocalStoreOp>(*curr))
+        break;
+    op->moveBefore(&*curr);
+  });
+}
+
 // Sink conversion after the last dealloc but before the first use in its block.
 // This helps to avoid unnecessary shared memory allocation.
 static void moveDownCoversion(triton::FuncOp funcOp) {
@@ -308,6 +322,7 @@ struct TritonAMDGPUReorderInstructionsPass
     ModuleOp m = getOperation();
     for (auto funcOp : m.getOps<triton::FuncOp>()) {
       sinkDotConversion(funcOp);
+      moveUpDealloc(funcOp);
       moveDownCoversion(funcOp);
 
       moveUpTranspose(funcOp);

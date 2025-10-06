@@ -62,6 +62,17 @@ public:
   void runOnOperation() override {
     ModuleOp m = getOperation();
     mlir::DominanceInfo dom(m);
+    // float dealloc to the top of block, but below any local operation in this
+    // block
+    m.walk([&](triton::gpu::LocalDeallocOp op) {
+      auto curr = mlir::Block::reverse_iterator(op);
+      auto begin = op->getBlock()->rend();
+      for (; curr != begin; curr++)
+        if (isa<triton::gpu::LocalLoadOp, triton::gpu::LocalAllocOp,
+                triton::gpu::LocalStoreOp>(*curr))
+          break;
+      op->moveBefore(&*curr);
+    });
     // sink conversion after the last dealloc
     // before the first use ancestor in its block
     m.walk([&](triton::gpu::ConvertLayoutOp op) {

@@ -180,6 +180,28 @@ class OptimizeAMDLDSUsage
     }
 
     if (minIdx == -1 || minLDSUsage > targetLDSSize) {
+      // last chance to try match pattern and just remove convert layout op
+      // entirely
+      auto srcDefiningOp = cvtOp.getSrc().getDefiningOp();
+      if (isa<triton::LoadOp>(srcDefiningOp) &&
+          cvtOp.getSrc().getNumUses() == 1) {
+        cvtOp.replaceAllUsesWith(cvtOp.getSrc());
+        auto loadOp = dyn_cast<triton::LoadOp>(srcDefiningOp);
+        loadOp->getResult(0).setType(dstType);
+        builder.setInsertionPoint(loadOp);
+        for (int operandIdx = 0; operandIdx < loadOp.getNumOperands();
+             operandIdx++) {
+          auto operand = loadOp.getOperand(operandIdx);
+          RankedTensorType oldOperandType =
+              dyn_cast<RankedTensorType>(operand.getType());
+          RankedTensorType newOperandType =
+              oldOperandType.cloneWithEncoding(dstEnc);
+          auto newOperand = builder.create<triton::gpu::ConvertLayoutOp>(
+              operand.getLoc(), newOperandType, operand);
+          loadOp.setOperand(operandIdx, newOperand);
+        }
+        cvtOp.erase();
+      }
       return;
     }
     assert(minIdx >= 0 && minIdx < tmpLayouts.size());
