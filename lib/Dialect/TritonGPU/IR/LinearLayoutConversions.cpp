@@ -533,7 +533,7 @@ LinearLayout chooseLLDsReadB64TrLayout(Attribute enc, ArrayRef<int64_t> shape,
   // 4 lane bases describe 16 lanes.
   unsigned numLaneBases = 4;
 
-  auto ldsTransLayout = triton::gpu::toLinearLayout(shape, enc);
+  auto ldsTransLayout = triton::gpu::toLinearLayout(shape, enc, {});
   auto bases = ldsTransLayout.getBases();
   auto kRegister = S("register");
   auto kLane = S("lane");
