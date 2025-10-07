@@ -201,40 +201,30 @@ py::object layoutToGluon(Attribute layout) {
     auto isFP32 = !amdMfma.getElementType().has_value() ||
                   amdMfma.getElementType().value().isF32();
 
-<<<<<<< HEAD
-    return layouts.AMDMFMALayout(amdMfma.getVersion(), instrShape,
-                                 amdMfma.getIsTransposed(),
-                                 toStdVector(amdMfma.getWarpsPerCTA()),
-                                 toStdVector(amdMfma.getTilesPerWarp()),
-                                 layouts.GluonDType(isFP32 ? "fp32" : "fp64"),
-                                 toStdVector(ctaLayout.getCTAsPerCGA()),
-                                 toStdVector(ctaLayout.getCTASplitNum()),
-                                 toStdVector(ctaLayout.getCTAOrder()));
-=======
     return layouts.AMDMFMALayout(
         amdMfma.getVersion(), instrShape, amdMfma.getIsTransposed(),
-        toStdVector(amdMfma.getWarpsPerCTA()), layouts.GluonDType(typeName),
+        toStdVector(amdMfma.getWarpsPerCTA()), layouts.GluonDType(amdMfma.getElementType()),
         toStdVector(amdMfma.getTilesPerWarp()),
         toStdVector(ctaLayout.getCTAsPerCGA()),
         toStdVector(ctaLayout.getCTASplitNum()),
         toStdVector(ctaLayout.getCTAOrder()));
-  } else if (auto paddedShared =
-                 dyn_cast<ttg::PaddedSharedEncodingAttr>(layout)) {
-    auto *ctx = paddedShared.getContext();
-    std::vector<std::pair<unsigned, unsigned>> intervalPaddingPairs;
-    for (auto [interval, padding] :
-         llvm::zip(paddedShared.getIntervals(), paddedShared.getPaddings())) {
-      intervalPaddingPairs.push_back({interval, padding});
-    }
-    auto kOffset = mlir::StringAttr::get(ctx, "offset");
-    auto kBlock = mlir::StringAttr::get(ctx, "block");
-    const auto &ll = paddedShared.getLinearComponent();
-    auto shape = toStdVector(ll.getOutDimSizes());
-    return layouts.PaddedSharedLayout(intervalPaddingPairs,
-                                      ll.getBases().lookup(kOffset),
-                                      ll.getBases().lookup(kBlock), shape);
->>>>>>> e174882453 ([BACKEND] Add linear remapping to padded shared layout (#7929))
   }
+//   else if (auto paddedShared =
+//                  dyn_cast<ttg::PaddedSharedEncodingAttr>(layout)) {
+//     auto *ctx = paddedShared.getContext();
+//     std::vector<std::pair<unsigned, unsigned>> intervalPaddingPairs;
+//     for (auto [interval, padding] :
+//          llvm::zip(paddedShared.getIntervals(), paddedShared.getPaddings())) {
+//       intervalPaddingPairs.push_back({interval, padding});
+//     }
+//     auto kOffset = mlir::StringAttr::get(ctx, "offset");
+//     auto kBlock = mlir::StringAttr::get(ctx, "block");
+//     const auto &ll = paddedShared.getLinearComponent();
+//     auto shape = toStdVector(ll.getOutDimSizes());
+//     return layouts.PaddedSharedLayout(intervalPaddingPairs,
+//                                       ll.getBases().lookup(kOffset),
+//                                       ll.getBases().lookup(kBlock), shape);
+//   }
 
   throw py::value_error("Unhandled encoding encountered");
 }

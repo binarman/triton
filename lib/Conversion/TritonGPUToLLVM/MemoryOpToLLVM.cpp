@@ -29,14 +29,9 @@ LogicalResult lowerLocalStore(Location loc, MLIRContext *ctx, Value regVal,
   auto paddedLayout =
       dyn_cast<triton::gpu::PaddedSharedEncodingAttr>(memDescTy.getEncoding());
   LinearLayout cvt = LinearLayout::empty();
-<<<<<<< HEAD
   if (paddedLayout) {
-    cvt = regLayout.reshapeOuts({{kOffset, regLayout.getTotalOutDimSize()}});
-=======
-  if (paddedEnc) {
-    const auto &sharedLL = paddedEnc.getLinearComponent();
+    const auto &sharedLL = paddedLayout.getLinearComponent();
     cvt = regLayout.invertAndCompose(sharedLL);
->>>>>>> e174882453 ([BACKEND] Add linear remapping to padded shared layout (#7929))
   } else {
     auto sharedLayout = toLinearLayout(memDescTy);
     cvt = regLayout.invertAndCompose(sharedLayout);
@@ -172,8 +167,8 @@ public:
     auto paddedLayout =
         dyn_cast<triton::gpu::PaddedSharedEncodingAttr>(sharedEnc);
     LinearLayout cvt = LinearLayout::empty();
-    if (paddedEnc) {
-      const auto &sharedLL = paddedEnc.getLinearComponent();
+    if (paddedLayout) {
+      const auto &sharedLL = paddedLayout.getLinearComponent();
       cvt = regLayout.invertAndCompose(sharedLL);
     } else {
       auto sharedLayout = toLinearLayout(memDescTy);

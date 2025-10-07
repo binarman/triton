@@ -2489,9 +2489,6 @@ struct TritonGPUInferLayoutInterface
       return success();
     }
 
-<<<<<<< HEAD
-    auto ll = toLinearLayout(shape, operandEncoding, {});
-=======
     if (auto enc = dyn_cast<PaddedSharedEncodingAttr>(operandEncoding)) {
       if (failed(checkRank(enc.getRank())))
         return failure();
@@ -2502,8 +2499,7 @@ struct TritonGPUInferLayoutInterface
       return success();
     }
 
-    auto ll = toLinearLayout(shape, operandEncoding);
->>>>>>> e174882453 ([BACKEND] Add linear remapping to padded shared layout (#7929))
+    auto ll = toLinearLayout(shape, operandEncoding, {});
     auto transposedLl = transposeLinearLayout(ll, order);
     resultEncoding = LinearEncodingAttr::get(ctx, std::move(transposedLl));
     return success();
