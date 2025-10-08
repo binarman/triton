@@ -140,6 +140,14 @@ def TritonAMDGPUReorderInstructions: Pass<"tritonamdgpu-reorder-instructions", "
   let dependentDialects = [];
 }
 
+def TritonAMDGPUSimplifyConvertLayout: Pass<"tritonamdgpu-simplify-convert-layout", "mlir::triton::FuncOp"> {
+  let summary = "Simplify convert layout operations";
+
+  let description = "This pass changes layout of convert layout operations to make them use only intra warp data transfers.";
+
+  let dependentDialects = [];
+}
+
 def TritonAMDGPUConvertToBufferOps : Pass<"tritonamdgpu-convert-buffer-ops", "mlir::ModuleOp"> {
   let summary = "Convert memory operations to buffer operations";
 
