@@ -414,8 +414,6 @@ class SwizzledSharedLayout(SharedLayout):
             return "_".join(map(str, x))
 
         return f"SSS_{self.vec}_{self.per_phase}_{self.max_phase}_{stringify(self.order)}_{stringify(self.ctas_per_cga)}_{stringify(self.cta_split_num)}_{stringify(self.cta_order)}_SSS"
-<<<<<<< HEAD
-=======
 
     def __hash__(self):
         return hash((self.vec, self.per_phase, self.max_phase,
@@ -579,4 +577,3 @@ def warps_per_cta(layout, shape):
         return warps_per_cta(layout.parent, shape)
     else:
         return layout.warps_per_cta
->>>>>>> e174882453 ([BACKEND] Add linear remapping to padded shared layout (#7929))
