@@ -239,7 +239,7 @@ class HIPBackend(BaseBackend):
         amd.passes.ttgpuir.add_reorder_instructions(pm)
         if use_block_pingpong and options.num_stages > 1:
             amd.passes.ttgpuir.add_block_pingpong(pm, options.num_stages)
-        amd.passes.ttgir.add_simplify_convert_layout(pm)
+        amd.passes.ttgpuir.add_simplify_convert_layout(pm)
 
         if knobs.amd.use_buffer_ops:
             amd.passes.ttgpuir.add_canonicalize_pointers(pm)
