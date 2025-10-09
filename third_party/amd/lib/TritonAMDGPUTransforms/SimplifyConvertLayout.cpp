@@ -91,13 +91,17 @@ public:
     auto srcDefiningOp = srcVal.getDefiningOp();
     bool matchLoadConvertPattern =
         isa<triton::LoadOp>(srcDefiningOp) && srcVal.getNumUses() == 1;
+    if (!matchLoadConvertPattern) {
+      LDBG("Operation does not have load as a direct predecessor");
+      return success();
+    }
 
     auto srcLL = ttg::toLinearLayout(srcType);
     auto dstLL = ttg::toLinearLayout(dstType);
     bool interWarpConversion = isEqualBasis(srcLL, dstLL, "warp") &&
                                isEqualBasis(srcLL, dstLL, "block");
-    if (!matchLoadConvertPattern || !interWarpConversion) {
-      LDBG("Operation is not suitable");
+    if (interWarpConversion) {
+      LDBG("Operation is already intra-warp");
       return success();
     }
     LDBG("Processing suitable operation");
