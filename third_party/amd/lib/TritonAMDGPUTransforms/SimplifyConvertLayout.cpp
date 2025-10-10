@@ -33,6 +33,13 @@ public:
   LinearLayout generateNewLoadLayout(LinearLayout oldLoadLL,
                                      LinearLayout convertLL,
                                      int max_vectorization) const {
+    // Algorithm works like this:
+    // 1. find bases not covered by warp and block dimensions of convertLL
+    // 2. push as much as possible bases from fastest dimension into registers
+    // 3. push as much as possible bases into lanes
+    // 4. push the rest of bases into registers, they will become repeats.
+    // 5. combine computed register+lanes and warps+blocks from convertLL
+    //
     // Consider this example:
     // oldLoadLL = #ttg.linear<{
     //     register = [[128, 0]],
@@ -52,7 +59,12 @@ public:
     //                                    warpsPerCTA = [8, 1],
     //                                    order = [1, 0]}>
     //
-    // Result layout will be
+    // 1. Bases not covered by warps and blocks in convertLL:
+    //     [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [64, 0], [128, 0]
+    // 2. register = [[0, 1], [0, 2]]
+    // 3. lanes = [[1, 0], [2, 0], [4, 0], [8, 0], [64, 0], [128, 0]]
+    // 4. there are no more bases left, no repeats.
+    // 5. Combined result layout:
     // #ttg.linear<{
     //     register = [[0, 1], [0, 2]],
     //     lane = [[1, 0], [2, 0], [4, 0], [8, 0], [64, 0], [128, 0]],
@@ -60,15 +72,19 @@ public:
     //     block = []
     // }>
 
-    // take warp and block layout from convertLL
-    // try to fit as much as possible by threads withou duplication
-    // maximize number of registers in find fast dimension, up to
-    // max_vectorization Try to fit as much bases in lanes as possible
+    // Heuristic considers that oldLoadLL is coalesced and we want to save as
+    // much as possible from this original layout, First we try to bread
+    // registers into tow parts: repeats and vector part, set of oldLoadLL bases
+    // is L(Lr - register part, Ll - lane part, Lw - warp part, Lb - block part)
+    // set of convertLL bases is C(same sub-indexing as in L)
+    // compute repeats
 
-    // find memory order from old layout
-    // make list of complement bases C
-    // find if there are sequential bases along fast dimension in C, put them in
-    // registers up to max_vectorization sort them in memory order and in order
+    // auto rank = oldLoadLL.getNumOutDims();
+    // SmallVector<unsigned> order(rank);
+    // std::iota(order.rbegin(), order.rend(), 0);
+
+    // return orderPerDim(StringAttr::get(getContext(), "register"), order);
+    // auto globalMemOrder = triton::gpu::getOrder(oldLoadLL, shape);
     return convertLL;
   }
 

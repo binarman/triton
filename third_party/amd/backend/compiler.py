@@ -231,6 +231,7 @@ class HIPBackend(BaseBackend):
         passes.common.add_canonicalizer(pm)
         if options.schedule_hint.lower() != "none":
             amd.passes.ttgpuir.insert_instruction_sched_hints(pm, options.schedule_hint)
+        amd.passes.ttgpuir.add_simplify_convert_layout(pm)
         passes.ttgpuir.add_remove_layout_conversions(pm)
         passes.ttgpuir.add_reduce_data_duplication(pm)
         if is_in_thread_transpose_enabled(options.arch):
@@ -239,7 +240,6 @@ class HIPBackend(BaseBackend):
         amd.passes.ttgpuir.add_reorder_instructions(pm)
         if use_block_pingpong and options.num_stages > 1:
             amd.passes.ttgpuir.add_block_pingpong(pm, options.num_stages)
-        amd.passes.ttgpuir.add_simplify_convert_layout(pm)
 
         if knobs.amd.use_buffer_ops:
             amd.passes.ttgpuir.add_canonicalize_pointers(pm)
