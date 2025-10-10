@@ -27,12 +27,37 @@ public:
   LoadConvertPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpRewritePattern(context, benefit) {}
 
+  using Bases = std::vector<std::vector<int32_t>>;
+
+  static Bases joinBases(const Bases &a, const Bases &b) {
+    std::set<std::vector<int32_t>> resultSet(a.begin(), a.end());
+    Bases result = a;
+    for (auto base : b) {
+      if (resultSet.count(base) == 0) {
+        result.push_back(base);
+        resultSet.insert(base);
+      }
+    }
+    return result;
+  }
+
+  static Bases differenceBases(const Bases &a, const Bases &b) {
+    std::set<std::vector<int32_t>> setB(b.begin(), b.end());
+    Bases result;
+    for (auto base : a)
+      if (setB.count(base) == 0)
+        result.push_back(base);
+    return result;
+  }
+
   // Create new src layout for convert layout operation, which has same
   // warp/block distribution as convertLL layout Algorithm is designed to
   // maximize vectorization and minimize number of final load instrcutions.
   LinearLayout generateNewLoadLayout(LinearLayout oldLoadLL,
                                      LinearLayout convertLL,
                                      int max_vectorization) const {
+    assert(llvm::to_vector(oldLoadLL.getOutDimNames()) ==
+           llvm::to_vector(convertLL.getOutDimNames()));
     // Algorithm works like this:
     // 1. find bases not covered by warp and block dimensions of convertLL
     // 2. push as much as possible bases from fastest dimension into registers
@@ -72,12 +97,18 @@ public:
     //     block = []
     // }>
 
-    // Heuristic considers that oldLoadLL is coalesced and we want to save as
-    // much as possible from this original layout, First we try to bread
+    // Heuristic assumes that oldLoadLL is coalesced and we want to save as
+    // much as possible from this original load layout.
     // registers into tow parts: repeats and vector part, set of oldLoadLL bases
     // is L(Lr - register part, Ll - lane part, Lw - warp part, Lb - block part)
     // set of convertLL bases is C(same sub-indexing as in L)
-    // compute repeats
+
+    // these are bases we want to preserve in r + l: P = (Lr U Ll) - (Lw U Cb)
+
+    // order bases p
+    // put up to max_vectorization in registers
+    // put as much as possible bases in lanes
+    // if something left, put in register again
 
     // auto rank = oldLoadLL.getNumOutDims();
     // SmallVector<unsigned> order(rank);
@@ -85,7 +116,42 @@ public:
 
     // return orderPerDim(StringAttr::get(getContext(), "register"), order);
     // auto globalMemOrder = triton::gpu::getOrder(oldLoadLL, shape);
-    return convertLL;
+    auto oldLoadBases = oldLoadLL.getBases();
+    auto convertBases = convertLL.getBases();
+    auto ctx = getContext();
+    auto kBlock = StringAttr::get(ctx, "block");
+    auto kWarp = StringAttr::get(ctx, "warp");
+    auto kLane = StringAttr::get(ctx, "lane");
+    auto kReg = StringAttr::get(ctx, "register");
+    auto oldLoadBlockBases = oldLoadBases.find(kBlock)->second;
+    auto oldLoadWarpBases = oldLoadBases.find(kWarp)->second;
+
+    auto blockBases = convertBases.find(kBlock)->second;
+    auto warpBases = convertBases.find(kWarp)->second;
+    auto warpBlockBases = joinBases(warpBases, blockBases);
+    auto laneBases =
+        differenceBases(oldLoadBases.find(kLane)->second, warpBlockBases);
+    auto regBases =
+        differenceBases(oldLoadBases.find(kReg)->second, warpBlockBases);
+
+    int logNumLanes = oldLoadBases.find(kLane)->second.size();
+
+    auto oldLoadWBBases = joinBases(oldLoadWarpBases, oldLoadBlockBases);
+    auto unusedBases = differenceBases(oldLoadWBBases, warpBlockBases);
+    for (auto base : unusedBases) {
+      if (laneBases.size() < logNumLanes)
+        laneBases.push_back(base);
+      else
+        regBases.push_back(base);
+    }
+    llvm::MapVector<StringAttr, Bases> assembledBases;
+    assembledBases[kReg] = regBases;
+    assembledBases[kLane] = laneBases;
+    assembledBases[kWarp] = warpBases;
+    assembledBases[kBlock] = blockBases;
+
+    return LinearLayout(assembledBases,
+                        llvm::to_vector(convertLL.getOutDimNames()));
   }
 
   bool isEqualBasis(LinearLayout a, LinearLayout b,
@@ -130,7 +196,7 @@ public:
     auto newLoadType = srcType.cloneWithEncoding(newLoadEnc);
 
     if (cvtNeedsSharedMemory(newLoadType, dstType)) {
-      LDBG("Optimal layout requires LDS transfer, aborting processing");
+      LDBG("Generated layout requires LDS transfer, aborting processing");
       return success();
     }
 
