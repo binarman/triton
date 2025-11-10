@@ -921,7 +921,7 @@ private:
                                                   uniformValue);
       }
 
-      // Accumulate the uniform offsets
+      // Accumulate the non-uniform offsets
       for (auto noUniformValue : nonUniforms) {
         if (!nonUniformSum)
           nonUniformSum = noUniformValue;
@@ -945,16 +945,15 @@ private:
       if (splatTensors.empty())
         break;
 
-      bool asScalar =
-          isScalarIntConst(uniformSum) && !isScalarIntZero(uniformSum);
+      bool asScalar = isScalarIntConst(uniformSum);
       if (asScalar) {
         // The asScalar was set to true based on heuristic. However, it may be
         // illegal to do so. The condition splatTensors.size() != 0
         // indicates that final offset must be a tensor. We have to contribute
         // splatTensors as tensor to make sure the resulting offset has right
         // type!
-        if (nonUniforms.empty())
-          asScalar = false;
+        // if (nonUniforms.empty())
+        // asScalar = false;
       }
 
       LDBG("   -- consider const-tensor as uniform: " << asScalar);
@@ -974,25 +973,30 @@ private:
 
     // Add uniform and non-uniform quantities together to be a new offset.
     assert(uniformSum && "uniformSum should have value, even if it is 0");
-    Value newOffset;
-    if (!nonUniformSum)
-      newOffset = uniformSum;
-    else {
-      // Try to reruse existing splat(uniform) value.
-      auto maybeSplat = scalarToSplatMap.lookup(
-          std::pair(uniformSum, nonUniformSum.getType()));
-      if (maybeSplat)
-        newOffset = createAddOffsetsOfSameKind(rewriter, curLoc, maybeSplat,
-                                               nonUniformSum);
-      else
-        newOffset = createAddUniformAndNonUniform(rewriter, curLoc, uniformSum,
-                                                  nonUniformSum);
-    }
 
-    if (getElementTypeOrSelf(newOffset).getIntOrFloatBitWidth() > 32) {
-      newOffset = createTruncIOffset(rewriter, curLoc, newOffset,
-                                     rewriter.getI32Type());
-    }
+    fatPtrBase = rewriter.create<triton::AddPtrOp>(
+        uniformSum.getLoc(), fatPtrBase.getType(), fatPtrBase, uniformSum);
+
+    Value newOffset = nonUniformSum;
+    // if (!nonUniformSum)
+    //   newOffset = uniformSum;
+    // else {
+    //   // Try to reuse existing splat(uniform) value.
+    //   auto maybeSplat = scalarToSplatMap.lookup(
+    //       std::pair(uniformSum, nonUniformSum.getType()));
+    //   if (maybeSplat)
+    //     newOffset = createAddOffsetsOfSameKind(rewriter, curLoc, maybeSplat,
+    //                                            nonUniformSum);
+    //   else
+    //     newOffset = createAddUniformAndNonUniform(rewriter, curLoc,
+    //     uniformSum,
+    //                                               nonUniformSum);
+    // }
+
+    // if (getElementTypeOrSelf(newOffset).getIntOrFloatBitWidth() > 32) {
+    //   newOffset = createTruncIOffset(rewriter, curLoc, newOffset,
+    //                                  rewriter.getI32Type());
+    // }
 
     // If the newOffset is not created in this function, chances are it could
     // already be mapped to another value, say y. In that case, we need to
@@ -1007,9 +1011,20 @@ private:
     // If we were using <fatPtrBase, newOffset> to set an entry in fatPtrs, we
     // would not be able to lookup the entry when op2 is visited, as it will
     // use index <fatPtrBase, y>.
-    if (auto remapped = rewriter.getRemappedValue(newOffset);
-        (remapped != nullptr) && (remapped != newOffset))
-      newOffset = remapped;
+    if (newOffset) {
+      if (auto remapped = rewriter.getRemappedValue(newOffset);
+          (remapped != nullptr) && (remapped != newOffset))
+        newOffset = remapped;
+    } else {
+      Location loc = mlir::UnknownLoc::get(rewriter.getContext());
+      Type origType = origOffset.getType();
+      if (auto tensorType = dyn_cast<RankedTensorType>(origType)) {
+        newOffset = createTensorZero(rewriter, loc, tensorType);
+      } else {
+        auto zeroAttr = mlir::IntegerAttr::get(origType, 0);
+        newOffset = arith::ConstantOp::create(rewriter, loc, zeroAttr);
+      }
+    }
 
     LDBG("   -- new offset: " << newOffset);
 
