@@ -1,4 +1,5 @@
 #include "TritonAMDGPUTransforms/Passes.h"
+#include "mlir/Analysis/DataFlowFramework.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -8,6 +9,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "third_party/amd/include/Analysis/RangeAnalysis.h"
 #include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
 #include "third_party/amd/lib/TritonAMDGPUToLLVM/Utility.h"
 #include "triton/Analysis/Utility.h"
@@ -33,6 +35,25 @@ namespace mlir {
 #include "TritonAMDGPUTransforms/Passes.h.inc"
 
 namespace {
+
+class IntRangeAnalysis : public mlir::dataflow::SparseForwardDataFlowAnalysis<
+                             mlir::dataflow::IntegerValueRangeLattice> {
+public:
+  using SparseForwardDataFlowAnalysis<
+      mlir::dataflow::IntegerValueRangeLattice>::SparseForwardDataFlowAnalysis;
+
+  LogicalResult visitOperation(
+      Operation *op,
+      ArrayRef<const mlir::dataflow::IntegerValueRangeLattice *> operands,
+      ArrayRef<mlir::dataflow::IntegerValueRangeLattice *> results) override {
+    LogicalResult result = LogicalResult::failure();
+    return result;
+  }
+};
+
+}; // namespace
+
+namespace {
 // /*-----------------Base pointer increment optimization-------------------*/
 
 // Optimization tries to transfer increments from offsets to base pointer in
@@ -55,7 +76,9 @@ namespace {
 // This lowers register consumption and reduces time spend for address
 // computation.
 struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
-  using OpRewritePattern::OpRewritePattern;
+  AdvanceBasePointer(MLIRContext *context, DataFlowSolver *solver,
+                     PatternBenefit benefit = 1)
+      : OpRewritePattern<scf::ForOp>(context, benefit), solver(solver) {}
 
   // Check if same value is stored in every element of tensor val
   // Return true if all elelemts are equal, false if not or it was not able for
@@ -118,7 +141,8 @@ struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
   // Perform series of checks to decide if given operation could be optimized.
   // If optimization is possible, return filled BufferOpInfo
   static std::optional<BufferOpInfo>
-  analyzeBufferOp(amdttg::BufferOpInterface op, scf::ForOp targetFor) {
+  analyzeBufferOp(amdttg::BufferOpInterface op, scf::ForOp targetFor,
+                  DataFlowSolver *solver) {
     LDBG("Analyzing: " << *op);
     Value maybeOffsetsBlockArg = op.getOffsets();
     auto maybeOffsetDefOp = maybeOffsetsBlockArg.getDefiningOp();
@@ -180,6 +204,47 @@ struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
       return {};
     }
     Value offsetInitializer = forOp.getInitArgs()[offsetOperandNo];
+
+    auto stepType = cast<RankedTensorType>(advanceStep.getType());
+    // If offset and step data type is smaller that full pointer,
+    // need to ensure following transformation is safe:
+    //
+    // full_pointer = ptr_base + int64(offset_base + advanceStep)
+    //                       |
+    //                       V
+    // full_pointer = ptr_base + int64(offset_base) + int64(advanceStep)
+    // offset_base should not overflow, advanceStep should not overflow and sum
+    // of them should not overflow.
+    if (stepType.getElementType().getIntOrFloatBitWidth() < 64) {
+      if (!solver) {
+        LDBG("Rejected: can not prove no overflows in integer upcast");
+        return {};
+      }
+
+      const auto *offsetInitializerRange =
+          solver->lookupState<dataflow::IntegerValueRangeLattice>(
+              offsetInitializer);
+      llvm::errs() << "offsetInitializerRange: "
+                   << offsetInitializerRange->getValue() << "\n";
+
+      const auto *blockArgRange =
+          solver->lookupState<dataflow::IntegerValueRangeLattice>(blockArg);
+      if (blockArgRange->getValue().isUninitialized()) {
+        LDBG("Rejected: blockArg range is unintialized");
+        return {};
+      }
+
+      llvm::errs() << "blockArgRange: " << blockArgRange->getValue() << "\n";
+      const auto *stepRange =
+          solver->lookupState<dataflow::IntegerValueRangeLattice>(advanceStep);
+      llvm::errs() << "stepRange: " << stepRange->getValue() << "\n";
+      const auto *incrementedOffset =
+          solver->lookupState<dataflow::IntegerValueRangeLattice>(
+              incrementOp->getResult(0));
+      llvm::errs() << "incrementedOffset: " << incrementedOffset->getValue()
+                   << "\n";
+    }
+
     BufferOpInfo data = {op, advanceStep, Value(), offsetInitializer,
                          incrementOp};
     LDBG("Buffer op is suitable for offset pointer optimization");
@@ -270,10 +335,10 @@ struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
     return newForOp;
   }
 
-  static SmallVector<BufferOpInfo> collectBufferOps(scf::ForOp forOp) {
+  SmallVector<BufferOpInfo> collectBufferOps(scf::ForOp forOp) const {
     SmallVector<BufferOpInfo> list;
-    forOp.walk([&list, forOp](amdttg::BufferOpInterface op) {
-      auto info = analyzeBufferOp(op, forOp);
+    forOp.walk([&list, this, forOp](amdttg::BufferOpInterface op) {
+      auto info = analyzeBufferOp(op, forOp, this->solver);
       if (info.has_value()) {
         list.push_back(info.value());
       }
@@ -299,6 +364,8 @@ struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
     rewriter.eraseOp(forOp);
     return success();
   }
+
+  DataFlowSolver *solver;
 };
 
 } // anonymous namespace
@@ -313,7 +380,25 @@ struct TritonAMDGPUOptimizeBufferOpPtrPass
     RewritePatternSet patterns(context);
     FuncOp func = getOperation();
 
-    patterns.add<AdvanceBasePointer>(context, /*benefit=*/1);
+    auto moduleOp = func->getParentOfType<mlir::ModuleOp>();
+    DenseMap<Value, SetVector<Operation *>> assumptions =
+        AMD::TritonIntegerRangeAnalysis::collectAssumptions(func);
+    std::shared_ptr<DataFlowSolver> solver = createDataFlowSolver();
+    DominanceInfo *dominanceInfo = &getAnalysis<DominanceInfo>();
+    AMD::TritonIntegerRangeAnalysis *rangeAnalysis =
+        solver->load<AMD::TritonIntegerRangeAnalysis>(assumptions,
+                                                      dominanceInfo);
+    AMD::initializeFuncOps(moduleOp, rangeAnalysis);
+    if (failed(solver->initializeAndRun(func))) {
+      solver = nullptr;
+    }
+
+    func.walk([rangeAnalysis](scf::ForOp op) {
+      auto numIters = 1;
+      llvm::errs() << "num iterations: " << numIters << "\n";
+    });
+
+    patterns.add<AdvanceBasePointer>(context, solver.get(), /*benefit=*/1);
 
     if (applyPatternsGreedily(func, std::move(patterns)).failed())
       signalPassFailure();
