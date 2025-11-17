@@ -991,12 +991,10 @@ private:
     //     uniformSum,
     //                                               nonUniformSum);
     // }
-
     // if (getElementTypeOrSelf(newOffset).getIntOrFloatBitWidth() > 32) {
     //   newOffset = createTruncIOffset(rewriter, curLoc, newOffset,
     //                                  rewriter.getI32Type());
     // }
-
     // If the newOffset is not created in this function, chances are it could
     // already be mapped to another value, say y. In that case, we need to
     // use y instead of newOffset. Otherwise, consider the following sequence,
@@ -1014,13 +1012,23 @@ private:
       if (auto remapped = rewriter.getRemappedValue(newOffset);
           (remapped != nullptr) && (remapped != newOffset))
         newOffset = remapped;
+      if (getElementTypeOrSelf(newOffset).getIntOrFloatBitWidth() > 32) {
+        newOffset = createTruncIOffset(rewriter, curLoc, newOffset,
+                                       rewriter.getI32Type());
+      }
     } else {
       Location loc = mlir::UnknownLoc::get(rewriter.getContext());
       Type origType = origOffset.getType();
+      Type i32Type = rewriter.getI32Type();
       if (auto tensorType = dyn_cast<RankedTensorType>(origType)) {
-        newOffset = createTensorZero(rewriter, loc, tensorType);
+        Type i32Type = rewriter.getI32Type();
+        auto origShape = tensorType.getShape();
+        auto encoding = tensorType.getEncoding();
+        auto i32TensorType =
+            RankedTensorType::get(origShape, i32Type, encoding);
+        newOffset = createTensorZero(rewriter, loc, i32TensorType);
       } else {
-        auto zeroAttr = mlir::IntegerAttr::get(origType, 0);
+        auto zeroAttr = mlir::IntegerAttr::get(i32Type, 0);
         newOffset = rewriter.create<arith::ConstantOp>(loc, zeroAttr);
       }
     }
