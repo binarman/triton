@@ -35,25 +35,6 @@ namespace mlir {
 #include "TritonAMDGPUTransforms/Passes.h.inc"
 
 namespace {
-
-class IntRangeAnalysis : public mlir::dataflow::SparseForwardDataFlowAnalysis<
-                             mlir::dataflow::IntegerValueRangeLattice> {
-public:
-  using SparseForwardDataFlowAnalysis<
-      mlir::dataflow::IntegerValueRangeLattice>::SparseForwardDataFlowAnalysis;
-
-  LogicalResult visitOperation(
-      Operation *op,
-      ArrayRef<const mlir::dataflow::IntegerValueRangeLattice *> operands,
-      ArrayRef<mlir::dataflow::IntegerValueRangeLattice *> results) override {
-    LogicalResult result = LogicalResult::failure();
-    return result;
-  }
-};
-
-}; // namespace
-
-namespace {
 // /*-----------------Base pointer increment optimization-------------------*/
 
 // Optimization tries to transfer increments from offsets to base pointer in
@@ -138,6 +119,43 @@ struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
     Operation *incrementOp;
   };
 
+  // Analyses if blockArg + advanceStep can overflow
+  static bool overflowPossible(Value blockArg, Value advanceStep,
+                               int elemBitwidth, DataFlowSolver *solver) {
+    const auto *blockArgRange =
+        solver->lookupState<dataflow::IntegerValueRangeLattice>(blockArg);
+    if (blockArgRange->getValue().isUninitialized()) {
+      LDBG("Rejected: blockArg range is unintialized");
+      return true;
+    }
+
+    const auto *stepRange =
+        solver->lookupState<dataflow::IntegerValueRangeLattice>(advanceStep);
+    if (blockArgRange->getValue().isUninitialized()) {
+      LDBG("Rejected: step range is unintialized");
+      return true;
+    }
+
+    auto blockArgRangeValue = blockArgRange->getValue().getValue();
+    auto stepRangeValue = stepRange->getValue().getValue();
+
+    // checking if arithmetic operatin overflows.
+    // Max/min values for now are equalt to 32 bit unsigned int max/min values.
+    auto dtypeByteWidth = elemBitwidth / 8;
+    assert(dtypeByteWidth > 0);
+    int64_t maxOffsetValue = 0xff'ff'ff'ff / dtypeByteWidth;
+    int64_t minOffsetValue = 0;
+    int64_t operationUncappedResultMax =
+        (int64_t)blockArgRangeValue.umax().getLimitedValue() +
+        (int64_t)stepRangeValue.umax().getLimitedValue();
+    int64_t operationUncappedResultMin =
+        (int64_t)blockArgRangeValue.umin().getLimitedValue() +
+        (int64_t)stepRangeValue.umin().getLimitedValue();
+
+    return (operationUncappedResultMin < minOffsetValue ||
+            operationUncappedResultMax > maxOffsetValue);
+  }
+
   // Perform series of checks to decide if given operation could be optimized.
   // If optimization is possible, return filled BufferOpInfo
   static std::optional<BufferOpInfo>
@@ -206,43 +224,24 @@ struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
     Value offsetInitializer = forOp.getInitArgs()[offsetOperandNo];
 
     auto stepType = cast<RankedTensorType>(advanceStep.getType());
-    // If offset and step data type is smaller that full pointer,
-    // need to ensure following transformation is safe:
+
+    assert(stepType.getElementType().getIntOrFloatBitWidth() < 64);
+    auto elembitWidth = cast<RankedTensorType>(op->getResult(0).getType())
+                            .getElementTypeBitWidth();
+    // Check ensures following transformation is safe:
     //
-    // full_pointer = ptr_base + int64(offset_base + advanceStep)
+    // full_pointer = basePtr + int64(previousIterationOffset + offsetStep)
     //                       |
     //                       V
-    // full_pointer = ptr_base + int64(offset_base) + int64(advanceStep)
-    // offset_base should not overflow, advanceStep should not overflow and sum
-    // of them should not overflow.
-    if (stepType.getElementType().getIntOrFloatBitWidth() < 64) {
-      if (!solver) {
-        LDBG("Rejected: can not prove no overflows in integer upcast");
-        return {};
-      }
-
-      const auto *offsetInitializerRange =
-          solver->lookupState<dataflow::IntegerValueRangeLattice>(
-              offsetInitializer);
-      llvm::errs() << "offsetInitializerRange: "
-                   << offsetInitializerRange->getValue() << "\n";
-
-      const auto *blockArgRange =
-          solver->lookupState<dataflow::IntegerValueRangeLattice>(blockArg);
-      if (blockArgRange->getValue().isUninitialized()) {
-        LDBG("Rejected: blockArg range is unintialized");
-        return {};
-      }
-
-      llvm::errs() << "blockArgRange: " << blockArgRange->getValue() << "\n";
-      const auto *stepRange =
-          solver->lookupState<dataflow::IntegerValueRangeLattice>(advanceStep);
-      llvm::errs() << "stepRange: " << stepRange->getValue() << "\n";
-      const auto *incrementedOffset =
-          solver->lookupState<dataflow::IntegerValueRangeLattice>(
-              incrementOp->getResult(0));
-      llvm::errs() << "incrementedOffset: " << incrementedOffset->getValue()
-                   << "\n";
+    // full_pointer = (basePtr + int64(offsetStep)) +
+    // int64(previousIterationOffset)
+    //
+    // previousIterationOffset + offsetStep should not overflow,
+    // then it is safe to upcast them and add to basePtr separately
+    if (overflowPossible(blockArg, advanceStep, elembitWidth, solver)) {
+      LDBG("Rejected: increment operation potentially overflows, it is unsafe "
+           "to split offset computation");
+      return {};
     }
 
     BufferOpInfo data = {op, advanceStep, Value(), offsetInitializer,
@@ -390,11 +389,12 @@ struct TritonAMDGPUOptimizeBufferOpPtrPass
                                                       dominanceInfo);
     AMD::initializeFuncOps(moduleOp, rangeAnalysis);
     if (failed(solver->initializeAndRun(func))) {
-      solver = nullptr;
+      LDBG("Integer range analysis failed to initialize, exiting");
+      return;
     }
 
     func.walk([rangeAnalysis](scf::ForOp op) {
-      auto numIters = 1;
+      auto numIters = rangeAnalysis->getTotalLoopTripCount(op);
       llvm::errs() << "num iterations: " << numIters << "\n";
     });
 
