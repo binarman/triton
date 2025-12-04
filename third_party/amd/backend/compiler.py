@@ -452,6 +452,25 @@ class HIPBackend(BaseBackend):
                             dump_file_id)
         amdgcn = llvm.translate_to_asm(src, amd.TARGET_TRIPLE, options.arch, features, flags, options.enable_fp_fusion,
                                        False)
+        num_vadd = 0
+        num_vgprs = 0
+        num_sgprs = 0
+        num_vgprs_spills = 0
+        num_sgprs_spills = 0
+        for line in amdgcn.split("\n"):
+            if "v_add" in line:
+                num_vadd += 1
+            if ".sgpr_count:" in line:
+                num_sgprs = int(line.split(":")[1])
+            if ".sgpr_spill_count:" in line:
+                num_sgprs_spills = int(line.split(":")[1])
+            if ".vgpr_count:" in line:
+                num_vgprs = int(line.split(":")[1])
+            if ".vgpr_spill_count:" in line:
+                num_vgprs_spills = int(line.split(":")[1])
+        print("\nkernel_parameters {}({}) {}({}) {}".format(num_sgprs, num_sgprs_spills, num_vgprs, num_vgprs_spills,
+                                                            num_vadd))
+
         if knobs.amd.dump_amdgcn:
             print("// -----// AMDGCN Dump //----- //")
             print(amdgcn)

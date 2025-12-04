@@ -431,6 +431,7 @@ struct AdvanceBasePointer : public OpRewritePattern<scf::ForOp> {
     rewriter.replaceAllUsesWith(
         forOp.getResults(), newForOp.getResults().drop_back(infoList.size()));
     rewriter.eraseOp(forOp);
+    llvm::errs() << "Base ptr optimization applied\n";
     return success();
   }
 
