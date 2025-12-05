@@ -163,6 +163,11 @@ struct TritonLLVMOpBuilder {
                                                  std::forward<Args>(args)...);
   }
   template <typename... Args>
+  LLVM::ShuffleVectorOp shuffle_vector(Args &&...args) {
+    return builder->create<LLVM::ShuffleVectorOp>(loc,
+                                                  std::forward<Args>(args)...);
+  }
+  template <typename... Args>
   LLVM::InsertElementOp insert_element(Args &&...args) {
     return builder->create<LLVM::InsertElementOp>(loc,
                                                   std::forward<Args>(args)...);

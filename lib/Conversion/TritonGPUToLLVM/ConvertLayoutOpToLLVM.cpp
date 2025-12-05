@@ -96,10 +96,28 @@ struct ConvertLayoutOpConversion
     auto srcTy = op.getSrc().getType();
     auto dstTy = op.getType();
     auto inVals = unpackLLElements(loc, adaptor.getSrc(), rewriter);
+
+    int numElems = inVals.size();
+    auto b = TritonLLVMOpBuilder(loc, rewriter);
+    auto vectorType = vec_ty(inVals[0].getType(), numElems);
+    Value inputVector = b.undef(vectorType);
+
+    SmallVector<int32_t> permuteIndeces(numElems);
+    for (int i = 0; i < numElems; ++i) {
+      permuteIndeces[i] = conversion.apply({{kRegister, i}}).begin()->second;
+      auto index = b.int_val(32, i);
+      inputVector = b.insert_element(vectorType, inputVector, inVals[i], index);
+    }
+
+    auto permuteAttr =
+        DenseI32ArrayAttr::get(rewriter.getContext(), permuteIndeces);
+    auto dummyVector = b.undef(vectorType);
+    auto outputVector = b.shuffle_vector(inputVector, dummyVector, permuteAttr);
+
     SmallVector<Value> outVals(conversion.getInDimSize(kRegister));
     for (int i = 0; i < outVals.size(); i++) {
-      auto srcIdx = conversion.apply({{kRegister, i}}).begin()->second;
-      outVals[i] = inVals[srcIdx];
+      auto index = b.int_val(32, i);
+      outVals[i] = b.extract_element(outputVector, index);
     }
     Value result = packLLElements(loc, getTypeConverter(), outVals, rewriter,
                                   op.getType());
