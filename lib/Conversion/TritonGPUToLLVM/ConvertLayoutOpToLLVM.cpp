@@ -84,6 +84,47 @@ struct ConvertLayoutOpConversion
     }
   }
 
+  static Value createShuffle(TritonLLVMOpBuilder &b, Value v1, Value v2,
+                             ArrayRef<int> shuffleIds) {
+    // auto permuteAttr = DenseI32ArrayAttr::get(v1.getContext(), shuffleIds);
+    // return b.shuffle_vector(v1, v2, permuteAttr);
+    Value result = b.int_val(32, 0);
+    for (int i = 0; i < shuffleIds.size(); ++i) {
+      auto idx = shuffleIds[i];
+      Value byteData = v1;
+      if (idx >= 4) {
+        idx -= 4;
+        byteData = v2;
+      }
+      auto shift = b.int_val(32, abs((idx - i) * 8));
+      if (idx - i > 0) {
+        byteData = b.lshr(byteData, shift);
+      } else if (idx - i < 0) {
+        byteData = b.shl(byteData, shift);
+      }
+      auto mask = b.int_val(32, 255 << (i * 8));
+      byteData = b.and_(byteData, mask);
+      result = b.or_(result, byteData, /*disjoint*/ true);
+    }
+    return result;
+  }
+
+  // Transpose 4x4 matrix stored in 4 values, each contain 4 elements
+  static SmallVector<Value, 4> transposeTile4by4(TritonLLVMOpBuilder &b,
+                                                 ArrayRef<Value> v) {
+    assert(v.size() == 4);
+    auto tmp1 = createShuffle(b, v[0], v[1], {0, 4, 1, 5});
+    auto tmp2 = createShuffle(b, v[0], v[1], {2, 6, 3, 7});
+    auto tmp3 = createShuffle(b, v[2], v[3], {0, 4, 1, 5});
+    auto tmp4 = createShuffle(b, v[2], v[3], {0, 4, 1, 5});
+    SmallVector<Value, 4> transposed(4);
+    transposed[0] = createShuffle(b, tmp1, tmp3, {0, 1, 4, 5});
+    transposed[1] = createShuffle(b, tmp1, tmp3, {2, 3, 6, 7});
+    transposed[2] = createShuffle(b, tmp2, tmp4, {0, 1, 4, 5});
+    transposed[3] = createShuffle(b, tmp2, tmp4, {2, 3, 6, 7});
+    return transposed;
+  }
+
   LogicalResult
   transferWithinThread(ConvertLayoutOp op, const LinearLayout &conversion,
                        OpAdaptor adaptor,
@@ -97,27 +138,45 @@ struct ConvertLayoutOpConversion
     auto dstTy = op.getType();
     auto inVals = unpackLLElements(loc, adaptor.getSrc(), rewriter);
 
-    int numElems = inVals.size();
-    auto b = TritonLLVMOpBuilder(loc, rewriter);
-    auto vectorType = vec_ty(inVals[0].getType(), numElems);
-    Value inputVector = b.undef(vectorType);
+    // llvm::errs() << "Reg conversion: " << conversion << "\n";
+    if (srcTy.getElementType().getIntOrFloatBitWidth() == 8) {
+      int numElems = inVals.size();
+      auto b = TritonLLVMOpBuilder(loc, rewriter);
+      constexpr int regSize = 4;
+      auto registerVectorType = vec_ty(inVals[0].getType(), regSize);
 
-    SmallVector<int32_t> permuteIndeces(numElems);
-    for (int i = 0; i < numElems; ++i) {
-      permuteIndeces[i] = conversion.apply({{kRegister, i}}).begin()->second;
-      auto index = b.int_val(32, i);
-      inputVector = b.insert_element(vectorType, inputVector, inVals[i], index);
+      int numRegisters = numElems / regSize;
+      SmallVector<Value> registerVector(numRegisters);
+      for (int i = 0; i < numRegisters; ++i) {
+        SmallVector<Value> values{inVals[i * 4], inVals[i * 4 + 1],
+                                  inVals[i * 4 + 2], inVals[i * 4 + 3]};
+        registerVector[i] = packLLVector(loc, values, rewriter);
+      }
+      SmallVector<Value> transposedRegs;
+      for (int i = 0; i < numRegisters / 4; ++i) {
+        SmallVector<Value> tileComponents{
+            registerVector[i * 4], registerVector[i * 4 + 1],
+            registerVector[i * 4 + 2], registerVector[i * 4 + 3]};
+        transposedRegs.append(transposeTile4by4(b, tileComponents));
+      }
+
+      SmallVector<Value> outVals(conversion.getInDimSize(kRegister));
+      for (int i = 0; i < numRegisters; ++i) {
+        auto unpacked = unpackLLVector(loc, transposedRegs[i], rewriter);
+        for (int valId = 0; valId < regSize; valId++) {
+          outVals[i * regSize + valId] = unpacked[valId];
+        }
+      }
+      Value result = packLLElements(loc, getTypeConverter(), outVals, rewriter,
+                                    op.getType());
+      rewriter.replaceOp(op, result);
+      return success();
     }
-
-    auto permuteAttr =
-        DenseI32ArrayAttr::get(rewriter.getContext(), permuteIndeces);
-    auto dummyVector = b.undef(vectorType);
-    auto outputVector = b.shuffle_vector(inputVector, dummyVector, permuteAttr);
 
     SmallVector<Value> outVals(conversion.getInDimSize(kRegister));
     for (int i = 0; i < outVals.size(); i++) {
-      auto index = b.int_val(32, i);
-      outVals[i] = b.extract_element(outputVector, index);
+      auto srcIdx = conversion.apply({{kRegister, i}}).begin()->second;
+      outVals[i] = inVals[srcIdx];
     }
     Value result = packLLElements(loc, getTypeConverter(), outVals, rewriter,
                                   op.getType());
