@@ -88,25 +88,42 @@ struct ConvertLayoutOpConversion
                              ArrayRef<int> shuffleIds) {
     // auto permuteAttr = DenseI32ArrayAttr::get(v1.getContext(), shuffleIds);
     // return b.shuffle_vector(v1, v2, permuteAttr);
-    Value result = b.int_val(32, 0);
+    // assert(v1.getType().isInteger(32));
+    // assert(v2.getType().isInteger(32));
+    // Value result;// = b.int_val(32, 0);
+    // for (int outByteIdx = 0; outByteIdx < shuffleIds.size(); ++outByteIdx) {
+    //   auto inByteIdx = shuffleIds[outByteIdx];
+    //   Value byteData = v1;
+    //   if (inByteIdx >= 4) {
+    //     inByteIdx -= 4;
+    //     byteData = v2;
+    //   }
+    //   auto shift = b.int_val(32, abs((inByteIdx - outByteIdx) * 8));
+    //   if (inByteIdx > outByteIdx) {
+    //     byteData = b.lshr(byteData, shift);
+    //   } else if (inByteIdx < outByteIdx) {
+    //     byteData = b.shl(byteData, shift);
+    //   }
+    //   auto mask = b.int_val(32, 0xff << (outByteIdx * 8));
+    //   byteData = b.and_(byteData, mask);
+    //   if (!result)
+    //     result = byteData;
+    //   else
+    //     result = b.or_(result, byteData, /*disjoint*/ true);
+    // }
+    // return result;
+    auto loc = b.loc;
+    auto &rewriter = *b.builder;
+    std::string intrinsic = "llvm.amdgcn.perm";
+    int encodedIndeces = 0;
     for (int i = 0; i < shuffleIds.size(); ++i) {
-      auto idx = shuffleIds[i];
-      Value byteData = v1;
-      if (idx >= 4) {
-        idx -= 4;
-        byteData = v2;
-      }
-      auto shift = b.int_val(32, abs((idx - i) * 8));
-      if (idx - i > 0) {
-        byteData = b.lshr(byteData, shift);
-      } else if (idx - i < 0) {
-        byteData = b.shl(byteData, shift);
-      }
-      auto mask = b.int_val(32, 255 << (i * 8));
-      byteData = b.and_(byteData, mask);
-      result = b.or_(result, byteData, /*disjoint*/ true);
+      assert(shuffleIds[i] >= 0 && shuffleIds[i] < 8);
+      encodedIndeces += shuffleIds[i] << (i * 8);
     }
-    return result;
+    auto encodedIndecesVal = b.int_val(32, encodedIndeces);
+    return LLVM::createLLVMIntrinsicCallOp(rewriter, loc, intrinsic, {i32_ty},
+                                           {v1, v2, encodedIndecesVal})
+        .getResult(0);
   }
 
   // Transpose 4x4 matrix stored in 4 values, each contain 4 elements
@@ -143,28 +160,31 @@ struct ConvertLayoutOpConversion
       int numElems = inVals.size();
       auto b = TritonLLVMOpBuilder(loc, rewriter);
       constexpr int regSize = 4;
-      auto registerVectorType = vec_ty(inVals[0].getType(), regSize);
 
       int numRegisters = numElems / regSize;
-      SmallVector<Value> registerVector(numRegisters);
+      SmallVector<Value> registerValue(numRegisters);
       for (int i = 0; i < numRegisters; ++i) {
-        SmallVector<Value> values{inVals[i * 4], inVals[i * 4 + 1],
-                                  inVals[i * 4 + 2], inVals[i * 4 + 3]};
-        registerVector[i] = packLLVector(loc, values, rewriter);
+        SmallVector<Value> regComponents;
+        for (int elem = 0; elem < regSize; ++elem)
+          regComponents.push_back(inVals[i * regSize + elem]);
+        auto vectorizedReg = packLLVector(loc, regComponents, rewriter);
+        registerValue[i] = b.bitcast(vectorizedReg, int_ty(32));
       }
       SmallVector<Value> transposedRegs;
       for (int i = 0; i < numRegisters / 4; ++i) {
         SmallVector<Value> tileComponents{
-            registerVector[i * 4], registerVector[i * 4 + 1],
-            registerVector[i * 4 + 2], registerVector[i * 4 + 3]};
+            registerValue[i * 4], registerValue[i * 4 + 1],
+            registerValue[i * 4 + 2], registerValue[i * 4 + 3]};
         transposedRegs.append(transposeTile4by4(b, tileComponents));
       }
 
       SmallVector<Value> outVals(conversion.getInDimSize(kRegister));
-      for (int i = 0; i < numRegisters; ++i) {
-        auto unpacked = unpackLLVector(loc, transposedRegs[i], rewriter);
-        for (int valId = 0; valId < regSize; valId++) {
-          outVals[i * regSize + valId] = unpacked[valId];
+      for (int regIdx = 0; regIdx < numRegisters; ++regIdx) {
+        auto vectorizedReg = b.bitcast(transposedRegs[regIdx],
+                                       vec_ty(inVals[0].getType(), regSize));
+        auto unpacked = unpackLLVector(loc, vectorizedReg, rewriter);
+        for (int elem = 0; elem < regSize; elem++) {
+          outVals[regIdx * regSize + elem] = unpacked[elem];
         }
       }
       Value result = packLLElements(loc, getTypeConverter(), outVals, rewriter,
