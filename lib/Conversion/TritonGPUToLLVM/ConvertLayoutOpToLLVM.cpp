@@ -137,10 +137,9 @@ struct ConvertLayoutOpConversion
     return true;
   }
 
-  LogicalResult transferWithVPerm(ConvertLayoutOp op,
-                                  const LinearLayout &conversion,
-                                  OpAdaptor adaptor,
-                                  ConversionPatternRewriter &rewriter) const {
+  void transferWithVPerm(ConvertLayoutOp op, const LinearLayout &conversion,
+                         OpAdaptor adaptor,
+                         ConversionPatternRewriter &rewriter) const {
     auto loc = op.getLoc();
     auto numValues = conversion.getTotalInDimSize();
     std::vector<int> fullLayout(numValues);
@@ -169,7 +168,7 @@ struct ConvertLayoutOpConversion
 
     auto inVals = unpackLLElements(loc, adaptor.getSrc(), rewriter);
     auto b = TritonLLVMOpBuilder(loc, rewriter);
-    std::vector<Value> srcRegs;
+    std::vector<Value> srcRegs(numRegs);
     for (int i = 0; i < numRegs; ++i) {
       SmallVector<Value> regComponents;
       for (int elem = 0; elem < regBytes; ++elem)
@@ -377,7 +376,6 @@ struct ConvertLayoutOpConversion
     Value result = packLLElements(loc, getTypeConverter(), outVals, rewriter,
                                   op.getType());
     rewriter.replaceOp(op, result);
-    return success();
   }
 
   LogicalResult
@@ -396,39 +394,41 @@ struct ConvertLayoutOpConversion
     // llvm::errs() << "Reg conversion: " << conversion << "\n";
     // detect base vectors == (1), (2)
     if (srcTy.getElementType().getIntOrFloatBitWidth() == 8) {
-      int numElems = inVals.size();
-      auto b = TritonLLVMOpBuilder(loc, rewriter);
-      constexpr int regSize = 4;
+      transferWithVPerm(op, conversion, adaptor, rewriter);
+      // int numElems = inVals.size();
+      // auto b = TritonLLVMOpBuilder(loc, rewriter);
+      // constexpr int regSize = 4;
 
-      int numRegisters = numElems / regSize;
-      SmallVector<Value> registerValue(numRegisters);
-      for (int i = 0; i < numRegisters; ++i) {
-        SmallVector<Value> regComponents;
-        for (int elem = 0; elem < regSize; ++elem)
-          regComponents.push_back(inVals[i * regSize + elem]);
-        auto vectorizedReg = packLLVector(loc, regComponents, rewriter);
-        registerValue[i] = b.bitcast(vectorizedReg, int_ty(32));
-      }
-      SmallVector<Value> transposedRegs;
-      for (int i = 0; i < numRegisters / 4; ++i) {
-        SmallVector<Value> tileComponents{
-            registerValue[i * 4], registerValue[i * 4 + 1],
-            registerValue[i * 4 + 2], registerValue[i * 4 + 3]};
-        transposedRegs.append(transposeTile4by4(b, tileComponents));
-      }
+      // int numRegisters = numElems / regSize;
+      // SmallVector<Value> registerValue(numRegisters);
+      // for (int i = 0; i < numRegisters; ++i) {
+      //   SmallVector<Value> regComponents;
+      //   for (int elem = 0; elem < regSize; ++elem)
+      //     regComponents.push_back(inVals[i * regSize + elem]);
+      //   auto vectorizedReg = packLLVector(loc, regComponents, rewriter);
+      //   registerValue[i] = b.bitcast(vectorizedReg, int_ty(32));
+      // }
+      // SmallVector<Value> transposedRegs;
+      // for (int i = 0; i < numRegisters / 4; ++i) {
+      //   SmallVector<Value> tileComponents{
+      //       registerValue[i * 4], registerValue[i * 4 + 1],
+      //       registerValue[i * 4 + 2], registerValue[i * 4 + 3]};
+      //   transposedRegs.append(transposeTile4by4(b, tileComponents));
+      // }
 
-      SmallVector<Value> outVals(conversion.getInDimSize(kRegister));
-      for (int regIdx = 0; regIdx < numRegisters; ++regIdx) {
-        auto vectorizedReg = b.bitcast(transposedRegs[regIdx],
-                                       vec_ty(inVals[0].getType(), regSize));
-        auto unpacked = unpackLLVector(loc, vectorizedReg, rewriter);
-        for (int elem = 0; elem < regSize; elem++) {
-          outVals[regIdx * regSize + elem] = unpacked[elem];
-        }
-      }
-      Value result = packLLElements(loc, getTypeConverter(), outVals, rewriter,
-                                    op.getType());
-      rewriter.replaceOp(op, result);
+      // SmallVector<Value> outVals(conversion.getInDimSize(kRegister));
+      // for (int regIdx = 0; regIdx < numRegisters; ++regIdx) {
+      //   auto vectorizedReg = b.bitcast(transposedRegs[regIdx],
+      //                                  vec_ty(inVals[0].getType(), regSize));
+      //   auto unpacked = unpackLLVector(loc, vectorizedReg, rewriter);
+      //   for (int elem = 0; elem < regSize; elem++) {
+      //     outVals[regIdx * regSize + elem] = unpacked[elem];
+      //   }
+      // }
+      // Value result = packLLElements(loc, getTypeConverter(), outVals,
+      // rewriter,
+      //                               op.getType());
+      // rewriter.replaceOp(op, result);
       return success();
     }
 
