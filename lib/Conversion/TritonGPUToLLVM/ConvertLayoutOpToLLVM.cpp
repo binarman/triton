@@ -84,34 +84,12 @@ struct ConvertLayoutOpConversion
     }
   }
 
-  static Value createShuffle(TritonLLVMOpBuilder &b, Value v1, Value v2,
-                             ArrayRef<int> shuffleIds) {
-    // auto permuteAttr = DenseI32ArrayAttr::get(v1.getContext(), shuffleIds);
-    // return b.shuffle_vector(v1, v2, permuteAttr);
-    // assert(v1.getType().isInteger(32));
-    // assert(v2.getType().isInteger(32));
-    // Value result;// = b.int_val(32, 0);
-    // for (int outByteIdx = 0; outByteIdx < shuffleIds.size(); ++outByteIdx) {
-    //   auto inByteIdx = shuffleIds[outByteIdx];
-    //   Value byteData = v1;
-    //   if (inByteIdx >= 4) {
-    //     inByteIdx -= 4;
-    //     byteData = v2;
-    //   }
-    //   auto shift = b.int_val(32, abs((inByteIdx - outByteIdx) * 8));
-    //   if (inByteIdx > outByteIdx) {
-    //     byteData = b.lshr(byteData, shift);
-    //   } else if (inByteIdx < outByteIdx) {
-    //     byteData = b.shl(byteData, shift);
-    //   }
-    //   auto mask = b.int_val(32, 0xff << (outByteIdx * 8));
-    //   byteData = b.and_(byteData, mask);
-    //   if (!result)
-    //     result = byteData;
-    //   else
-    //     result = b.or_(result, byteData, /*disjoint*/ true);
-    // }
-    // return result;
+  // creates v_perm operation:
+  // it concatenates two given 4 byte integers in one 8 byte integer,
+  // then copies 4 bytes on indexes given in shuffleIds into output 4 byte
+  // integer.
+  static Value createVPerm(TritonLLVMOpBuilder &b, Value v1, Value v2,
+                           ArrayRef<int> shuffleIds) {
     auto loc = b.loc;
     auto &rewriter = *b.builder;
     std::string intrinsic = "llvm.amdgcn.perm";
@@ -130,16 +108,276 @@ struct ConvertLayoutOpConversion
   static SmallVector<Value, 4> transposeTile4by4(TritonLLVMOpBuilder &b,
                                                  ArrayRef<Value> v) {
     assert(v.size() == 4);
-    auto tmp1 = createShuffle(b, v[0], v[1], {0, 4, 1, 5});
-    auto tmp2 = createShuffle(b, v[0], v[1], {2, 6, 3, 7});
-    auto tmp3 = createShuffle(b, v[2], v[3], {0, 4, 1, 5});
-    auto tmp4 = createShuffle(b, v[2], v[3], {0, 4, 1, 5});
+    auto tmp1 = createVPerm(b, v[0], v[1], {0, 4, 1, 5});
+    auto tmp2 = createVPerm(b, v[0], v[1], {2, 6, 3, 7});
+    auto tmp3 = createVPerm(b, v[2], v[3], {0, 4, 1, 5});
+    auto tmp4 = createVPerm(b, v[2], v[3], {0, 4, 1, 5});
     SmallVector<Value, 4> transposed(4);
-    transposed[0] = createShuffle(b, tmp1, tmp3, {0, 1, 4, 5});
-    transposed[1] = createShuffle(b, tmp1, tmp3, {2, 3, 6, 7});
-    transposed[2] = createShuffle(b, tmp2, tmp4, {0, 1, 4, 5});
-    transposed[3] = createShuffle(b, tmp2, tmp4, {2, 3, 6, 7});
+    transposed[0] = createVPerm(b, tmp1, tmp3, {0, 1, 4, 5});
+    transposed[1] = createVPerm(b, tmp1, tmp3, {2, 3, 6, 7});
+    transposed[2] = createVPerm(b, tmp2, tmp4, {0, 1, 4, 5});
+    transposed[3] = createVPerm(b, tmp2, tmp4, {2, 3, 6, 7});
     return transposed;
+  }
+
+  struct ByteLocation {
+    int regIdx;
+    int byteIdx;
+  };
+
+  static int getLinearByteLoc(const ByteLocation &l) {
+    return l.regIdx * 4 + l.byteIdx;
+  }
+
+  static bool mergablePairs(const std::array<ByteLocation, 2> &p1,
+                            const std::array<ByteLocation, 2> &p2) {
+    for (int i = 0; i < 2; ++i)
+      if (p1[i].regIdx != p2[0].regIdx && p1[i].regIdx != p2[1].regIdx)
+        return false;
+    return true;
+  }
+
+  LogicalResult transferWithVPerm(ConvertLayoutOp op,
+                                  const LinearLayout &conversion,
+                                  OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const {
+    auto loc = op.getLoc();
+    auto numValues = conversion.getTotalInDimSize();
+    std::vector<int> fullLayout(numValues);
+    auto ctx = rewriter.getContext();
+    StringAttr kRegister = str_attr("register");
+    for (int dstIdx = 0; dstIdx < numValues; ++dstIdx) {
+      auto srcIdx = conversion.apply({{kRegister, dstIdx}}).begin()->second;
+      fullLayout[dstIdx] = srcIdx;
+    }
+    // make description for registers
+    constexpr int regBytes = 4;
+    assert(numValues % regBytes == 0);
+    int numRegs = numValues / regBytes;
+    // mapping for dst register bytes to source bytes
+    std::vector<std::array<ByteLocation, regBytes>> dstRegContents;
+    for (int r = 0; r < numRegs; ++r) {
+      std::array<ByteLocation, regBytes> regContents;
+      for (int byteIdx = 0; byteIdx < regBytes; ++byteIdx) {
+        regContents[byteIdx].regIdx =
+            fullLayout[r * regBytes + byteIdx] / regBytes;
+        regContents[byteIdx].byteIdx =
+            fullLayout[r * regBytes + byteIdx] % regBytes;
+      }
+      dstRegContents.push_back(regContents);
+    }
+
+    auto inVals = unpackLLElements(loc, adaptor.getSrc(), rewriter);
+    auto b = TritonLLVMOpBuilder(loc, rewriter);
+    std::vector<Value> srcRegs;
+    for (int i = 0; i < numRegs; ++i) {
+      SmallVector<Value> regComponents;
+      for (int elem = 0; elem < regBytes; ++elem)
+        regComponents.push_back(inVals[i * regBytes + elem]);
+      auto vectorizedReg = packLLVector(loc, regComponents, rewriter);
+      srcRegs[i] = b.bitcast(vectorizedReg, int_ty(32));
+    }
+
+    std::vector<Value> dstRegs(numRegs);
+
+    // process dst registers that depend only on one src register
+    for (int i = 0; i < numRegs; ++i) {
+      assert(!dstRegs[i]);
+      bool needBytePermute = dstRegContents[i][0].byteIdx != 0;
+      bool multipleDeps = false;
+      int singleRegSrcIdx = dstRegContents[i][0].regIdx;
+      for (int byteIdx = 0; byteIdx < regBytes; ++byteIdx) {
+        needBytePermute |= (dstRegContents[i][byteIdx].byteIdx != byteIdx);
+        multipleDeps |= (dstRegContents[i][byteIdx].regIdx != singleRegSrcIdx);
+      }
+      if (multipleDeps)
+        continue;
+      if (needBytePermute) {
+        SmallVector<int> permute(regBytes);
+        llvm::transform(dstRegContents[i], permute.begin(),
+                        [](ByteLocation loc) { return loc.byteIdx; });
+        dstRegs[i] = createVPerm(b, srcRegs[singleRegSrcIdx],
+                                 srcRegs[singleRegSrcIdx], permute);
+      } else {
+        dstRegs[i] = srcRegs[singleRegSrcIdx];
+      }
+    }
+
+    // process dst registers that depend on two src registers
+    for (int i = 0; i < numRegs; ++i) {
+      if (dstRegs[i])
+        continue;
+      std::set<int> srcRegSet;
+      for (int byteIdx = 0; byteIdx < regBytes; ++byteIdx) {
+        srcRegSet.insert(dstRegContents[i][byteIdx].regIdx);
+      }
+      if (srcRegSet.size() != 2)
+        continue;
+      int reg1 = *srcRegSet.begin();
+      int reg2 = *(++srcRegSet.begin());
+
+      SmallVector<int> permute(regBytes);
+      for (int byteIdx = 0; byteIdx < regBytes; ++byteIdx) {
+        if (dstRegContents[i][byteIdx].regIdx == reg1) {
+          permute[byteIdx] = dstRegContents[i][byteIdx].byteIdx;
+        } else {
+          assert(dstRegContents[i][byteIdx].regIdx == reg2);
+          permute[byteIdx] = dstRegContents[i][byteIdx].byteIdx + regBytes;
+        }
+      }
+      llvm::transform(dstRegContents[i], permute.begin(),
+                      [](ByteLocation loc) { return loc.byteIdx; });
+      dstRegs[i] = createVPerm(b, srcRegs[reg1], srcRegs[reg2], permute);
+    }
+
+    // process dst registers that depend on four src registers
+    // combine pairs of src registers from low and high parts of each dst
+    // register merge pairs of tmp registers into one operations use tmp
+    // registers to combine final results
+    std::vector<std::array<ByteLocation, 2>> pairCombinations;
+    // Map src byte location to pair, holding this byte
+    // each byte is associated with only one pair,
+    // and could be швутешашув by it's index in input: regIdx*regBytes + byteIdx
+    std::vector<int> srcByteToPairMap(numValues, -1);
+    for (int i = 0; i < numRegs; ++i) {
+      if (dstRegs[i])
+        continue;
+      for (int pair = 0; pair < 2; ++pair) {
+        pairCombinations.push_back(
+            {dstRegContents[i][pair * 2], dstRegContents[i][pair * 2 + 1]});
+        srcByteToPairMap[getLinearByteLoc(dstRegContents[i][pair * 2])] =
+            pairCombinations.size() - 1;
+        srcByteToPairMap[getLinearByteLoc(dstRegContents[i][pair * 2 + 1])] =
+            pairCombinations.size() - 1;
+      }
+    }
+    // try to merge pairs from same source registers in 4 byte bundles
+    std::vector<std::array<ByteLocation, 4>> quadCombinations;
+    std::vector<int> srcByteToQuadMap(numValues, -1);
+    std::vector<bool> pairMerged(pairCombinations.size());
+    for (int i = 0; i < pairCombinations.size(); ++i) {
+      if (pairMerged[i])
+        continue;
+      int srcRegNo = pairCombinations[i][0].regIdx;
+      int srcByteNo = pairCombinations[i][0].byteIdx;
+      for (int byteIdx = 0; byteIdx < regBytes; ++byteIdx) {
+        // skip same byte
+        if (srcByteNo == byteIdx)
+          continue;
+        int candidateSecondPair =
+            srcByteToPairMap[getLinearByteLoc({srcRegNo, byteIdx})];
+        if (candidateSecondPair < 0)
+          continue;
+        if (mergablePairs(pairCombinations[candidateSecondPair],
+                          pairCombinations[i]) &&
+            !pairMerged[candidateSecondPair]) {
+          std::array<ByteLocation, 4> quad;
+          llvm::copy(pairCombinations[candidateSecondPair], quad.begin());
+          llvm::copy(pairCombinations[i], quad.begin() + 2);
+          quadCombinations.push_back(quad);
+          for (int byteIdx = 0; byteIdx < regBytes; ++byteIdx) {
+            srcByteToQuadMap[getLinearByteLoc(quad[byteIdx])] =
+                quadCombinations.size() - 1;
+          }
+          pairMerged[candidateSecondPair] = true;
+          pairMerged[i] = true;
+        }
+      }
+    }
+    // emit pair and quad combinations
+    std::vector<Value> materializedPairs(pairCombinations.size());
+    for (int i = 0; i < pairCombinations.size(); ++i) {
+      if (pairMerged[i])
+        continue;
+      const auto &p = pairCombinations[i];
+      SmallVector<int> permute(regBytes);
+      permute[0] = p[0].byteIdx;
+      permute[1] = p[1].byteIdx + regBytes;
+      materializedPairs[i] =
+          createVPerm(b, srcRegs[p[0].regIdx], srcRegs[p[1].regIdx], permute);
+    }
+    std::vector<Value> materializedQuads;
+    for (int i = 0; i < quadCombinations.size(); ++i) {
+      const auto &q = quadCombinations[i];
+      SmallVector<int> permute(regBytes);
+      int firstRegNo = q[0].regIdx;
+      Value firstReg = srcRegs[firstRegNo];
+      Value secondReg;
+      for (int byteIdx = 0; byteIdx < regBytes; ++byteIdx) {
+        if (q[byteIdx].regIdx != firstRegNo) {
+          secondReg = srcRegs[q[byteIdx].regIdx];
+          permute[byteIdx] = q[byteIdx].byteIdx + regBytes;
+        } else {
+          permute[byteIdx] = q[byteIdx].byteIdx;
+        }
+      }
+      assert(secondReg);
+      materializedQuads.push_back(createVPerm(b, firstReg, secondReg, permute));
+    }
+
+    // Go over the rest of dst registers, combine them from quads and pairs
+    for (int i = 0; i < numRegs; ++i) {
+      if (dstRegs[i])
+        continue;
+      SmallVector<int> permute(regBytes);
+      Value firstReg;
+      Value secondReg;
+      for (int dstByteIdx = 0; dstByteIdx < regBytes; ++dstByteIdx) {
+        int linearSrcPos = getLinearByteLoc(dstRegContents[i][dstByteIdx]);
+        Value v;
+        int bytePos;
+        int quadNo = srcByteToQuadMap[linearSrcPos];
+        if (quadNo >= 0) {
+          v = materializedQuads[quadNo];
+          for (int vByteIdx = 0; vByteIdx < regBytes; ++vByteIdx) {
+            if (getLinearByteLoc(quadCombinations[quadNo][vByteIdx]) ==
+                linearSrcPos) {
+              bytePos = vByteIdx;
+              break;
+            }
+          }
+        } else {
+          int pairNo = srcByteToPairMap[linearSrcPos];
+          assert(!pairMerged[pairNo]);
+          for (int vByteIdx = 0; vByteIdx < 2; ++vByteIdx) {
+            if (getLinearByteLoc(pairCombinations[pairNo][vByteIdx]) ==
+                linearSrcPos) {
+              bytePos = vByteIdx;
+              break;
+            }
+          }
+        }
+        if (!firstReg)
+          firstReg = v;
+        if (v != firstReg) {
+          if (!secondReg) {
+            secondReg = v;
+          }
+          bytePos += regBytes;
+        }
+        permute[dstByteIdx] = bytePos;
+      }
+      dstRegs[i] = createVPerm(b, firstReg, secondReg, permute);
+    }
+
+    // check correctness
+    assert(std::all_of(dstRegs.begin(), dstRegs.end(),
+                       [](Value v) { return bool(v); }));
+
+    // pack dst values to structure and finalize conversion
+    SmallVector<Value> outVals(conversion.getInDimSize(kRegister));
+    for (int regIdx = 0; regIdx < numRegs; ++regIdx) {
+      auto vectorizedReg =
+          b.bitcast(dstRegs[regIdx], vec_ty(inVals[0].getType(), regBytes));
+      auto unpacked = unpackLLVector(loc, vectorizedReg, rewriter);
+      for (int elem = 0; elem < regBytes; elem++) {
+        outVals[regIdx * regBytes + elem] = unpacked[elem];
+      }
+    }
+    Value result = packLLElements(loc, getTypeConverter(), outVals, rewriter,
+                                  op.getType());
+    rewriter.replaceOp(op, result);
+    return success();
   }
 
   LogicalResult
@@ -156,6 +394,7 @@ struct ConvertLayoutOpConversion
     auto inVals = unpackLLElements(loc, adaptor.getSrc(), rewriter);
 
     // llvm::errs() << "Reg conversion: " << conversion << "\n";
+    // detect base vectors == (1), (2)
     if (srcTy.getElementType().getIntOrFloatBitWidth() == 8) {
       int numElems = inVals.size();
       auto b = TritonLLVMOpBuilder(loc, rewriter);
