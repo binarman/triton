@@ -242,12 +242,14 @@ struct ConvertLayoutOpConversion
       if (dstRegs[i])
         continue;
       for (int pair = 0; pair < 2; ++pair) {
-        pairCombinations.push_back(
-            {dstRegContents[i][pair * 2], dstRegContents[i][pair * 2 + 1]});
-        srcByteToPairMap[getLinearByteLoc(dstRegContents[i][pair * 2])] =
-            pairCombinations.size() - 1;
-        srcByteToPairMap[getLinearByteLoc(dstRegContents[i][pair * 2 + 1])] =
-            pairCombinations.size() - 1;
+        int newId = pairCombinations.size();
+        const auto &dstReg = dstRegContents[i];
+        pairCombinations.push_back({dstReg[pair * 2], dstReg[pair * 2 + 1]});
+        srcByteToPairMap[getLinearByteLoc(dstReg[pair * 2])] = newId;
+        srcByteToPairMap[getLinearByteLoc(dstReg[pair * 2 + 1])] = newId;
+        // llvm::errs() << "new pair " << newId << " mapping sources: " <<
+        // getLinearByteLoc(dstReg[pair * 2]) << " " <<
+        // getLinearByteLoc(dstReg[pair * 2 + 1]) << "\n";
       }
     }
     // try to merge pairs from same source registers in 4 byte bundles
@@ -280,6 +282,9 @@ struct ConvertLayoutOpConversion
           }
           pairMerged[candidateSecondPair] = true;
           pairMerged[i] = true;
+          // llvm::errs() << "merged pairs " << i << " " << candidateSecondPair
+          // << "\n";
+          break;
         }
       }
     }
