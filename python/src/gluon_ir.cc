@@ -797,6 +797,10 @@ void init_gluon_ir(py::module &&m) {
              self.create<ttag::AsyncTDMCopyLocalToGlobalOp>(descPtr, indices,
                                                             src);
            })
+      .def("create_in_thread_transpose",
+           [](GluonOpBuilder &self, Type dstType, Value src) {
+             self.create<ttag::InThreadTransposeOp>(dstType, src);
+           })
       // move here to reduce merge conflict
       .def("create_sched_barrier",
            [](GluonOpBuilder &self, unsigned mask) {

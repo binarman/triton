@@ -26,6 +26,7 @@ __all__ = [
     "s_set_prio",
     "iglp_opt",
     "wave_id",
+    "in_thread_transpose",
 ]
 
 _atomic_op_str_to_op = {
@@ -322,3 +323,29 @@ def wave_id(_semantic: GluonSemantic = None):
     """
     handle = _semantic.builder.create_wave_id()
     return ttgl.tensor(handle, ttgl.int32)
+
+
+@builtin
+def in_thread_transpose(src, _semantic=None):
+    """
+    Special case of convert layout operation, which transposes values inside each thread:
+       --- logical dimension1 --->
+    d | -- lane 0 - | -- lane 1 - |     | -- lane 0 - | -- lane 1 - |
+    i | reg0 | reg1 | reg0 | reg1 |     | reg0 | reg2 | reg0 | reg2 |
+    m | reg2 | reg3 | reg2 | reg3 | ==> | reg1 | reg3 | reg1 | reg3 |
+    2 | -- lane 2 - | -- lane 3 - |     | -- lane 2 - | -- lane 3 - |
+    | | reg0 | reg1 | reg0 | reg1 |     | reg0 | reg2 | reg0 | reg2 |
+    V | reg2 | reg3 | reg2 | reg3 |     | reg1 | reg3 | reg1 | reg3 |
+
+    Could be used to adjust layout order before store in shared memory for more efficient access.
+
+    Args:
+        src (tensor in blocked encoding): arbitrary 2d tensor in blocked encoding
+    """
+    assert isinstance(src.type, ttgl.distributed_type), "expected offsets type to be a distributed_type"
+    assert isinstance(src.type.layout, ttgl.BlockedLayout), "expected input layout to be BlockedLayout"
+
+    ret_ty = ttgl.distributed_type(src.type.dtype, src.type.shape, None)
+    builder = _semantic.builder
+    handle = builder.create_in_thread_transpose(ret_ty.to_ir(builder), src)
+    return ttgl.tensor(handle, ret_ty)
