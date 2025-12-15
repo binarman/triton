@@ -233,8 +233,9 @@ struct ConvertLayoutOpConversion
           permute[byteIdx] = dstRegContents[i][byteIdx].byteIdx + regBytes;
         }
       }
-      llvm::transform(dstRegContents[i], permute.begin(),
-                      [](ByteLocation loc) { return loc.byteIdx; });
+      // llvm::errs() << "combining reg " << i << " from " << reg1 << " and " <<
+      // reg2 << " [" << permute[0] << " " << permute[1] << " " << permute[2] <<
+      // " " << permute[0] << "]\n";
       dstRegs[i] = createVPerm(b, srcRegs[reg2], srcRegs[reg1], permute);
     }
 
