@@ -1533,12 +1533,12 @@ def in_thread_transpose_kernel(input, output, M: ttgl.constexpr, N: ttgl.constex
     ttgl.store(output + offs_m * N + offs_n, out_data)
 
 
-def test_in_thread_transpose():
+@pytest.mark.parametrize("dtype", [torch.float16, torch.int8])
+@pytest.mark.parametrize("registers_shape", [[4, 4], [8, 4], [4, 8], [8, 8]])
+def test_in_thread_transpose(registers_shape, dtype):
     torch.manual_seed(0)
-    registers_shape = [4, 4]
     threads_shape = [1, THREADS_PER_WARP]
     warps_shape = [1, 1]
-    dtype = torch.int8
     M = registers_shape[0] * threads_shape[0]
     N = registers_shape[1] * threads_shape[1]
     block_layout = ttgl.BlockedLayout(registers_shape, threads_shape, warps_per_cta=warps_shape, order=[1, 0])
@@ -1547,5 +1547,8 @@ def test_in_thread_transpose():
     output_buffer = torch.zeros((M, N), device="cuda", dtype=dtype)
     in_thread_transpose_kernel[(1, )](input_buffer, output_buffer, M, N, block_layout, shared_layout,
                                       num_warps=math.prod(warps_shape))
+
+    print(input_buffer.to("cpu").numpy()[0:registers_shape[0], 0:registers_shape[1]])
+    print(output_buffer.to("cpu").numpy()[0:registers_shape[0], 0:registers_shape[1]])
 
     torch.testing.assert_close(input_buffer, output_buffer, atol=1e-3, rtol=1e-3)
