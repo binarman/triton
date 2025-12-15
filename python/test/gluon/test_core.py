@@ -1552,3 +1552,45 @@ def test_in_thread_transpose(registers_shape, dtype):
     print(output_buffer.to("cpu").numpy()[0:registers_shape[0], 0:registers_shape[1]])
 
     torch.testing.assert_close(input_buffer, output_buffer, atol=1e-3, rtol=1e-3)
+
+
+@gluon.jit
+def convert_layout_kernel(input, output, M: ttgl.constexpr, N: ttgl.constexpr, first_layout: ttgl.constexpr,
+                          second_layout: ttgl.constexpr, shared_layout: ttgl.constexpr):
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, first_layout))[:, None]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, first_layout))[None, :]
+
+    load_data = ttgl.load(input + offs_m * N + offs_n)
+    converted_data = ttgl.convert_layout(load_data, second_layout)
+    smem = ttgl.allocate_shared_memory(input.dtype.element_ty, [M, N], shared_layout, converted_data)
+    out_data = smem.load(first_layout)
+    ttgl.store(output + offs_m * N + offs_n, out_data)
+
+
+@pytest.mark.parametrize("reg_bases", [
+    [[1, 0], [2, 0], [4, 0], [0, 1], [0, 2], [0, 4]],
+    [[0, 1], [0, 4], [0, 2], [1, 0], [2, 0], [4, 0]],
+    [[0, 2], [0, 1], [0, 4], [1, 0], [4, 0], [2, 0]],
+])
+def test_in_thread_convert_layout_8bit(reg_bases):
+    torch.manual_seed(0)
+    dtype = torch.int8
+    first_layout = ttgl.BlockedLayout([8, 8], [1, THREADS_PER_WARP], warps_per_cta=[1, 1], order=[1, 0])
+    M = first_layout.size_per_thread[0] * first_layout.threads_per_warp[0] * first_layout.warps_per_cta[0]
+    N = first_layout.size_per_thread[1] * first_layout.threads_per_warp[1] * first_layout.warps_per_cta[1]
+
+    lane_bases = [[0, 8], [0, 16], [0, 32], [0, 64], [0, 128], [0, 256]]
+    warp_bases = []
+    second_layout = ttgl.DistributedLinearLayout(reg_bases=reg_bases, lane_bases=lane_bases, warp_bases=warp_bases,
+                                                 block_bases=[], shape=[M, N])
+
+    shared_layout = ttgl.SwizzledSharedLayout(1, 1, 1, order=[0, 1])
+    input_buffer = (torch.randn((M, N), device="cuda") * 100).to(dtype)
+    output_buffer = torch.zeros((M, N), device="cuda", dtype=dtype)
+    convert_layout_kernel[(1, )](input_buffer, output_buffer, M, N, first_layout, second_layout, shared_layout,
+                                 num_warps=1)
+
+    print(input_buffer.to("cpu").numpy()[0:8, 0:8])
+    print(output_buffer.to("cpu").numpy()[0:8, 0:8])
+
+    torch.testing.assert_close(input_buffer, output_buffer, atol=1e-3, rtol=1e-3)
