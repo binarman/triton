@@ -345,7 +345,9 @@ def in_thread_transpose(src, _semantic: GluonSemantic = None):
     assert isinstance(src.type, ttgl.distributed_type), "expected offsets type to be a distributed_type"
     assert isinstance(src.type.layout, ttgl.BlockedLayout), "expected input layout to be BlockedLayout"
 
-    ret_ty = ttgl.distributed_type(src.type.element_ty, src.type.shape, ttgl.AutoLayout())
     builder = _semantic.builder
-    handle = builder.create_in_thread_transpose(ret_ty.to_ir(builder), _semantic.to_tensor(src).handle)
+    transposed_encoding = builder.get_in_thread_transposed_encoding(src.type.to_ir(builder))
+    ret_ty = ttgl.distributed_type(src.type.element_ty, src.type.shape, ttgl.AutoLayout())
+    handle = builder.create_in_thread_transpose(ret_ty.to_ir(builder),
+                                                _semantic.to_tensor(src).handle, transposed_encoding)
     return ttgl.tensor(handle, ret_ty)

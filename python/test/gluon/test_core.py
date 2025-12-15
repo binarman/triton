@@ -1535,12 +1535,17 @@ def in_thread_transpose_kernel(input, output, M: ttgl.constexpr, N: ttgl.constex
 
 def test_in_thread_transpose():
     torch.manual_seed(0)
-    M, N = 4, 4 * THREADS_PER_WARP
-    warps = [1, 1]
-    block_layout = ttgl.BlockedLayout([4, 4], [1, THREADS_PER_WARP], warps_per_cta=warps, order=[1, 0])
+    registers_shape = [4, 4]
+    threads_shape = [1, THREADS_PER_WARP]
+    warps_shape = [1, 1]
+    dtype = torch.int8
+    M = registers_shape[0] * threads_shape[0]
+    N = registers_shape[1] * threads_shape[1]
+    block_layout = ttgl.BlockedLayout(registers_shape, threads_shape, warps_per_cta=warps_shape, order=[1, 0])
     shared_layout = ttgl.SwizzledSharedLayout(1, 1, 1, order=[0, 1])
-    input_buffer = torch.randn((M, N), device="cuda", dtype=torch.float16)
-    output_buffer = torch.zeros((M, N), device="cuda", dtype=torch.float16)
-    in_thread_transpose_kernel[(1, )](input_buffer, output_buffer, M, N, block_layout, shared_layout, num_warps=1)
+    input_buffer = (torch.randn((M, N), device="cuda") * 100).to(dtype)
+    output_buffer = torch.zeros((M, N), device="cuda", dtype=dtype)
+    in_thread_transpose_kernel[(1, )](input_buffer, output_buffer, M, N, block_layout, shared_layout,
+                                      num_warps=math.prod(warps_shape))
 
     torch.testing.assert_close(input_buffer, output_buffer, atol=1e-3, rtol=1e-3)
