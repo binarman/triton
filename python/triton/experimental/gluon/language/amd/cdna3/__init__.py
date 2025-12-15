@@ -326,7 +326,7 @@ def wave_id(_semantic: GluonSemantic = None):
 
 
 @builtin
-def in_thread_transpose(src, _semantic=None):
+def in_thread_transpose(src, _semantic: GluonSemantic = None):
     """
     Special case of convert layout operation, which transposes values inside each thread:
        --- logical dimension1 --->
@@ -345,7 +345,7 @@ def in_thread_transpose(src, _semantic=None):
     assert isinstance(src.type, ttgl.distributed_type), "expected offsets type to be a distributed_type"
     assert isinstance(src.type.layout, ttgl.BlockedLayout), "expected input layout to be BlockedLayout"
 
-    ret_ty = ttgl.distributed_type(src.type.dtype, src.type.shape, None)
+    ret_ty = ttgl.distributed_type(src.type.element_ty, src.type.shape, ttgl.AutoLayout())
     builder = _semantic.builder
-    handle = builder.create_in_thread_transpose(ret_ty.to_ir(builder), src)
+    handle = builder.create_in_thread_transpose(ret_ty.to_ir(builder), _semantic.to_tensor(src).handle)
     return ttgl.tensor(handle, ret_ty)

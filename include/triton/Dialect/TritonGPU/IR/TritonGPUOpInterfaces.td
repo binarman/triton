@@ -9,6 +9,14 @@ def UpcastFpOpInterface : OpInterface<"UpcastFpOpInterface"> {
     }];
 
     let cppNamespace = "::mlir::triton::gpu";
+}
+
+def EncodingInferenceInterface : OpInterface<"EncodingInferenceInterface"> {
+    let description = [{
+        This interface is for inferencing operation src and dst encodings.
+    }];
+
+    let cppNamespace = "::mlir::triton::gpu";
 
     let methods = [
         InterfaceMethod<

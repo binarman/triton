@@ -574,7 +574,7 @@ def MaskedStoreOp : TT_AMDGPU_Op<"masked_store", []> {
 // ScaledUpcastFp4Op
 //===----------------------------------------------------------------------===//
 
-def ScaledUpcastFp4Op : TT_AMDGPU_Op<"scaled_upcast_fp4", [Pure, DeclareOpInterfaceMethods<UpcastFpOpInterface>]> {
+def ScaledUpcastFp4Op : TT_AMDGPU_Op<"scaled_upcast_fp4", [Pure, DeclareOpInterfaceMethods<UpcastFpOpInterface>, DeclareOpInterfaceMethods<EncodingInferenceInterface>]> {
   let summary = "Upcast fp4 and then multiply scale";
 
   let description = [{
@@ -612,7 +612,8 @@ def ScaledUpcastFp8Op : TT_AMDGPU_Op<"scaled_upcast_fp8", [
     Elementwise,
     SameOperandsAndResultShape,
     SameOperandsAndResultEncoding,
-    DeclareOpInterfaceMethods<UpcastFpOpInterface>]> {
+    DeclareOpInterfaceMethods<UpcastFpOpInterface>,
+    DeclareOpInterfaceMethods<EncodingInferenceInterface>]> {
   let summary = "Upcast Fp8 and then multiply scale";
 
   let description = [{

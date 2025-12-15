@@ -1518,3 +1518,29 @@ def test_tcgen05_mma_scaled_minimal():
     torch.testing.assert_close(out, ref, atol=1e-6, rtol=1e-6)
     ttgir = compiled.asm["ttgir"]
     assert "ttng.tc_gen5_mma_scaled" in ttgir
+
+
+@gluon.jit
+def in_thread_transpose_kernel(input, output, M: ttgl.constexpr, N: ttgl.constexpr, block_layout: ttgl.constexpr,
+                               shared_layout: ttgl.constexpr):
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, block_layout))[:, None]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, block_layout))[None, :]
+
+    load_data = ttgl.load(input + offs_m * N + offs_n)
+    transposed_data = ttgl.amd.cdna3.in_thread_transpose(load_data)
+    smem = ttgl.allocate_shared_memory(input.dtype.element_ty, [M, N], shared_layout, transposed_data)
+    out_data = smem.load(block_layout)
+    ttgl.store(output + offs_m * N + offs_n, out_data)
+
+
+def test_in_thread_transpose():
+    torch.manual_seed(0)
+    M, N = 4, 4 * THREADS_PER_WARP
+    warps = [1, 1]
+    block_layout = ttgl.BlockedLayout([4, 4], [1, THREADS_PER_WARP], warps_per_cta=warps, order=[1, 0])
+    shared_layout = ttgl.SwizzledSharedLayout(1, 1, 1, order=[0, 1])
+    input_buffer = torch.randn((M, N), device="cuda", dtype=torch.float16)
+    output_buffer = torch.zeros((M, N), device="cuda", dtype=torch.float16)
+    in_thread_transpose_kernel[(1, )](input_buffer, output_buffer, M, N, block_layout, shared_layout, num_warps=1)
+
+    torch.testing.assert_close(input_buffer, output_buffer, atol=1e-3, rtol=1e-3)

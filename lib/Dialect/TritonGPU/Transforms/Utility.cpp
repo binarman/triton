@@ -526,8 +526,11 @@ Attribute inferSrcEncoding(Operation *op, Attribute encoding) {
       return {};
   }
 
-  if (isa<triton::gpu::UpcastFpOpInterface>(op))
-    return {};
+  if (auto generalInterface =
+          dyn_cast<triton::gpu::EncodingInferenceInterface>(op)) {
+    assert(op->getNumResults() == 1);
+    return generalInterface.inferSrcEncoding(0, encoding);
+  }
 
   if (op->hasTrait<mlir::OpTrait::SameOperandsAndResultEncoding>() ||
       op->hasTrait<mlir::OpTrait::SameLoadStoreOperandsAndResultEncoding>() ||
@@ -561,8 +564,12 @@ Attribute inferDstEncoding(Operation *op, Attribute encoding) {
     if (!isa<triton::gpu::BlockedEncodingAttr>(encoding))
       return {};
   }
-  if (isa<triton::gpu::UpcastFpOpInterface>(op))
-    return {};
+
+  if (auto generalInterface =
+          dyn_cast<triton::gpu::EncodingInferenceInterface>(op)) {
+    assert(op->getNumOperands() == 1);
+    return generalInterface.inferDstEncoding(0, encoding);
+  }
 
   if (op->hasTrait<mlir::OpTrait::SameOperandsAndResultEncoding>() ||
       op->hasTrait<mlir::OpTrait::SameLoadStoreOperandsAndResultEncoding>() ||
@@ -586,8 +593,6 @@ Attribute inferDstEncoding(Operation *op, Attribute encoding) {
     return inferDstEncoding(gather, encoding);
   if (auto fp4ToFp = dyn_cast<triton::gpu::Fp4ToFpOp>(op))
     return inferDstEncoding(fp4ToFp, encoding);
-  if (auto itt = dyn_cast<ttag::InThreadTransposeOp>(op))
-    assert(false);
 
   return {};
 }
@@ -947,12 +952,7 @@ LogicalResult getConvertBackwardSlice(
       }
       for (auto [i, operand] : llvm::enumerate(definingOp->getOpOperands())) {
         Attribute srcEncoding;
-        if (auto upcast =
-                dyn_cast<triton::gpu::UpcastFpOpInterface>(definingOp)) {
-          srcEncoding = upcast.inferSrcEncoding(i, encoding);
-        } else {
-          srcEncoding = inferSrcEncoding(definingOp, encoding);
-        }
+        srcEncoding = inferSrcEncoding(definingOp, encoding);
         if (!srcEncoding)
           return failure();
         // If the infered layout matches the original one we don't need to keep
