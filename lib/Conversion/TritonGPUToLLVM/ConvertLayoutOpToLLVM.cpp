@@ -84,10 +84,19 @@ struct ConvertLayoutOpConversion
     }
   }
 
-  // creates v_perm operation:
-  // it concatenates two given 4 byte integers in one 8 byte integer,
-  // then copies 4 bytes on indexes given in shuffleIds into output 4 byte
-  // integer.
+  // Creates v_perm operation:
+  // It copies 4 bytes in dst value from tow provided registers in accordance
+  // with indexes in shuffleIds.
+  //
+  // index | copied contents
+  //   0   | v2 & 0xff
+  //   1   | (v2 >> 8) & 0xff
+  //   2   | (v2 >> 16) & 0xff
+  //   3   | (v2 >> 24) & 0xff
+  //   4   | v1 & 0xff
+  //   5   | (v1 >> 8) & 0xff
+  //   6   | (v1 >> 16) & 0xff
+  //   7   | (v1 >> 24) & 0xff
   static Value createVPerm(TritonLLVMOpBuilder &b, Value v1, Value v2,
                            ArrayRef<int> shuffleIds) {
     auto loc = b.loc;
@@ -226,7 +235,7 @@ struct ConvertLayoutOpConversion
       }
       llvm::transform(dstRegContents[i], permute.begin(),
                       [](ByteLocation loc) { return loc.byteIdx; });
-      dstRegs[i] = createVPerm(b, srcRegs[reg1], srcRegs[reg2], permute);
+      dstRegs[i] = createVPerm(b, srcRegs[reg2], srcRegs[reg1], permute);
     }
 
     // process dst registers that depend on four src registers
@@ -298,7 +307,7 @@ struct ConvertLayoutOpConversion
       permute[0] = p[0].byteIdx;
       permute[1] = p[1].byteIdx + regBytes;
       materializedPairs[i] =
-          createVPerm(b, srcRegs[p[0].regIdx], srcRegs[p[1].regIdx], permute);
+          createVPerm(b, srcRegs[p[1].regIdx], srcRegs[p[0].regIdx], permute);
     }
     std::vector<Value> materializedQuads;
     for (int i = 0; i < quadCombinations.size(); ++i) {
@@ -316,7 +325,7 @@ struct ConvertLayoutOpConversion
         }
       }
       assert(secondReg);
-      materializedQuads.push_back(createVPerm(b, firstReg, secondReg, permute));
+      materializedQuads.push_back(createVPerm(b, secondReg, firstReg, permute));
     }
 
     // Go over the rest of dst registers, combine them from quads and pairs
@@ -361,7 +370,7 @@ struct ConvertLayoutOpConversion
         }
         permute[dstByteIdx] = bytePos;
       }
-      dstRegs[i] = createVPerm(b, firstReg, secondReg, permute);
+      dstRegs[i] = createVPerm(b, secondReg, firstReg, permute);
     }
 
     // check correctness
