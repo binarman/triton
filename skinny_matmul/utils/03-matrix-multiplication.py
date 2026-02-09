@@ -1,202 +1,12 @@
-"""
-Matrix Multiplication
-=====================
-In this tutorial, you will write a very short high-performance FP16 matrix multiplication kernel that achieves
-performance on par with cuBLAS or rocBLAS.
-
-You will specifically learn about:
-
-* Block-level matrix multiplications.
-
-* Multi-dimensional pointer arithmetic.
-
-* Program re-ordering for improved L2 cache hit rate.
-
-* Automatic performance tuning.
-
-"""
-
-# %%
-# Motivations
-# -----------
-#
-# Matrix multiplications are a key building block of most modern high-performance computing systems.
-# They are notoriously hard to optimize, hence their implementation is generally done by
-# hardware vendors themselves as part of so-called "kernel libraries" (e.g., cuBLAS).
-# Unfortunately, these libraries are often proprietary and cannot be easily customized
-# to accommodate the needs of modern deep learning workloads (e.g., fused activation functions).
-# In this tutorial, you will learn how to implement efficient matrix multiplications by
-# yourself with Triton, in a way that is easy to customize and extend.
-#
-# Roughly speaking, the kernel that we will write will implement the following blocked
-# algorithm to multiply a (M, K) by a (K, N) matrix:
-#
-#  .. code-block:: python
-#
-#    # Do in parallel
-#    for m in range(0, M, BLOCK_SIZE_M):
-#      # Do in parallel
-#      for n in range(0, N, BLOCK_SIZE_N):
-#        acc = zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=float32)
-#        for k in range(0, K, BLOCK_SIZE_K):
-#          a = A[m : m+BLOCK_SIZE_M, k : k+BLOCK_SIZE_K]
-#          b = B[k : k+BLOCK_SIZE_K, n : n+BLOCK_SIZE_N]
-#          acc += dot(a, b)
-#        C[m : m+BLOCK_SIZE_M, n : n+BLOCK_SIZE_N] = acc
-#
-# where each iteration of the doubly-nested for-loop is performed by a dedicated Triton program instance.
-
-# %%
-# Compute Kernel
-# --------------
-#
-# The above algorithm is, actually, fairly straightforward to implement in Triton.
-# The main difficulty comes from the computation of the memory locations at which blocks
-# of :code:`A` and :code:`B` must be read in the inner loop. For that, we need
-# multi-dimensional pointer arithmetic.
-#
-# Pointer Arithmetic
-# ~~~~~~~~~~~~~~~~~~~
-#
-# For a row-major 2D tensor :code:`X`, the memory location of :code:`X[i, j]` is given
-# by :code:`&X[i, j] = X + i*stride_xi + j*stride_xj`.
-# Therefore, blocks of pointers for :code:`A[m : m+BLOCK_SIZE_M, k:k+BLOCK_SIZE_K]` and
-# :code:`B[k : k+BLOCK_SIZE_K, n : n+BLOCK_SIZE_N]` can be defined in pseudo-code as:
-#
-#  .. code-block:: python
-#
-#    &A[m : m+BLOCK_SIZE_M, k:k+BLOCK_SIZE_K] =  a_ptr + (m : m+BLOCK_SIZE_M)[:, None]*A.stride(0) + (k : k+BLOCK_SIZE_K)[None, :]*A.stride(1);
-#    &B[k : k+BLOCK_SIZE_K, n:n+BLOCK_SIZE_N] =  b_ptr + (k : k+BLOCK_SIZE_K)[:, None]*B.stride(0) + (n : n+BLOCK_SIZE_N)[None, :]*B.stride(1);
-#
-# Which means that pointers for blocks of A and B can be initialized (i.e., :code:`k=0`) in Triton as the following
-# code. Also note that we need an extra modulo to handle the case where :code:`M` is not a multiple of
-# :code:`BLOCK_SIZE_M` or :code:`N` is not a multiple of :code:`BLOCK_SIZE_N`, in which case we can pad the data with
-# some useless values, which will not contribute to the results. For the :code:`K` dimension, we will handle that later
-# using masking load semantics.
-#
-#  .. code-block:: python
-#
-#    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-#    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
-#    offs_k = tl.arange(0, BLOCK_SIZE_K)
-#    a_ptrs = a_ptr + (offs_am[:, None]*stride_am + offs_k [None, :]*stride_ak)
-#    b_ptrs = b_ptr + (offs_k [:, None]*stride_bk + offs_bn[None, :]*stride_bn)
-#
-# And then updated in the inner loop as follows:
-#
-#  .. code-block:: python
-#
-#    a_ptrs += BLOCK_SIZE_K * stride_ak;
-#    b_ptrs += BLOCK_SIZE_K * stride_bk;
-#
-#
-# L2 Cache Optimizations
-# ~~~~~~~~~~~~~~~~~~~~~~
-#
-# As mentioned above, each program instance computes a :code:`[BLOCK_SIZE_M, BLOCK_SIZE_N]`
-# block of :code:`C`.
-# It is important to remember that the order in which these blocks are computed does
-# matter, since it affects the L2 cache hit rate of our program, and unfortunately, a
-# simple row-major ordering
-#
-#  .. code-block:: Python
-#
-#    pid = tl.program_id(axis=0)
-#    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
-#    pid_m = pid // grid_n
-#    pid_n = pid % grid_n
-#
-# is just not going to cut it.
-#
-# One possible solution is to launch blocks in an order that promotes data reuse.
-# This can be done by 'super-grouping' blocks in groups of :code:`GROUP_M` rows before
-# switching to the next column:
-#
-#  .. code-block:: python
-#
-#    # Program ID
-#    pid = tl.program_id(axis=0)
-#    # Number of program ids along the M axis
-#    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
-#    # Number of programs ids along the N axis
-#    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
-#    # Number of programs in group
-#    num_pid_in_group = GROUP_SIZE_M * num_pid_n
-#    # Id of the group this program is in
-#    group_id = pid // num_pid_in_group
-#    # Row-id of the first program in the group
-#    first_pid_m = group_id * GROUP_SIZE_M
-#    # If `num_pid_m` isn't divisible by `GROUP_SIZE_M`, the last group is smaller
-#    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
-#    # *Within groups*, programs are ordered in a column-major order
-#    # Row-id of the program in the *launch grid*
-#    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
-#    # Col-id of the program in the *launch grid*
-#    pid_n = (pid % num_pid_in_group) // group_size_m
-#
-# For example, in the following matmul where each matrix is 9 blocks by 9 blocks,
-# we can see that if we compute the output in row-major ordering, we need to load 90
-# blocks into SRAM to compute the first 9 output blocks, but if we do it in grouped
-# ordering, we only need to load 54 blocks.
-#
-#   .. image:: grouped_vs_row_major_ordering.png
-#
-# In practice, this can improve the performance of our matrix multiplication kernel by
-# more than 10\% on some hardware architecture (e.g., 220 to 245 TFLOPS on A100).
-#
-
-# %%
-# Final Result
-# ------------
-
+# This file is a copy of tutorial with some parts cut off for convenience
 import torch
 
 import triton
 import triton.language as tl
+from triton.experimental import gluon
+from triton.experimental.gluon import language as ttgl
 
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
-
-
-def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
-
-
-def get_cuda_autotune_config():
-    return [
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3,
-                      num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
-                      num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
-                      num_warps=2),
-        # Good config for fp8 inputs.
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
-                      num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
-                      num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4)
-    ]
 
 
 def get_hip_autotune_config():
@@ -218,10 +28,7 @@ def get_hip_autotune_config():
 
 
 def get_autotune_config():
-    if is_cuda():
-        return get_cuda_autotune_config()
-    else:
-        return get_hip_autotune_config()
+    return get_hip_autotune_config()
 
 
 # `triton.jit`'ed functions can be auto-tuned by using the `triton.autotune` decorator, which consumes:
@@ -406,10 +213,10 @@ def skinny_matmul_kernel(
         # Load the next block of A and B, generate a mask by checking the K dimension.
         # If it is out of bounds, set it to 0.
         a = tl.load(
-            a_ptrs, mask=offs_k_sub_block[None, :, None] * NUM_SUB_BLOCK_K + offs_k[None, None, :]
+            a_ptrs, mask=offs_k_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_k[None, None, :]
             < K - k * BLOCK_SIZE_K, other=0.0)
         b = tl.load(
-            b_ptrs, mask=offs_k_sub_block[:, None, None] * NUM_SUB_BLOCK_K + offs_k[None, :, None]
+            b_ptrs, mask=offs_k_sub_block[:, None, None] * SUB_BLOCK_SIZE_K + offs_k[None, :, None]
             < K - k * BLOCK_SIZE_K, other=0.0)
         a = tl.permute(a, (1, 0, 2))
         # We accumulate along the K dimension.
@@ -439,6 +246,118 @@ def leaky_relu(x):
     return tl.where(x >= 0, x, 0.01 * x)
 
 
+THREADS_PER_WARP: ttgl.constexpr = triton.runtime.driver.active.get_current_target().warp_size
+
+
+@gluon.jit
+def gluon_leaky_relu(x):
+    return tl.where(x >= 0, x, 0.01 * x)
+
+
+@triton.autotune(
+    configs=get_autotune_config(),
+    key=['M', 'N', 'K'],
+)
+@gluon.jit
+def gluon_skinny_matmul_kernel(
+        # Pointers to matrices
+        a_ptr, b_ptr, c_ptr,
+        # Matrix dimensions
+        M, N, K,
+        # The stride variables represent how much to increase the ptr by when moving by 1
+        # element in a particular dimension. E.g. `stride_am` is how much to increase `a_ptr`
+        # by to get the element one row down (A has M rows).
+        stride_am, stride_ak,  #
+        stride_bk, stride_bn,  #
+        stride_cm, stride_cn, THREADS_PER_WARP: ttgl.constexpr,
+        # Meta-parameters
+        BLOCK_SIZE_M: ttgl.constexpr, BLOCK_SIZE_N: ttgl.constexpr, BLOCK_SIZE_K: ttgl.constexpr,  #
+        GROUP_SIZE_M: ttgl.constexpr,  #
+        ACTIVATION: ttgl.constexpr  #
+):
+    pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_SIZE_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+    tl.assume(pid_m >= 0)
+    tl.assume(pid_n >= 0)
+    tl.assume(stride_am > 0)
+    tl.assume(stride_ak > 0)
+    tl.assume(stride_bn > 0)
+    tl.assume(stride_bk > 0)
+    tl.assume(stride_cm > 0)
+    tl.assume(stride_cn > 0)
+
+    A_LOAD_LAYOUT: ttgl.constexpr = ttgl.BlockedLayout(size_per_thread=[1, 1,
+                                                                        8], threads_per_warp=[1, THREADS_PER_WARP, 1],
+                                                       warps_per_cta=[1, 1, 1], order=[2, 1, 0])
+    B_LOAD_LAYOUT: ttgl.constexpr = ttgl.BlockedLayout(size_per_thread=[1, 8,
+                                                                        1], threads_per_warp=[THREADS_PER_WARP, 1, 1],
+                                                       warps_per_cta=[1, 1, 1], order=[1, 0, 2])
+    ACC_LAYOUT: ttgl.constexpr = ttgl.BlockedLayout(size_per_thread=[1, 1,
+                                                                     1], threads_per_warp=[THREADS_PER_WARP, 1, 1],
+                                                    warps_per_cta=[1, 1, 1], order=[2, 1, 0])
+
+    offs_am = (pid_m * BLOCK_SIZE_M +
+               ttgl.arange(0, BLOCK_SIZE_M, ttgl.SliceLayout(1, ttgl.SliceLayout(2, A_LOAD_LAYOUT)))) % M
+    offs_bn = (pid_n * BLOCK_SIZE_N +
+               ttgl.arange(0, BLOCK_SIZE_N, ttgl.SliceLayout(0, ttgl.SliceLayout(1, B_LOAD_LAYOUT)))) % N
+    NUM_SUB_BLOCK_K: ttgl.constexpr = THREADS_PER_WARP
+    SUB_BLOCK_SIZE_K: ttgl.constexpr = BLOCK_SIZE_K // NUM_SUB_BLOCK_K
+    offs_ak = ttgl.arange(0, SUB_BLOCK_SIZE_K, ttgl.SliceLayout(0, ttgl.SliceLayout(1, A_LOAD_LAYOUT)))
+    offs_bk = ttgl.arange(0, SUB_BLOCK_SIZE_K, ttgl.SliceLayout(0, ttgl.SliceLayout(2, B_LOAD_LAYOUT)))
+
+    offs_ak_sub_block = ttgl.arange(0, NUM_SUB_BLOCK_K, ttgl.SliceLayout(0, ttgl.SliceLayout(2, A_LOAD_LAYOUT)))
+    offs_bk_sub_block = ttgl.arange(0, NUM_SUB_BLOCK_K, ttgl.SliceLayout(1, ttgl.SliceLayout(2, B_LOAD_LAYOUT)))
+    stire_sub_block_ak = stride_ak * SUB_BLOCK_SIZE_K
+    stire_sub_block_bk = stride_bk * SUB_BLOCK_SIZE_K
+
+    a_ptrs = a_ptr + (offs_am[:, None, None] * stride_am + offs_ak_sub_block[None, :, None] * stire_sub_block_ak +
+                      offs_ak[None, None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_bk_sub_block[:, None, None] * stire_sub_block_bk + offs_bk[None, :, None] * stride_bk +
+                      offs_bn[None, None, :] * stride_bn)
+
+    accumulator = ttgl.zeros((NUM_SUB_BLOCK_K, BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32, layout=ACC_LAYOUT)
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a = ttgl.load(
+            a_ptrs, mask=offs_ak_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_ak[None, None, :]
+            < K - k * BLOCK_SIZE_K, other=0.0)
+        b = ttgl.load(
+            b_ptrs, mask=offs_bk_sub_block[:, None, None] * SUB_BLOCK_SIZE_K + offs_bk[None, :, None]
+            < K - k * BLOCK_SIZE_K, other=0.0)
+        a = a.permute(1, 0, 2)
+
+        LHS_LAYOUT: ttgl.constexpr = ttgl.DotOperandLayout(parent=ACC_LAYOUT, operand_index=0, k_width=0)
+        RHS_LAYOUT: ttgl.constexpr = ttgl.DotOperandLayout(parent=ACC_LAYOUT, operand_index=1, k_width=0)
+        a = ttgl.convert_layout(a, LHS_LAYOUT)
+        b = ttgl.convert_layout(b, RHS_LAYOUT)
+        # We accumulate along the K dimension.
+        accumulator = ttgl.dot_fma(a, b, accumulator)
+        # Advance the ptrs to the next K block.
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
+    accumulator = ttgl.sum(accumulator, 0)
+    # You can fuse arbitrary activation functions here
+    # while the accumulator is still in FP32!
+    if ACTIVATION == "leaky_relu":
+        accumulator = gluon_leaky_relu(accumulator)
+    c = accumulator.to(tl.float16)
+
+    # -----------------------------------------------------------
+    # Write back the block of the output matrix C with masks.
+    offs_cm = pid_m * BLOCK_SIZE_M + ttgl.arange(0, BLOCK_SIZE_M, ttgl.SliceLayout(1, ttgl.SliceLayout(0, ACC_LAYOUT)))
+    offs_cn = pid_n * BLOCK_SIZE_N + ttgl.arange(0, BLOCK_SIZE_N, ttgl.SliceLayout(0, ttgl.SliceLayout(0, ACC_LAYOUT)))
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    ttgl.store(c_ptrs, c, mask=c_mask, cache_modifier=".wt")
+
+
 # %%
 # We can now create a convenience wrapper function that only takes two input tensors,
 # and (1) checks any shape constraint; (2) allocates the output; (3) launches the above kernel.
@@ -454,15 +373,15 @@ def matmul(a, b, activation=""):
     c = torch.empty((M, N), device=a.device, dtype=torch.float16)
     # 1D launch kernel where each block gets its own program.
     grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
-    skinny_matmul_kernel[grid](
+    gluon_skinny_matmul_kernel[grid](
         # matmul_kernel[grid](
         a, b, c,  #
         M, N, K,  #
         a.stride(0), a.stride(1),  #
         b.stride(0), b.stride(1),  #
         c.stride(0), c.stride(1),  #
-        ACTIVATION=activation  #
-    )
+        ACTIVATION=activation,  #
+        THREADS_PER_WARP=THREADS_PER_WARP)
     return c
 
 
@@ -485,24 +404,6 @@ if torch.allclose(triton_output, torch_output, atol=1e-2, rtol=0):
 else:
     print("❌ Triton and Torch differ")
 
-TORCH_HAS_FP8 = hasattr(torch, "float8_e5m2")
-if TORCH_HAS_FP8 and is_cuda():
-    torch.manual_seed(0)
-    a = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
-    b = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
-    a = a.to(torch.float8_e5m2)
-    # pre-transpose b for efficiency.
-    b = b.T
-    b = b.to(torch.float8_e5m2)
-    triton_output = matmul(a, b)
-    torch_output = torch.matmul(a.to(torch.float16), b.to(torch.float16))
-    print(f"triton_output_with_fp8_inputs={triton_output}")
-    print(f"torch_output_with_fp8_inputs={torch_output}")
-    if torch.allclose(triton_output, torch_output, atol=0.125, rtol=0):
-        print("✅ Triton and Torch match")
-    else:
-        print("❌ Triton and Torch differ")
-
 # %%
 # Benchmark
 # ---------
@@ -513,12 +414,10 @@ if TORCH_HAS_FP8 and is_cuda():
 # We can now compare the performance of our kernel against that of cuBLAS or rocBLAS. Here we focus on square matrices,
 # but feel free to arrange this script as you wish to benchmark any other matrix shape.
 
-ref_lib = 'cuBLAS' if is_cuda() else 'rocBLAS'
+ref_lib = 'rocBLAS'
 
 configs = []
-for fp8_inputs in [False, True]:
-    if fp8_inputs and (not TORCH_HAS_FP8 or not is_cuda()):
-        continue
+for fp8_inputs in [False]:
     configs.append(
         triton.testing.Benchmark(
             x_names=["M", "N", "K"],  # Argument names to use as an x-axis for the plot
@@ -540,10 +439,6 @@ for fp8_inputs in [False, True]:
 def benchmark(M, N, K, provider, fp8_inputs):
     a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
     b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
-    if TORCH_HAS_FP8 and fp8_inputs:
-        a = a.to(torch.float8_e5m2)
-        b = b.T
-        b = b.to(torch.float8_e5m2)
     quantiles = [0.5, 0.2, 0.8]
     if provider == ref_lib.lower():
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch.matmul(a, b), quantiles=quantiles)
