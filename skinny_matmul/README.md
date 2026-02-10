@@ -33,3 +33,35 @@ TBD: memory
 
 
 ### MxFP8 kernel?
+
+
+## Experiemnts
+
+### Tutorial based kernel
+
+Utilizing 3d fma dot and reduction across K dim.
+Test shape `4096 x 1 x 14336`, dtype fp16xfp16 -> fp16
+
+rocBLAS reports ~**1.1 TFLOPS**
+
+MMA based kernel resports **1.3 TFLOPS**
+
+#### v_dot based approach
+
+Benefits of fma dot and 3d dot multiplication:
+- maximizing parallelism using only M dimension.
+- no need to use LDS
+- no need to use atomics
+
+Theoretical performance on mi308 N=1 is **6 TFLOPS**.
+Assuming most of work is required to load matrix A,
+i.e. `PERF = 2*M*N*K/T`; `T = 2(bytes in fp16)*M*K/6e12(HBM bandwidth in bytes/sec)`
+`PERF = 2*M*N*K/(2*M*K/6e12) = N * 6e12`
+
+Naive implementation: **1.76 TFLOPS**
+- No pipelining
+- One row in A per warp
+
+Naive implementation, 8 rows per warp: **2.1 TFLOPS**
+- Better utilization of memory
+- Store process multiple elements
