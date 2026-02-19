@@ -352,7 +352,7 @@ def get_fma_warp_autotune_config():
     sizes = [
         {'BLOCK_SIZE_N': 1, 'BLOCK_SIZE_K': 512, 'GROUP_SIZE_M': 1},
     ]
-    return [triton.Config(s, num_warps=1) for s in sizes]
+    return [triton.Config(s, num_warps=4) for s in sizes]
 
 
 @triton.autotune(
@@ -364,7 +364,7 @@ def gluon_skinny_matmul_pipelined_kernel(
         # Pointers to matrices
         a_ptr, b_ptr, c_ptr,
         # Matrix dimensions
-        M, N, K,
+        M, N, K: ttgl.constexpr,
         # The stride variables represent how much to increase the ptr by when moving by 1
         # element in a particular dimension. E.g. `stride_am` is how much to increase `a_ptr`
         # by to get the element one row down (A has M rows).
@@ -397,80 +397,91 @@ def gluon_skinny_matmul_pipelined_kernel(
 
     A_LOAD_LAYOUT: ttgl.constexpr = ttgl.BlockedLayout(size_per_thread=[1, 1,
                                                                         8], threads_per_warp=[1, THREADS_PER_WARP, 1],
-                                                       warps_per_cta=[1, 1, 1], order=[2, 1, 0])
+                                                       warps_per_cta=[ttgl.num_warps(), 1, 1], order=[2, 1, 0])
     B_LOAD_LAYOUT: ttgl.constexpr = ttgl.BlockedLayout(size_per_thread=[1, 8,
                                                                         1], threads_per_warp=[THREADS_PER_WARP, 1, 1],
-                                                       warps_per_cta=[1, 1, 1], order=[1, 0, 2])
+                                                       warps_per_cta=[ttgl.num_warps(), 1, 1], order=[1, 0, 2])
     ACC_LAYOUT: ttgl.constexpr = ttgl.BlockedLayout(size_per_thread=[1, 1,
                                                                      1], threads_per_warp=[THREADS_PER_WARP, 1, 1],
-                                                    warps_per_cta=[1, 1, 1], order=[2, 1, 0])
+                                                    warps_per_cta=[1, ttgl.num_warps(), 1], order=[2, 1, 0])
+
+    SHARED_LAYOUT: ttgl.constexpr = ttgl.SwizzledSharedLayout(1, 1, 1, order=[2, 1, 0])
+
+    offs_innerk = ttgl.arange(0, 8, ttgl.SliceLayout(0, ttgl.SliceLayout(2, B_LOAD_LAYOUT)))
+    offs_outerk = ttgl.arange(0, THREADS_PER_WARP, ttgl.SliceLayout(1, ttgl.SliceLayout(2, B_LOAD_LAYOUT)))
+    offs_bn = (pid_n * BLOCK_SIZE_N +
+               ttgl.arange(0, BLOCK_SIZE_N, ttgl.SliceLayout(0, ttgl.SliceLayout(1, B_LOAD_LAYOUT)))) % N
+
+    b_ptrs = b_ptr + offs_outerk[:, None, None] * stride_bk * 8 + offs_innerk[None, :, None] * stride_bk + offs_bn[
+        None, None, :] * stride_bn
+
+    b_smem = ttgl.allocate_shared_memory(ttgl.float16, [K // (8 * THREADS_PER_WARP), THREADS_PER_WARP, 8, N],
+                                         SHARED_LAYOUT)
+
+    for k in range(K // (8 * THREADS_PER_WARP)):
+        b_data = ttgl.load(b_ptrs)
+        b_ptrs += THREADS_PER_WARP * stride_bk * 8
+        b_smem.index(k).store(b_data)
 
     offs_am = (pid_m * BLOCK_SIZE_M +
                ttgl.arange(0, BLOCK_SIZE_M, ttgl.SliceLayout(1, ttgl.SliceLayout(2, A_LOAD_LAYOUT)))) % M
-    offs_bn = (pid_n * BLOCK_SIZE_N +
-               ttgl.arange(0, BLOCK_SIZE_N, ttgl.SliceLayout(0, ttgl.SliceLayout(1, B_LOAD_LAYOUT)))) % N
     NUM_SUB_BLOCK_K: ttgl.constexpr = THREADS_PER_WARP
     SUB_BLOCK_SIZE_K: ttgl.constexpr = BLOCK_SIZE_K // NUM_SUB_BLOCK_K
     offs_ak = ttgl.arange(0, SUB_BLOCK_SIZE_K, ttgl.SliceLayout(0, ttgl.SliceLayout(1, A_LOAD_LAYOUT)))
-    offs_bk = ttgl.arange(0, SUB_BLOCK_SIZE_K, ttgl.SliceLayout(0, ttgl.SliceLayout(2, B_LOAD_LAYOUT)))
 
     offs_ak_sub_block = ttgl.arange(0, NUM_SUB_BLOCK_K, ttgl.SliceLayout(0, ttgl.SliceLayout(2, A_LOAD_LAYOUT)))
-    offs_bk_sub_block = ttgl.arange(0, NUM_SUB_BLOCK_K, ttgl.SliceLayout(1, ttgl.SliceLayout(2, B_LOAD_LAYOUT)))
-    stire_sub_block_ak = stride_ak * SUB_BLOCK_SIZE_K
-    stire_sub_block_bk = stride_bk * SUB_BLOCK_SIZE_K
+    stride_sub_block_ak = stride_ak * SUB_BLOCK_SIZE_K
 
-    a_ptrs = a_ptr + (offs_am[:, None, None] * stride_am + offs_ak_sub_block[None, :, None] * stire_sub_block_ak +
+    a_ptrs = a_ptr + (offs_am[:, None, None] * stride_am + offs_ak_sub_block[None, :, None] * stride_sub_block_ak +
                       offs_ak[None, None, :] * stride_ak)
-    b_ptrs = b_ptr + (offs_bk_sub_block[:, None, None] * stire_sub_block_bk + offs_bk[None, :, None] * stride_bk +
-                      offs_bn[None, None, :] * stride_bn)
+
+    LHS_LAYOUT: ttgl.constexpr = ttgl.DotOperandLayout(parent=ACC_LAYOUT, operand_index=0, k_width=0)
+    RHS_LAYOUT: ttgl.constexpr = ttgl.DotOperandLayout(parent=ACC_LAYOUT, operand_index=1, k_width=0)
 
     a_stage1 = ttgl.load(
         a_ptrs, mask=offs_ak_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_ak[None, None, :]
         < K - 0 * BLOCK_SIZE_K, other=0.0)
-    b_stage1 = ttgl.load(
-        b_ptrs, mask=offs_bk_sub_block[:, None, None] * SUB_BLOCK_SIZE_K + offs_bk[None, :, None]
-        < K - 0 * BLOCK_SIZE_K, other=0.0)
+
+    b_stage1 = b_smem.index(0).load(RHS_LAYOUT)
+
     a_stage1 = a_stage1.permute(1, 0, 2)
     a_ptrs += BLOCK_SIZE_K * stride_ak
-    b_ptrs += BLOCK_SIZE_K * stride_bk
 
     accumulator = ttgl.zeros((NUM_SUB_BLOCK_K, BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32, layout=ACC_LAYOUT)
-    LHS_LAYOUT: ttgl.constexpr = ttgl.DotOperandLayout(parent=ACC_LAYOUT, operand_index=0, k_width=0)
-    RHS_LAYOUT: ttgl.constexpr = ttgl.DotOperandLayout(parent=ACC_LAYOUT, operand_index=1, k_width=0)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K * 2)):
         a_stage2 = ttgl.load(
             a_ptrs, mask=offs_ak_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_ak[None, None, :]
             < K - (2 * k + 1) * BLOCK_SIZE_K, other=0.0)
-        b_stage2 = ttgl.load(
-            b_ptrs, mask=offs_bk_sub_block[:, None, None] * SUB_BLOCK_SIZE_K + offs_bk[None, :, None]
-            < K - (2 * k + 1) * BLOCK_SIZE_K, other=0.0)
         a_stage2 = a_stage2.permute(1, 0, 2)
-
         a = ttgl.convert_layout(a_stage1, LHS_LAYOUT)
-        b = ttgl.convert_layout(b_stage1, RHS_LAYOUT)
+
+        if (k <= tl.cdiv(K, BLOCK_SIZE_K * 2) - 1):
+            b_stage2 = b_smem.index(2 * k + 1).load(RHS_LAYOUT)
+        else:
+            b_stage2 = ttgl.zeros((BLOCK_SIZE_K // 8, 8, BLOCK_SIZE_N), dtype=ttgl.float16, layout=RHS_LAYOUT)
+        b = b_stage1
 
         # We accumulate along the K dimension.
         accumulator = ttgl.dot_fma(a, b, accumulator)
+
         # Advance the ptrs to the next K block.
         a_ptrs += BLOCK_SIZE_K * stride_ak
-        b_ptrs += BLOCK_SIZE_K * stride_bk
-
         a_stage1 = ttgl.load(
             a_ptrs, mask=offs_ak_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_ak[None, None, :]
             < K - (2 * k + 2) * BLOCK_SIZE_K, other=0.0)
-        b_stage1 = ttgl.load(
-            b_ptrs, mask=offs_bk_sub_block[:, None, None] * SUB_BLOCK_SIZE_K + offs_bk[None, :, None]
-            < K - (2 * k + 2) * BLOCK_SIZE_K, other=0.0)
         a_stage1 = a_stage1.permute(1, 0, 2)
-
         a = ttgl.convert_layout(a_stage2, LHS_LAYOUT)
-        b = ttgl.convert_layout(b_stage2, RHS_LAYOUT)
+
+        if (k < tl.cdiv(K, BLOCK_SIZE_K * 2) - 1):
+            b_stage1 = b_smem.index(2 * k + 2).load(RHS_LAYOUT)
+        else:
+            b_stage1 = ttgl.zeros((BLOCK_SIZE_K // 8, 8, BLOCK_SIZE_N), dtype=ttgl.float16, layout=RHS_LAYOUT)
+        b = b_stage2
 
         # We accumulate along the K dimension.
         accumulator = ttgl.dot_fma(a, b, accumulator)
         # Advance the ptrs to the next K block.
         a_ptrs += BLOCK_SIZE_K * stride_ak
-        b_ptrs += BLOCK_SIZE_K * stride_bk
 
     accumulator = ttgl.sum(accumulator, 0)
     # You can fuse arbitrary activation functions here
@@ -757,7 +768,7 @@ for fp8_inputs in [False]:
     configs.append(
         triton.testing.Benchmark(
             x_names=["M", "N", "K"],  # Argument names to use as an x-axis for the plot
-            x_vals=[(4096, 1, 14336)],  # Different possible values for `x_name`
+            x_vals=[(4096, 1, 16384)],  # Different possible values for `x_name`
             line_arg="provider",  # Argument name whose value corresponds to a different line in the plot
             # Possible values for `line_arg`
             # Don't compare to cublas for fp8 cases as torch.matmul doesn't support fp8 at the moment.
@@ -783,9 +794,9 @@ def benchmark(M, N, K, provider, fp8_inputs):
     a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
     b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
     quantiles = [0.5, 0.2, 0.8]
-    ms = 1
-    max_ms = 1
-    min_ms = 1
+    ms = float('inf')
+    max_ms = float('inf')
+    min_ms = float('inf')
     # if provider == ref_lib.lower():
     #     ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch.matmul(a, b), quantiles=quantiles)
     # if provider == 'triton_mma':
@@ -799,7 +810,7 @@ def benchmark(M, N, K, provider, fp8_inputs):
     # if provider == 'gluon_fma16':
     #     ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_fma(a, b, 16), quantiles=quantiles)
     if provider == 'gluon_pipelined':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_pipelined_fma(a, b, 1), quantiles=quantiles)
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_pipelined_fma(a, b, 4), quantiles=quantiles)
     # if provider == 'gluon_unrolled':
     #     ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_unrolled_fma(a, b, 8), quantiles=quantiles)
     perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
@@ -810,9 +821,9 @@ def benchmark(M, N, K, provider, fp8_inputs):
 import os
 if "ROCPROF_ATT_LIBRARY_PATH" not in os.environ:
     torch.manual_seed(0)
-    a = torch.rand((4096, 14336), device=DEVICE, dtype=torch.float16) - 0.5
-    b = torch.rand((14336, 1), device=DEVICE, dtype=torch.float16) - 0.5
-    triton_output = matmul_pipelined_fma(a, b, 1)
+    a = torch.rand((4096, 16384), device=DEVICE, dtype=torch.float16) - 0.5
+    b = torch.rand((16384, 1), device=DEVICE, dtype=torch.float16) - 0.5
+    triton_output = matmul_pipelined_fma(a, b, 16)
     torch_output = torch.matmul(a, b)
     print(f"triton_output_with_fp16_inputs={triton_output}")
     print(f"torch_output_with_fp16_inputs={torch_output}")
