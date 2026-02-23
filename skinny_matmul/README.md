@@ -29,13 +29,70 @@ Targeted data types: fp16
 
 TBD: memory
 
-### Triton tutorial
+### MxFP8 kernel
 
+TBD
 
-### MxFP8 kernel?
+## Experiments
 
+### 4096 x 1 x 16384 fp16 x fp16 -> fp16/fp32
 
-## Experiemnts
+Kernel | torch | dot2d_mma | dot2d_fma | dot3d | gluon_dot3d(MBLOCK=1) | gluon_dot3d(MBLOCK=8) | gluon_dot3d_local_b(MBLOCK=8) | gluon_dot3d_flex(MBLOCK=12) | gluon_dot3d_flex(MBLOCK=13) | gluon_dot3d_flex_m(MBLOCK=13) unrolled loops
+Performance(TFLOPS) |
+Mem bandwidth(TBytes/s) |
+VGPRs | N/A |
+SGPRS | N/A |
+
+### 4096 x 1 x 16384 fp8 x fp8 -> fp16
+
+TBD
+
+#### torch kernel
+
+Simple `torch.matmul` invocation.
+
+Benchmark in `kernels/v0_torch.py`
+
+#### dot2d_mma
+
+Kernel from triton tutorial.
+Added few additional configs in autotune.
+
+Benchmark in `kernels/v1_dot2d_mma.py`
+
+#### dot2d_fma
+
+Kernel from triton tutorial, but using fma dot instead of mma.
+More additional configs added in autotune.
+
+Benchmark in `kernels/v2_dot2d_fma.py`
+
+#### dot3d
+
+Triton kernel, which uses 3d dot to distribute k dim between threads and reduce in epilog.
+
+Benchmark in `kernels/v3_dot3d.py`
+
+#### gluon_dot3d
+
+Gluon kernel, which uses 3d dot to distribute k dim between threads and reduce in epilog.
+No LDS used, each workgroup contains only one warp.
+
+Benchmark in `kernels/v4_gluon_dot3d.py`
+
+#### gluon_dot3d_local_b
+
+Gluon kernel, similar to gluon_dot3d, but loads whole b tensor in LDS in prolog.
+Each workgroup contains 4 warps, so they share same LDS buffer and there are enough LDS for all workgroups to run at the same time.
+
+Benchmark in `kernels/v5_gluon_dot3d_local_b.py`
+
+#### gluon_dot3d_flex_m
+
+Gluon kernel, similar to gluon_dot3d, but do not use tt.dot [BLOCK_M, BLOCK_K] x [BLOCK_K, BLOCK_N], instead use explicit for loop over A rows.
+Benefits are: can choose any number of rows per workgroup, not limited to power of 2.
+
+Benchmark in `kernels/v6_gluon_dot3d_flex_m.py`
 
 ### Tutorial based kernel
 
