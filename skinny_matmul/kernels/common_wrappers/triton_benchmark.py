@@ -32,9 +32,21 @@ def run_all(matmul_kernel):
         if run_key not in first_run:
             first_run.add(run_key)
             print("LDS:", pgm.metadata.shared)
+            v_dot_count = 0
+            v_mfma_count = 0
+            v_fmac_count = 0
             for line in pgm.asm["amdgcn"].split("\n"):
                 if ".sgpr" in line or ".vgpr" in line:
                     print(line)
+                if "v_dot" in line:
+                    v_dot_count += 1
+                if "v_mfma" in line:
+                    v_mfma_count += 1
+                if "v_fmac" in line:
+                    v_fmac_count += 1
+            print("v_dot:", v_dot_count)
+            print("v_mfma:", v_mfma_count)
+            print("v_fmac:", v_fmac_count)
 
         return c
 

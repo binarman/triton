@@ -6,3 +6,4 @@ python3 skinny_matmul/kernels/v2_dot2d_fma.py
 python3 skinny_matmul/kernels/v3_dot3d.py
 python3 skinny_matmul/kernels/v4_gluon_dot3d.py
 python3 skinny_matmul/kernels/v5_gluon_dot3d_local_b.py
+python3 skinny_matmul/kernels/v6_gluon_dot3d_flex_m.py

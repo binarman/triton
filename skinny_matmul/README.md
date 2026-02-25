@@ -37,15 +37,21 @@ TBD
 
 ### 4096 x 1 x 16384 fp16 x fp16 -> fp16/fp32
 
-Kernel | torch | dot2d_mma | dot2d_fma | dot3d | gluon_dot3d(MBLOCK=1) | gluon_dot3d(MBLOCK=8) | gluon_dot3d_local_b(MBLOCK=8) | gluon_dot3d_flex(MBLOCK=12) | gluon_dot3d_flex(MBLOCK=13) | gluon_dot3d_flex_m(MBLOCK=13) unrolled loops
-Performance(TFLOPS) |
+Kernel | torch | dot2d_mma | dot2d_fma | dot3d | gluon_dot3d | gluon_dot3d | gluon_dot3d_local_b | gluon_dot3d_flex_m
+Performance(TFLOPS) | 1.152286 | 1.370338 | 0.606801 | 2.120142 | 2.3048 | 1.538471 | 2.024003
 Mem bandwidth(TBytes/s) |
-VGPRs | N/A |
-SGPRS | N/A |
+LDS | N/A | 24576 | 16640 | 1024 | 0 | 32768 | 512
+VGPRs | N/A | 102 | 156 | 60 | 65 | 92 | 18
+SGPRS | N/A | 23 | 30 | 30 | 23 | 23 | 23
 
 ### 4096 x 1 x 16384 fp8 x fp8 -> fp16
 
-TBD
+Kernel | torch | dot2d_mma | dot2d_fma | dot3d | gluon_dot3d | gluon_dot3d | gluon_dot3d_local_b | gluon_dot3d_flex_m
+Performance(TFLOPS) |
+Mem bandwidth(TBytes/s) |
+LDS | N/A |
+VGPRs | N/A |
+SGPRS | N/A |
 
 #### torch kernel
 
