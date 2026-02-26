@@ -35,96 +35,92 @@ TBD
 
 ## Experiments
 
-### 4096 x 1 x 16384 fp16 x fp16 -> fp16/fp32
+Performance is computed with following formula: `2 * M * N * K * 1e-12 / (ms * 1e-3)`
 
-Kernel | torch | dot2d_mma | dot2d_fma | dot3d | gluon_dot3d | gluon_dot3d | gluon_dot3d_local_b | gluon_dot3d_flex_m
-Performance(TFLOPS) | 1.152286 | 1.370338 | 0.606801 | 2.120142 | 2.3048 | 1.538471 | 2.024003
-Mem bandwidth(TBytes/s) |
-LDS | N/A | 24576 | 16640 | 1024 | 0 | 32768 | 512
-VGPRs | N/A | 102 | 156 | 60 | 65 | 92 | 18
-SGPRS | N/A | 23 | 30 | 30 | 23 | 23 | 23
+Bandwidth is computed with following formula: `sizeof(dtype) * (M * K + N * K) * 1e-12 / (ms * 1e-3)`
+
+run `./skinny_matmul/run_all.py` to get following tables.
+run `python3 ./skinny_matmul/kernels/v1_dot2d_mma.py` or any other kernel to run one particular kernel.
+
+### 4096 x 1 x 16384 fp16 x fp16 -> fp16
+
+| Kernel              | v0_torch | v1_dot2d_mma | v2_dot2d_fma | v3_dot3d | v4_gluon_dot3d | v5_gluon_dot3d_local_b | v6_gluon_dot3d_flex_m |
+|---------------------|----------|--------------|--------------|----------|----------------|------------------------|-----------------------|
+| bandwidth(TBytes/s) | 1.1531   | 1.3673       | 0.6071       | 2.1261   | 2.2966         | 1.5308                 | 2.0147                |
+| lds                 | N/A      | 24576        | 16640        | 1024     | 0              | 32768                  | 512                   |
+| performance(TFLOPS) | 1.1528   | 1.3670       | 0.6069       | 2.1255   | 2.2961         | 1.5304                 | 2.0143                |
+| sgpr_count          | N/A      | 23           | 30           | 30       | 23             | 23                     | 23                    |
+| vgpr_count          | N/A      | 102          | 156          | 60       | 37             | 92                     | 18                    |
+
+If use constexpr K:
+
+| Metric              | v0_torch | v1_dot2d_mma | v2_dot2d_fma | v3_dot3d | v4_gluon_dot3d | v5_gluon_dot3d_local_b | v6_gluon_dot3d_flex_m |
+|---------------------|----------|--------------|--------------|----------|----------------|------------------------|-----------------------|
+| bandwidth(TBytes/s) | 1.1509   | 1.3964       | 0.6215       | 2.1396   | 2.3449         | 1.8749                 | 2.0734                |
+| vgpr_count          | N/A      | 101          | 374          | 56       | 58             | 92                     | 27                    |
 
 ### 4096 x 1 x 16384 fp8 x fp8 -> fp16
 
-Kernel | torch | dot2d_mma | dot2d_fma | dot3d | gluon_dot3d | gluon_dot3d | gluon_dot3d_local_b | gluon_dot3d_flex_m
-Performance(TFLOPS) |
-Mem bandwidth(TBytes/s) |
-LDS | N/A |
-VGPRs | N/A |
-SGPRS | N/A |
+| Kernel              | v1_dot2d_mma | v2_dot2d_fma | v3_dot3d | v4_gluon_dot3d | v5_gluon_dot3d_local_b | v6_gluon_dot3d_flex_m |
+|---------------------|--------------|--------------|----------|----------------|------------------------|-----------------------|
+| bandwidth(TBytes/s) | 0.6694       | 0.1156       | 1.2132   | 1.5870         | 1.3080                 | 1.5070                |
+| lds                 | 20480        | 65536        | 0        | 0              | 16384                  | 512                   |
+| performance(TFLOPS) | 1.3385       | 0.2312       | 2.4259   | 3.1731         | 2.6154                 | 3.0132                |
+| sgpr_count          | 23           | 30           | 23       | 23             | 23                     | 23                    |
+| vgpr_count          | 112          | 363          | 25       | 100            | 63                     | 47                    |
 
-#### torch kernel
+
+If use constexpr K:
+
+| Metric              | v1_dot2d_mma | v2_dot2d_fma | v3_dot3d | v4_gluon_dot3d | v5_gluon_dot3d_local_b | v6_gluon_dot3d_flex_m |
+|---------------------|--------------|--------------|----------|----------------|------------------------|-----------------------|
+| bandwidth(TBytes/s) | 0.6773       | 0.1231       | 1.5002   | 1.7386         | 1.4225                 | 1.5677                |
+| vgpr_count          | 116          | 252          | 22       | 59             | 89                     | 43                    |
+
+
+#### v0_torch kernel
 
 Simple `torch.matmul` invocation.
 
 Benchmark in `kernels/v0_torch.py`
 
-#### dot2d_mma
+#### v1_dot2d_mma
 
 Kernel from triton tutorial.
 Added few additional configs in autotune.
 
 Benchmark in `kernels/v1_dot2d_mma.py`
 
-#### dot2d_fma
+#### v2_dot2d_fma
 
 Kernel from triton tutorial, but using fma dot instead of mma.
 More additional configs added in autotune.
 
 Benchmark in `kernels/v2_dot2d_fma.py`
 
-#### dot3d
+#### v3_dot3d
 
 Triton kernel, which uses 3d dot to distribute k dim between threads and reduce in epilog.
 
 Benchmark in `kernels/v3_dot3d.py`
 
-#### gluon_dot3d
+#### v4_gluon_dot3d
 
 Gluon kernel, which uses 3d dot to distribute k dim between threads and reduce in epilog.
 No LDS used, each workgroup contains only one warp.
 
 Benchmark in `kernels/v4_gluon_dot3d.py`
 
-#### gluon_dot3d_local_b
+#### v5_gluon_dot3d_local_b
 
 Gluon kernel, similar to gluon_dot3d, but loads whole b tensor in LDS in prolog.
 Each workgroup contains 4 warps, so they share same LDS buffer and there are enough LDS for all workgroups to run at the same time.
 
 Benchmark in `kernels/v5_gluon_dot3d_local_b.py`
 
-#### gluon_dot3d_flex_m
+#### v6_gluon_dot3d_flex_m
 
 Gluon kernel, similar to gluon_dot3d, but do not use tt.dot [BLOCK_M, BLOCK_K] x [BLOCK_K, BLOCK_N], instead use explicit for loop over A rows.
 Benefits are: can choose any number of rows per workgroup, not limited to power of 2.
 
 Benchmark in `kernels/v6_gluon_dot3d_flex_m.py`
-
-### Tutorial based kernel
-
-Utilizing 3d fma dot and reduction across K dim.
-Test shape `4096 x 1 x 14336`, dtype fp16xfp16 -> fp16
-
-rocBLAS reports ~**1.1 TFLOPS**
-
-MMA based kernel resports **1.3 TFLOPS**
-
-#### v_dot based approach
-
-Benefits of fma dot and 3d dot multiplication:
-- maximizing parallelism using only M dimension.
-- no need to use LDS
-- no need to use atomics
-
-Theoretical performance on mi308 N=1 is **6 TFLOPS**.
-Assuming most of work is required to load matrix A,
-i.e. `PERF = 2*M*N*K/T`; `T = 2(bytes in fp16)*M*K/6e12(HBM bandwidth in bytes/sec)`
-`PERF = 2*M*N*K/(2*M*K/6e12) = N * 6e12`
-
-Naive implementation: **1.76 TFLOPS**
-- No pipelining
-- One row in A per warp
-
-Naive implementation, 8 rows per warp: **2.1 TFLOPS**
-- Better utilization of memory
-- Store process multiple elements

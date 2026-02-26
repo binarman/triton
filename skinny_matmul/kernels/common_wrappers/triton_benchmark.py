@@ -6,6 +6,39 @@ import triton
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 
+def run_isolated_triton_bench(matmul_kernel):
+
+    def matmul(a, b, activation=""):
+        # Check constraints.
+        assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+        assert a.is_contiguous(), "Matrix A must be contiguous"
+        M, K = a.shape
+        K, N = b.shape
+        # Allocates output.
+        c = torch.empty((M, N), device=a.device, dtype=torch.float16)
+        # 1D launch kernel where each block gets its own program.
+        grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
+
+        pgm = matmul_kernel[grid](
+            a, b, c,  #
+            M, N, K,  #
+            a.stride(0), a.stride(1),  #
+            b.stride(0), b.stride(1),  #
+            c.stride(0), c.stride(1),  #
+            ACTIVATION=activation)
+        return c
+
+    M, N, K = (4096, 1, 16384)
+    for input_dtype in [torch.float8_e5m2, torch.float16]:
+        a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
+        b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
+        if input_dtype != torch.float16:
+            a = a.to(input_dtype)
+            b = b.to(input_dtype)
+        quantiles = [0.5, 0.2, 0.8]
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul(a, b), quantiles=quantiles)
+
+
 def run_triton_bench(name, matmul_kernel):
 
     print(f"Running benchmarking for {name}")
@@ -66,8 +99,8 @@ def run_triton_bench(name, matmul_kernel):
             b = b.to(input_dtype)
         quantiles = [0.5, 0.2, 0.8]
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul(a, b), quantiles=quantiles)
-        kernel_stats[(a.dtype, )]["perf"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
-        kernel_stats[(a.dtype, )]["bw"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms * 1e-3)
+        kernel_stats[(a.dtype, )]["performance(TFLOPS)"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
+        kernel_stats[(a.dtype, )]["bandwidth(TBytes/s)"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms * 1e-3)
 
     results = []
     for (dtype, ) in kernel_stats:

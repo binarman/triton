@@ -26,4 +26,7 @@ def benchmark_torch():
     ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch.matmul(a, b), quantiles=quantiles)
     perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     bandwidth = lambda ms: input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms * 1e-3)
-    return [{"dtype": torch.float16, "name": "v0_torch", "perf": perf(ms), "bandwidth": bandwidth(ms)}]
+    return [{
+        "dtype": torch.float16, "name": "v0_torch", "performance(TFLOPS)": perf(ms), "bandwidth(TBytes/s)":
+        bandwidth(ms)
+    }]
