@@ -136,8 +136,3 @@ def matmul_kernel(
 @triton.jit
 def leaky_relu(x):
     return tl.where(x >= 0, x, 0.01 * x)
-
-
-import common_wrappers.triton_benchmark as triton_benchmark
-
-triton_benchmark.run_all(matmul_kernel)

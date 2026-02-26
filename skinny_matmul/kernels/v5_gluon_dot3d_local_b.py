@@ -139,8 +139,3 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr,  #
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     ttgl.store(c_ptrs, c, mask=c_mask, cache_modifier=".wt")
-
-
-import common_wrappers.triton_benchmark as triton_benchmark
-
-triton_benchmark.run_all(matmul_kernel)
