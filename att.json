@@ -1,7 +1,7 @@
 {
   "jobs": [
     {
-      "kernel_include_regex": "gluon_skinny_matmul_pipelined_kernel",
+      "kernel_include_regex": "matmul_kernel",
       "kernel_exclude_regex": "",
       "advanced_thread_trace": true,
       "att_target_cu": 0,
