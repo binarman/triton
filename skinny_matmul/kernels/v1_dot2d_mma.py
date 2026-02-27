@@ -70,7 +70,7 @@ def matmul_kernel(
         # Pointers to matrices
         a_ptr, b_ptr, c_ptr,
         # Matrix dimensions
-        M, N, K,
+        M, N, K: ttgl.constexpr,
         # The stride variables represent how much to increase the ptr by when moving by 1
         # element in a particular dimension. E.g. `stride_am` is how much to increase `a_ptr`
         # by to get the element one row down (A has M rows).
@@ -136,3 +136,8 @@ def matmul_kernel(
 @triton.jit
 def leaky_relu(x):
     return tl.where(x >= 0, x, 0.01 * x)
+
+
+if __name__ == "__main__":
+    from common_wrappers import triton_benchmark
+    triton_benchmark.run_isolated_triton_bench(matmul_kernel)

@@ -18,6 +18,7 @@ DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 
 def benchmark_torch():
+    print("Running benchmarking for v0_torch")
     M, N, K = (4096, 1, 16384)
     input_dtype = torch.float16
     a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
