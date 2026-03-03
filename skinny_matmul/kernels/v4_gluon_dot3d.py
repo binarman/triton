@@ -50,6 +50,13 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, M, N, K, stride_am, stride_ak,  #
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+
+    # NUM_XCDS = 4
+    # XCD_ID = pid % NUM_XCDS
+    # NUM_PIDS_PER_XCD = num_pid_m // NUM_XCDS
+    # XCD_GROUP_ID = pid // NUM_XCDS
+    # pid = NUM_PIDS_PER_XCD * XCD_ID + XCD_GROUP_ID
+
     num_pid_in_group = GROUP_SIZE_M * num_pid_n
     group_id = pid // num_pid_in_group
     first_pid_m = group_id * GROUP_SIZE_M
@@ -101,7 +108,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, M, N, K, stride_am, stride_ak,  #
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = ttgl.load(
             a_ptrs, mask=offs_ak_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_ak[None, None, :]
-            < K - k * BLOCK_SIZE_K, other=0.0)
+            < K - k * BLOCK_SIZE_K, other=0.0, cache_modifier=".cg")
         b = ttgl.load(
             b_ptrs, mask=offs_bk_sub_block[:, None, None] * SUB_BLOCK_SIZE_K + offs_bk[None, :, None]
             < K - k * BLOCK_SIZE_K, other=0.0)

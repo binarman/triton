@@ -178,7 +178,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, M, N, K, stride_am, stride_ak,  #
             a = ttgl.load(
                 a_ptrs_no_m + offs_am[:, None, None] * stride_am,
                 mask=offs_ak_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_ak[None, None, :]
-                < K - k * BLOCK_SIZE_K, other=0.0)
+                < K - k * BLOCK_SIZE_K, other=0.0, cache_modifier=".cg")
             a = a.permute(1, 0, 2)
             a = ttgl.convert_layout(a, LHS_LAYOUT).to(tl.float16)
             # We accumulate along the K dimension.

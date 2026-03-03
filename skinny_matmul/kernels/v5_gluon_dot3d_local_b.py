@@ -116,7 +116,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr,  #
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = ttgl.load(
             a_ptrs, mask=offs_ak_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_ak[None, None, :]
-            < K - BLOCK_SIZE_K, other=0.0)
+            < K - BLOCK_SIZE_K, other=0.0, cache_modifier=".cg")
         a = a.permute(1, 0, 2)
         a = ttgl.convert_layout(a, LHS_LAYOUT).to(ttgl.float16)
 

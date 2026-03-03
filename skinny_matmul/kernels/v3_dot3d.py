@@ -87,7 +87,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr,  #
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl.load(
             a_ptrs, mask=offs_k_sub_block[None, :, None] * SUB_BLOCK_SIZE_K + offs_k[None, None, :]
-            < K - k * BLOCK_SIZE_K, other=0.0)
+            < K - k * BLOCK_SIZE_K, other=0.0, cache_modifier=".cg")
         b = tl.load(
             b_ptrs, mask=offs_k_sub_block[:, None, None] * SUB_BLOCK_SIZE_K + offs_k[None, :, None]
             < K - k * BLOCK_SIZE_K, other=0.0)
