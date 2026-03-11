@@ -31,7 +31,7 @@ def matmul(a, b, activation=""):
     return c
 
 
-def run_bench(input_dtype):
+def run_bench_multiple_experiments(input_dtype):
     M, N, K = (4096, 1, 16384)
 
     a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
@@ -42,6 +42,9 @@ def run_bench(input_dtype):
 
     num_energy_measure_repeats = 1000
     num_experiments = 1000
+
+    # warmup matmul, so we do not spend time on compilation
+    c = matmul(a, b)
 
     measurements = []
     for i in range(num_experiments):
@@ -64,11 +67,58 @@ def run_bench(input_dtype):
     mean = statistics.mean(measurements)
     print(measurements)
     measurements.sort()
-    print("Median ", measurements[len(measurements) // 2])
+    print("Batched measurements")
+    print(f"Median energy per run: {measurements[len(measurements) // 2]} J")
     print(f"Mean energy per run: {mean:.6f} J")
-    print(f"Variance: {variance:.6f}")
-    print(f"Standard deviation: {statistics.stdev(measurements):.6f}")
+    print(f"Variance: {variance:.6f} J^2")
+    print(f"Standard deviation: {statistics.stdev(measurements):.6f} J")
+
+
+def run_bench_single_experiment(input_dtype):
+    M, N, K = (4096, 1, 16384)
+
+    a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
+    b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
+    if input_dtype != torch.float16:
+        a = a.to(input_dtype)
+        b = b.to(input_dtype)
+
+    num_repeats = 100
+
+    # warmup matmul, so we do not spend time on compilation
+    c = matmul(a, b)
+
+    measurements = []
+    for i in range(num_repeats):
+        start_energy = power.GetEnergy(DEVICE.index)
+        c = matmul(a, b)
+        end_energy = power.GetEnergy(DEVICE.index)
+        measurements += [(end_energy - start_energy) / 1e6]
+
+    idle_measurements = []
+    for i in range(num_repeats):
+        start_energy = power.GetEnergy(DEVICE.index)
+        # here goes matmul(a, b)
+        end_energy = power.GetEnergy(DEVICE.index)
+        idle_measurements += [(end_energy - start_energy) / 1e6]
+
+    # Compute variance of measurements
+    variance = statistics.variance(measurements)
+    mean = statistics.mean(measurements)
+    print(measurements)
+    print(idle_measurements)
+    measurements.sort()
+    idle_measurements.sort()
+    print("Single measurement")
+    print(f"Median total energy per run: {measurements[num_repeats // 2]} J")
+    print(f"Median idle energy per run: {idle_measurements[num_repeats // 2]} J")
+    print(f"Median peeled energy per run: {measurements[num_repeats // 2] - idle_measurements[num_repeats // 2]} J")
+    # print(f"Median idle energy per run")
+    # print(f"Mean energy per run: {mean:.6f} J")
+    # print(f"Variance: {variance:.6f} J^2")
+    # print(f"Standard deviation: {statistics.stdev(measurements):.6f} J")
 
 
 if __name__ == "__main__":
-    run_bench(torch.float16)
+    # run_bench_multiple_experiments(torch.float16)
+    run_bench_single_experiment(torch.float16)
