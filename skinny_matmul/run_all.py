@@ -11,15 +11,15 @@ from kernels import v5_gluon_dot3d_local_b
 from kernels import v6_gluon_dot3d_flex_m
 
 
-def print_results_table(results, dtype):
-    """Print a formatted table for results of a specific dtype.
+def print_results_table(results, variant):
+    """Print a formatted table for results of a specific dtype and sizes.
 
     Columns are kernel names, rows are metrics.
     """
     # Filter results by dtype
-    filtered = [r for r in results if r["dtype"] == dtype]
+    filtered = [r for r in results if r["variant"] == variant]
     if not filtered:
-        print(f"\nNo results for {dtype}")
+        print(f"\nNo results for given variant: {variant}")
         return
 
     # Get all kernel names (columns)
@@ -30,7 +30,7 @@ def print_results_table(results, dtype):
     for r in filtered:
         all_keys.update(r.keys())
     all_keys.discard("name")
-    all_keys.discard("dtype")
+    all_keys.discard("variant")
     metric_keys = sorted(all_keys)
 
     # Build a lookup: name -> metrics dict
@@ -51,7 +51,7 @@ def print_results_table(results, dtype):
 
     # Print header
     print(f"\n{'=' * 60}")
-    print(f"Results for {dtype}")
+    print(f"Results for {variant}")
     print(f"{'=' * 60}")
 
     header = "| " + "Metric".ljust(col_widths[0]) + " |"
@@ -78,24 +78,32 @@ def print_results_table(results, dtype):
         print(row)
 
 
-# list of benchmark results
-# each list element is a map with following fields: "dtype", "name", "perf", "bandwidth", "lds", "vgprs", "sgprs", "v_dot_count", "v_fma_count", "v_mfma_count"
-results = []
-results += v0_torch.benchmark_torch()
-results += triton_benchmark.run_triton_bench("v1_dot2d_mma", v1_dot2d_mma.matmul_kernel)
-results += triton_benchmark.run_triton_bench("v2_dot2d_fma", v2_dot2d_fma.matmul_kernel)
-results += triton_benchmark.run_triton_bench("v3_dot3d", v3_dot3d.matmul_kernel)
-results += triton_benchmark.run_triton_bench("v4_gluon_dot3d", v4_gluon_dot3d.matmul_kernel)
-results += triton_benchmark.run_triton_bench("v5_gluon_dot3d_local_b", v5_gluon_dot3d_local_b.matmul_kernel)
-results += triton_benchmark.run_triton_bench("v6_gluon_dot3d_flex_m", v6_gluon_dot3d_flex_m.matmul_kernel)
+def print_results(results):
+    variants = {r["variant"] for r in results}
+    for v in variants:
+        print_results_table(results, v)
 
-triton_benchmark.run_triton_test("v1_dot2d_mma", v1_dot2d_mma.matmul_kernel)
-triton_benchmark.run_triton_test("v2_dot2d_fma", v2_dot2d_fma.matmul_kernel)
-triton_benchmark.run_triton_test("v3_dot3d", v3_dot3d.matmul_kernel)
-triton_benchmark.run_triton_test("v4_gluon_dot3d", v4_gluon_dot3d.matmul_kernel)
-triton_benchmark.run_triton_test("v5_gluon_dot3d_local_b", v5_gluon_dot3d_local_b.matmul_kernel)
-triton_benchmark.run_triton_test("v6_gluon_dot3d_flex_m", v6_gluon_dot3d_flex_m.matmul_kernel)
 
-# Print formatted tables
-print_results_table(results, torch.float16)
-print_results_table(results, torch.float8_e5m2)
+def test_all():
+    triton_benchmark.run_triton_test("v1_dot2d_mma", v1_dot2d_mma.matmul_kernel)
+    triton_benchmark.run_triton_test("v2_dot2d_fma", v2_dot2d_fma.matmul_kernel)
+    triton_benchmark.run_triton_test("v3_dot3d", v3_dot3d.matmul_kernel)
+    triton_benchmark.run_triton_test("v4_gluon_dot3d", v4_gluon_dot3d.matmul_kernel)
+    triton_benchmark.run_triton_test("v5_gluon_dot3d_local_b", v5_gluon_dot3d_local_b.matmul_kernel)
+    triton_benchmark.run_triton_test("v6_gluon_dot3d_flex_m", v6_gluon_dot3d_flex_m.matmul_kernel)
+
+
+if __name__ == "__main__":
+    # list of benchmark results
+    # each list element is a map with following fields: "dtype", "name", "perf", "bandwidth", "lds", "vgprs", "sgprs", "v_dot_count", "v_fma_count", "v_mfma_count"
+    results = []
+    results += triton_benchmark.run_torch_bench("v0_torch")
+    results += triton_benchmark.run_triton_bench("v1_dot2d_mma", v1_dot2d_mma.matmul_kernel)
+    results += triton_benchmark.run_triton_bench("v2_dot2d_fma", v2_dot2d_fma.matmul_kernel)
+    # results += triton_benchmark.run_triton_bench("v3_dot3d", v3_dot3d.matmul_kernel)
+    results += triton_benchmark.run_triton_bench("v4_gluon_dot3d", v4_gluon_dot3d.matmul_kernel)
+    # results += triton_benchmark.run_triton_bench("v5_gluon_dot3d_local_b", v5_gluon_dot3d_local_b.matmul_kernel)
+    # results += triton_benchmark.run_triton_bench("v6_gluon_dot3d_flex_m", v6_gluon_dot3d_flex_m.matmul_kernel)
+
+    # Print formatted tables
+    print_results(results)

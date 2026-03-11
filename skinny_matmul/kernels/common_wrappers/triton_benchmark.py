@@ -1,12 +1,14 @@
 # This file is a copy of tutorial with some parts cut off for convenience
 import torch
-
 import triton
+import kernels.common_wrappers.power as power
 
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 
 def run_isolated_triton_bench(matmul_kernel):
+    M, N, K = (4096, 1, 16384)
+    input_dtype = torch.float16
 
     def matmul(a, b, activation=""):
         # Check constraints.
@@ -28,21 +30,72 @@ def run_isolated_triton_bench(matmul_kernel):
             ACTIVATION=activation)
         return c
 
-    M, N, K = (4096, 1, 16384)
-    for input_dtype in [torch.float8_e5m2, torch.float16]:
-        a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
-        b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
-        if input_dtype != torch.float16:
-            a = a.to(input_dtype)
-            b = b.to(input_dtype)
-        quantiles = [0.5, 0.2, 0.8]
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul(a, b), quantiles=quantiles)
+    a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
+    b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
+    if input_dtype != torch.float16:
+        a = a.to(input_dtype)
+        b = b.to(input_dtype)
+    quantiles = [0.5, 0.2, 0.8]
+    ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul(a, b), quantiles=quantiles)
+
+
+kernel_stats = {}
+
+
+def run_generic_bench(name, matmul_func, dtypes):
+    sizes = [(4096, 1, 16384), (4096, 2, 16384), (4096, 4, 16384), (4096, 8, 16384), (4096, 16, 16384)]
+
+    print(f"Running benchmarks for {name}")
+    global kernel_stats
+    kernel_stats = {}
+
+    for (M, N, K) in sizes:
+        for input_dtype in dtypes:
+            variant_key = (input_dtype, M, N, K)
+            print("    benchmarking variant", variant_key)
+            a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
+            b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
+            if input_dtype != torch.float16:
+                a = a.to(input_dtype)
+                b = b.to(input_dtype)
+            quantiles = [0.5, 0.2, 0.8]
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_func(a, b), quantiles=quantiles)
+
+            used_energy = 0.0
+            num_energy_measure_repeats = 100
+            import time
+            for i in range(num_energy_measure_repeats):
+                start_energy = power.GetEnergy(DEVICE.index)
+                c = matmul_func(a, b)
+                used_energy += power.GetEnergy(DEVICE.index) - start_energy
+
+            idle_consumed = 0.0
+            for i in range(num_energy_measure_repeats):
+                start_energy = power.GetEnergy(DEVICE.index)
+                # here goes matmul(a, b)
+                idle_consumed += power.GetEnergy(DEVICE.index) - start_energy
+            used_energy -= idle_consumed
+            total_energy_per_run = used_energy / 1e6 / num_energy_measure_repeats
+
+            if variant_key not in kernel_stats:
+                kernel_stats[variant_key] = {}
+            kernel_stats[variant_key]["performance(TFLOPS)"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
+            kernel_stats[variant_key]["bandwidth(TBytes/s)"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms *
+                                                                                                                 1e-3)
+            kernel_stats[variant_key]["energy(Joules)"] = total_energy_per_run
+            kernel_stats[variant_key]["average time(ms)"] = ms
+
+    results = []
+    for variant_key in kernel_stats:
+        results += [{"name": name, "variant": variant_key, **kernel_stats[variant_key]}]
+    return results
+
+
+def run_torch_bench(name):
+    return run_generic_bench(name, torch.matmul, [torch.float16])
 
 
 def run_triton_bench(name, matmul_kernel):
-
-    print(f"Running benchmarking for {name}")
-    kernel_stats = {}
 
     def matmul(a, b, activation=""):
         # Check constraints.
@@ -62,7 +115,8 @@ def run_triton_bench(name, matmul_kernel):
             b.stride(0), b.stride(1),  #
             c.stride(0), c.stride(1),  #
             ACTIVATION=activation)
-        kernel_key = (a.dtype, )
+        kernel_key = (a.dtype, M, N, K)
+        global kernel_stats
         if kernel_key not in kernel_stats:
             lds = pgm.metadata.shared
             v_dot_count = 0
@@ -90,22 +144,7 @@ def run_triton_bench(name, matmul_kernel):
             }
         return c
 
-    M, N, K = (4096, 1, 16384)
-    for input_dtype in [torch.float8_e5m2, torch.float16]:
-        a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
-        b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
-        if input_dtype != torch.float16:
-            a = a.to(input_dtype)
-            b = b.to(input_dtype)
-        quantiles = [0.5, 0.2, 0.8]
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul(a, b), quantiles=quantiles)
-        kernel_stats[(a.dtype, )]["performance(TFLOPS)"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
-        kernel_stats[(a.dtype, )]["bandwidth(TBytes/s)"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms * 1e-3)
-
-    results = []
-    for (dtype, ) in kernel_stats:
-        results += [{"name": name, "dtype": dtype, **kernel_stats[(dtype, )]}]
-    return results
+    return run_generic_bench(name, matmul, [torch.float8_e5m2, torch.float16])
 
 
 def run_triton_test(name, matmul_kernel):
