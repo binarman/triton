@@ -43,7 +43,8 @@ kernel_stats = {}
 
 
 def run_generic_bench(name, matmul_func, dtypes):
-    sizes = [(4096, 1, 16384), (4096, 2, 16384), (4096, 4, 16384), (4096, 8, 16384), (4096, 16, 16384)]
+    # sizes = [(4096, 1, 16384), (4096, 2, 16384), (4096, 4, 16384), (4096, 8, 16384), (4096, 16, 16384)]
+    sizes = [(4096, 1, 16384), (4096, 4, 16384), (4096, 16, 16384)]
 
     print(f"Running benchmarks for {name}")
     global kernel_stats
@@ -61,28 +62,30 @@ def run_generic_bench(name, matmul_func, dtypes):
             quantiles = [0.5, 0.2, 0.8]
             ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_func(a, b), quantiles=quantiles)
 
-            used_energy = 0.0
-            num_energy_measure_repeats = 100
-            import time
-            for i in range(num_energy_measure_repeats):
-                start_energy = power.GetEnergy(DEVICE.index)
+            # Measure power
+            num_repeats = 100
+            total_used_start_energy = power.GetEnergy(DEVICE.index)
+            for i in range(num_repeats):
                 c = matmul_func(a, b)
-                used_energy += power.GetEnergy(DEVICE.index) - start_energy
+            total_used_end_energy = power.GetEnergy(DEVICE.index)
 
-            idle_consumed = 0.0
-            for i in range(num_energy_measure_repeats):
-                start_energy = power.GetEnergy(DEVICE.index)
+            total_idle_start_energy = power.GetEnergy(DEVICE.index)
+            for i in range(num_repeats):
                 # here goes matmul(a, b)
-                idle_consumed += power.GetEnergy(DEVICE.index) - start_energy
-            used_energy -= idle_consumed
-            total_energy_per_run = used_energy / 1e6 / num_energy_measure_repeats
+                pass
+            total_idle_end_energy = power.GetEnergy(DEVICE.index)
+
+            total_used_energy = (total_used_end_energy - total_used_start_energy) / num_repeats / 1e6
+            total_idle_energy = (total_idle_end_energy - total_idle_start_energy) / num_repeats / 1e6
 
             if variant_key not in kernel_stats:
                 kernel_stats[variant_key] = {}
-            kernel_stats[variant_key]["performance(TFLOPS)"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
-            kernel_stats[variant_key]["bandwidth(TBytes/s)"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms *
-                                                                                                                 1e-3)
-            kernel_stats[variant_key]["energy(Joules)"] = total_energy_per_run
+            # kernel_stats[variant_key]["performance(TFLOPS)"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
+            # kernel_stats[variant_key]["bandwidth(TBytes/s)"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms *
+            #                                                                                                      1e-3)
+            kernel_stats[variant_key]["energy(Joules)"] = total_used_energy - total_idle_energy
+            kernel_stats[variant_key]["total_used_energy(Joules)"] = total_used_energy
+            kernel_stats[variant_key]["total_idle_energy(Joules)"] = total_idle_energy
             kernel_stats[variant_key]["average time(ms)"] = ms
 
     results = []
@@ -115,36 +118,37 @@ def run_triton_bench(name, matmul_kernel):
             b.stride(0), b.stride(1),  #
             c.stride(0), c.stride(1),  #
             ACTIVATION=activation)
-        kernel_key = (a.dtype, M, N, K)
-        global kernel_stats
-        if kernel_key not in kernel_stats:
-            lds = pgm.metadata.shared
-            v_dot_count = 0
-            v_mfma_count = 0
-            v_fma_count = 0
-            for line in pgm.asm["amdgcn"].split("\n"):
-                if ".sgpr_spill_count" in line:
-                    sgpr_spills = int(line.split(":")[1].strip())
-                elif ".sgpr_count" in line:
-                    sgpr_count = int(line.split(":")[1].strip())
-                if ".vgpr_spill_count" in line:
-                    vgpr_spills = int(line.split(":")[1].strip())
-                elif ".vgpr_count" in line:
-                    vgpr_count = int(line.split(":")[1].strip())
-                if "v_dot" in line:
-                    v_dot_count += 1
-                if "v_mfma" in line:
-                    v_mfma_count += 1
-                if "v_fmac" in line:
-                    v_fma_count += 1
-            kernel_stats[kernel_key] = {
-                "lds": lds, "v_dot_count": v_dot_count, "v_mfma_count": v_mfma_count, "v_fmac_count": v_fma_count,
-                "sgpr_count": sgpr_count, "vgpr_count": vgpr_count, "sgpr_spills": sgpr_spills, "vgpr_spills":
-                vgpr_spills
-            }
+        # kernel_key = (a.dtype, M, N, K)
+        # global kernel_stats
+        # if kernel_key not in kernel_stats:
+        #     lds = pgm.metadata.shared
+        #     v_dot_count = 0
+        #     v_mfma_count = 0
+        #     v_fma_count = 0
+        #     for line in pgm.asm["amdgcn"].split("\n"):
+        #         if ".sgpr_spill_count" in line:
+        #             sgpr_spills = int(line.split(":")[1].strip())
+        #         elif ".sgpr_count" in line:
+        #             sgpr_count = int(line.split(":")[1].strip())
+        #         if ".vgpr_spill_count" in line:
+        #             vgpr_spills = int(line.split(":")[1].strip())
+        #         elif ".vgpr_count" in line:
+        #             vgpr_count = int(line.split(":")[1].strip())
+        #         if "v_dot" in line:
+        #             v_dot_count += 1
+        #         if "v_mfma" in line:
+        #             v_mfma_count += 1
+        #         if "v_fmac" in line:
+        #             v_fma_count += 1
+        # kernel_stats[kernel_key] = {
+        #     "lds": lds, "v_dot_count": v_dot_count, "v_mfma_count": v_mfma_count, "v_fmac_count": v_fma_count,
+        #     "sgpr_count": sgpr_count, "vgpr_count": vgpr_count, "sgpr_spills": sgpr_spills, "vgpr_spills":
+        #     vgpr_spills
+        # }
         return c
 
-    return run_generic_bench(name, matmul, [torch.float8_e5m2, torch.float16])
+    # return run_generic_bench(name, matmul, [torch.float8_e5m2, torch.float16])
+    return run_generic_bench(name, matmul, [torch.float16])
 
 
 def run_triton_test(name, matmul_kernel):

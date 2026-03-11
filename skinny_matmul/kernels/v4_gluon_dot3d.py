@@ -26,6 +26,66 @@ def get_autotune_config():
         {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 1, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
         {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 1, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
         {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 1, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 2, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 4, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M': 1},
+        {'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {
+            'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M':
+            1
+        },
+        {
+            'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M':
+            1
+        },
+        {'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {
+            'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M':
+            1
+        },
+        {
+            'BLOCK_SIZE_M': 2, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M':
+            1
+        },
+        {'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {
+            'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M':
+            1
+        },
+        {
+            'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M':
+            1
+        },
+        {'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load, 'GROUP_SIZE_M': 1},
+        {
+            'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 2, 'GROUP_SIZE_M':
+            1
+        },
+        {
+            'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 16, 'BLOCK_SIZE_K': THREADS_PER_WARP * elems_in_load * 4, 'GROUP_SIZE_M':
+            1
+        },
     ]
     return [triton.Config(s, num_warps=nw) for s in sizes for nw in [1, 2, 4]]
 
