@@ -14,6 +14,7 @@ rocmsmi = initRsmiBindings(silent=False)
 ret_init = rocmsmi.rsmi_init(0)
 
 
+# Returns value in milli Joules
 def GetEnergy(device):
     power = c_uint64()
     timestamp = c_uint64()
@@ -23,6 +24,14 @@ def GetEnergy(device):
         print("Couldn't get energy consumption")
         return None
     return power.value * counter_resolution.value
+
+
+def getGPUFreq(device):
+    freq = rsmi_frequencies_t()
+    rocmsmi.rsmi_dev_gpu_clk_freq_get(device, rsmi_clk_names_dict['sclk'], byref(freq))
+    lvl = freq.current
+    freqMhz = freq.frequency[lvl] / 1000000
+    return freqMhz
 
 
 def getIdlePowerConsumption(repeats, device_idx):
@@ -49,3 +58,24 @@ if __name__ == "__main__":
         print("average power {} Watt".format((endEnergy - startEnergy) / 1e6 / dtime))
     else:
         print("average power N/A, time delta is zero")
+
+    dtime = 1.0
+    num_experiments = 1000
+    measurements = []
+    timing = []
+    for i in range(num_experiments):
+        start_energy = GetEnergy(device_idx)
+        start_time = time.time()
+        # time.sleep(dtime/(num_experiments-1))
+        end_energy = GetEnergy(device_idx)
+        end_time = time.time()
+        measurements += [(endEnergy - startEnergy) / 1000000]
+        timing += [end_time - start_time]
+    print("min max power measured", min(measurements), max(measurements))
+    print("min max time spend on power measurements", min(timing), max(timing))
+
+    freq = rsmi_frequencies_t()
+    rocmsmi.rsmi_dev_gpu_clk_freq_get(device_idx, rsmi_clk_names_dict['sclk'], byref(freq))
+    lvl = freq.current
+    freqMhz = freq.frequency[lvl] / 1000000
+    print("freq lvl", lvl, "value:", freqMhz, "Mhz")

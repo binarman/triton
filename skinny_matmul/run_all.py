@@ -100,10 +100,10 @@ if __name__ == "__main__":
     results += triton_benchmark.run_torch_bench("v0_torch")
     results += triton_benchmark.run_triton_bench("v1_dot2d_mma", v1_dot2d_mma.matmul_kernel)
     results += triton_benchmark.run_triton_bench("v2_dot2d_fma", v2_dot2d_fma.matmul_kernel)
-    # results += triton_benchmark.run_triton_bench("v3_dot3d", v3_dot3d.matmul_kernel)
+    results += triton_benchmark.run_triton_bench("v3_dot3d", v3_dot3d.matmul_kernel)
     results += triton_benchmark.run_triton_bench("v4_gluon_dot3d", v4_gluon_dot3d.matmul_kernel)
-    # results += triton_benchmark.run_triton_bench("v5_gluon_dot3d_local_b", v5_gluon_dot3d_local_b.matmul_kernel)
-    # results += triton_benchmark.run_triton_bench("v6_gluon_dot3d_flex_m", v6_gluon_dot3d_flex_m.matmul_kernel)
+    results += triton_benchmark.run_triton_bench("v5_gluon_dot3d_local_b", v5_gluon_dot3d_local_b.matmul_kernel)
+    results += triton_benchmark.run_triton_bench("v6_gluon_dot3d_flex_m", v6_gluon_dot3d_flex_m.matmul_kernel)
 
     # Print formatted tables
     print_results(results)

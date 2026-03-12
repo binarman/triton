@@ -44,7 +44,8 @@ kernel_stats = {}
 
 def run_generic_bench(name, matmul_func, dtypes):
     # sizes = [(4096, 1, 16384), (4096, 2, 16384), (4096, 4, 16384), (4096, 8, 16384), (4096, 16, 16384)]
-    sizes = [(4096, 1, 16384), (4096, 4, 16384), (4096, 16, 16384)]
+    # sizes = [(4096, 1, 16384), (4096, 4, 16384), (4096, 16, 16384)]
+    sizes = [(4096, 1, 16384)]
 
     print(f"Running benchmarks for {name}")
     global kernel_stats
@@ -54,23 +55,31 @@ def run_generic_bench(name, matmul_func, dtypes):
         for input_dtype in dtypes:
             variant_key = (input_dtype, M, N, K)
             print("    benchmarking variant", variant_key)
-            a = torch.randn((M, K), device=DEVICE, dtype=torch.float16)
-            b = torch.randn((K, N), device=DEVICE, dtype=torch.float16)
+            rotating_buffers = 512
+            a = torch.randn((rotating_buffers, M, K), device=DEVICE, dtype=torch.float16)
+            b = torch.randn((rotating_buffers, K, N), device=DEVICE, dtype=torch.float16)
+            c = torch.empty((rotating_buffers, M, N), device=DEVICE, dtype=torch.float16)
             if input_dtype != torch.float16:
                 a = a.to(input_dtype)
                 b = b.to(input_dtype)
             quantiles = [0.5, 0.2, 0.8]
-            ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_func(a, b), quantiles=quantiles)
+
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_func(a[-1], b[-1], c[-1]), quantiles=quantiles,
+                                                         rep=10000)
 
             # Measure power
-            num_repeats = 100
+            # cache = triton.runtime.driver.active.get_empty_cache_for_benchmark()
+            num_repeats = 10000
             total_used_start_energy = power.GetEnergy(DEVICE.index)
             for i in range(num_repeats):
-                c = matmul_func(a, b)
+                d = matmul_func(a[i % rotating_buffers], b[i % rotating_buffers], c[i % rotating_buffers])
             total_used_end_energy = power.GetEnergy(DEVICE.index)
+
+            freqMhz = power.getGPUFreq(DEVICE.index)
 
             total_idle_start_energy = power.GetEnergy(DEVICE.index)
             for i in range(num_repeats):
+                # triton.runtime.driver.active.clear_cache(cache)
                 # here goes matmul(a, b)
                 pass
             total_idle_end_energy = power.GetEnergy(DEVICE.index)
@@ -80,12 +89,14 @@ def run_generic_bench(name, matmul_func, dtypes):
 
             if variant_key not in kernel_stats:
                 kernel_stats[variant_key] = {}
-            # kernel_stats[variant_key]["performance(TFLOPS)"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
-            # kernel_stats[variant_key]["bandwidth(TBytes/s)"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms *
-            #                                                                                                      1e-3)
+            kernel_stats[variant_key]["performance(TFLOPS)"] = 2 * M * N * K * 1e-12 / (ms * 1e-3)
+            kernel_stats[variant_key]["bandwidth(TBytes/s)"] = input_dtype.itemsize * (M * K + N * K) * 1e-12 / (ms *
+                                                                                                                 1e-3)
             kernel_stats[variant_key]["energy(Joules)"] = total_used_energy - total_idle_energy
+            kernel_stats[variant_key]["power(Watts)"] = (total_used_energy - total_idle_energy) / (ms / 1000)
             kernel_stats[variant_key]["total_used_energy(Joules)"] = total_used_energy
             kernel_stats[variant_key]["total_idle_energy(Joules)"] = total_idle_energy
+            kernel_stats[variant_key]["frequency(Mhz)"] = freqMhz
             kernel_stats[variant_key]["average time(ms)"] = ms
 
     results = []
@@ -95,19 +106,18 @@ def run_generic_bench(name, matmul_func, dtypes):
 
 
 def run_torch_bench(name):
-    return run_generic_bench(name, torch.matmul, [torch.float16])
+    return run_generic_bench(name, lambda a, b, c: torch.matmul(a, b, out=c), [torch.float16])
 
 
 def run_triton_bench(name, matmul_kernel):
 
-    def matmul(a, b, activation=""):
+    def matmul(a, b, c, activation=""):
         # Check constraints.
         assert a.shape[1] == b.shape[0], "Incompatible dimensions"
         assert a.is_contiguous(), "Matrix A must be contiguous"
         M, K = a.shape
         K, N = b.shape
         # Allocates output.
-        c = torch.empty((M, N), device=a.device, dtype=torch.float16)
         # 1D launch kernel where each block gets its own program.
         grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
 
