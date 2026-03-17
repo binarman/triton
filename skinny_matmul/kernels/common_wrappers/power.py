@@ -2,7 +2,7 @@
 import os
 import sys
 
-additional_path = "/opt/rocm-7.0.2/libexec/rocm_smi"
+additional_path = "/opt/rocm/libexec/rocm_smi"
 sys.path.append(additional_path)
 try:
     from rsmiBindings import *
